@@ -1,9 +1,22 @@
 # @relata/sdk — TypeScript SDK
 
 TypeScript client for the [Relata](../../README.md) data engine — ontology-driven,
-enterprise-grade workloads. Zero runtime dependencies; uses native `fetch`.
+enterprise-grade workloads. Zero runtime dependencies (native `fetch` only), typed
+responses, fluent query builder, a Mem0-style governed memory client, and 12+ typed
+v1.1 clients that mirror the server's REST surface — all with full transport
+hardening (RFC 7807 problem+json, `X-Request-ID`, retry, multi-tenant headers).
 
 Compatible with Node.js 18+, Deno, Bun, and browser environments.
+
+- **Source:** [`sdks/typescript/src/`](./src/)
+- **Package:** `@relata/sdk`
+- **Runtime:** Node.js 18+, Deno, Bun, browsers (anywhere with native `fetch`)
+- **Runtime deps:** **zero** — uses native `fetch`, native `crypto.randomUUID()`, native `AbortController`
+- **Parity:** tracks the Python reference SDK (`../python/relata/`) method-for-method
+
+TypeScript is **async-native**, so every SDK method returns a `Promise`. There are no
+separate `Async*` classes — that is the idiomatic parity with the Python SDK's sync/async
+split.
 
 ## Install
 
@@ -21,9 +34,11 @@ bun add @relata/sdk
 import { createClient } from "@relata/sdk";
 
 const relata = createClient("http://localhost:9090", {
-  bearerToken: process.env.RELATA_TOKEN,
-  defaultPurpose: "analytics",   // required — every query must declare a purpose
+  bearerToken: process.env.RELATA_TOKEN,   // required when server sets RELATA_BEARER_TOKEN
+  defaultPurpose: "analytics",              // required — every query must declare a purpose
+  tenant: "org-acme",                       // X-Organization-Id (multi-tenant)
   timeoutMs: 15_000,
+  maxRetries: 3,                            // retry on 502/503/504 + network errors
 });
 
 // Raw SQL query
@@ -48,15 +63,68 @@ const recent = await relata
   .execute<Person>();
 ```
 
-## Key concepts
+## Agent memory in three lines
+
+`Memory` is a Mem0-style surface over the governed `/memory/*` verbs — purpose + ACL
+stay on by default.
+
+```typescript
+import { Memory } from "@relata/sdk";
+
+const m = new Memory("http://localhost:9090", {
+  purpose: "agent-notes",
+  bearerToken: process.env.RELATA_TOKEN,
+});
+const memId = await m.add("Alice prefers dark mode");          // store
+const hits  = await m.search("ui preferences", { topK: 5 });   // recall (confidence × recency × relevance)
+await m.forget(memId);                                          // governed retract, not a hard delete
+await m.close();                                                // no-op on native fetch (API symmetry)
+```
+
+## `createClient(baseUrl, options?)`
+
+Factory function. Returns a `RelataClient`.
+
+```typescript
+const relata = createClient("http://localhost:9090", {
+  bearerToken: "...",
+  defaultPurpose: "analytics",
+  timeoutMs: 30_000,
+  tenant: "org-acme",         // X-Organization-Id
+  actingAs: "user-bob",       // X-Acting-As (delegation)
+  delegatedBy: "user-alice",  // X-Delegated-By
+  maxRetries: 3,              // retry 502/503/504 + network errors
+  retryBackoffMs: 500,        // exponential base (default 500ms)
+  headers: {                  // arbitrary caller headers, win over SDK defaults
+    "X-Verified-Principal": "proxy-client",
+  },
+  fetch: customFetch,         // override for testing / observability
+});
+```
+
+### `RelataClient` — the main client
+
+| Method | Returns | Description |
+|---|---|---|
+| `.query<T>(sql, options?)` | `Promise<QueryResult<T>>` | Execute raw SQL. Wire shape normalised (see below). |
+| `.select(type)` | `QueryBuilder` | Begin a fluent query |
+| `.health()` | `Promise<HealthResponse>` | `GET /health` — liveness |
+| `.status()` | `Promise<StatusResponse>` | `GET /status` — profile, role, quota |
+| `.stats()` | `Promise<Stats>` | `GET /debug/stats` — engine counts |
+| `.version()` | `Promise<VersionInfo>` | `GET /version` — build info |
+| `.ready()` | `Promise<ReadyReport>` | `GET /health/ready` — 9-condition readiness |
+| `.auditCount()` | `Promise<AuditCountResponse>` | `GET /audit/count` — entry count + `chainValid` |
+| `.clusterNodes()` | `Promise<ClusterNode[]>` | `GET /cluster/nodes` — list cluster members |
+| `.ingestDocument(chunksJsonl, manifestJson)` | `Promise<IngestDocumentResponse>` | `POST /ingest/document` — datagrep-extractor envelope |
+
+Every method is async (TS is async-native). The `X-Request-ID` header is auto-generated
+per request via `crypto.randomUUID()` — pin your own by setting
+`headers: { "X-Request-ID": "..." }`.
 
 ### Purpose (mandatory)
 
-Every Relata query **must** declare a `purpose` string registered in the tenant's
-`PurposeRegistry` (SPECS §5.22.4). The server rejects any purposeless query with
-HTTP 400 (`PurposeError`).
-
-Set a default purpose on the client, or pass it per-query:
+Every query **must** declare a `purpose` registered in the tenant's `PurposeRegistry`
+(SPECS §5.22.4). The server rejects purposeless queries with HTTP 400 (`PurposeError`).
 
 ```typescript
 // Client-level default
@@ -69,81 +137,121 @@ await relata.query("SELECT ...", { purpose: "audit" });
 relata.select("Person").purpose("audit").execute();
 ```
 
-Common values: `"analytics"`, `"operations"`, `"security_incident"`, `"compliance_review"`, `"audit"`.
+Common values: `"analytics"`, `"operations"`, `"security_incident"`,
+`"compliance_review"`, `"audit"`.
 
-### Authentication
-
-When the server is started with `RELATA_BEARER_TOKEN` set, all requests require
-an `Authorization: Bearer <token>` header:
+### Multi-tenant + delegation headers
 
 ```typescript
 const relata = createClient(url, {
-  bearerToken: process.env.RELATA_TOKEN,
+  bearerToken: token,
+  tenant: "org-acme",           // X-Organization-Id
+  actingAs: "user-bob",         // X-Acting-As
+  delegatedBy: "user-alice",    // X-Delegated-By
 });
 ```
 
-Requests without a token (or with an invalid token) receive HTTP 401 (`AuthError`).
+Without a token the SDK runs as the built-in `api-user` principal — fine for local dev,
+not for production multi-tenant.
 
-### Extended SQL dialect
+### Retry behaviour
 
-Relata extends ANSI SQL with enterprise-grade operators:
-
-| Operator | Description |
-|---|---|
-| `AS OF 'timestamp'` | Bi-temporal snapshot query |
-| `WITH PROVENANCE` | Attach PROV-O provenance to rows |
-| `PATHS_BETWEEN(a, b, max_hops => 4)` | Shortest graph paths |
-| `NETWORK_EXPAND(seed_id => ..., hops => 3)` | Network expansion |
-| `MATCH_FACE(image_bytes => ..., threshold => 0.70)` | Face recognition |
-| `LOOKUP_IDENTITY(column, value)` | IdentityIndex universal lookup |
-| `HYBRID_SCORE(...)` | Combined BM25 + vector similarity |
-| `PREGEL_BFS(seed_id => ..., max_rounds => 4)` | Iterative graph BFS |
-| `GENERATE_REPORT(type => ..., period => ...)` | Signed compliance report |
-
-## API reference
-
-### `createClient(baseUrl, options?)`
-
-Factory function. Returns a `RelataClient`.
+`maxRetries` (default `0` = off) retries on HTTP `{502, 503, 504}` and on raw network
+errors (DNS, connection refused). Backoff is exponential: `retryBackoffMs * 2^attempt`.
+Timeouts are never retried (operations may have side-effects).
 
 ```typescript
-const relata = createClient("http://localhost:9090", {
-  bearerToken: "...",
+const relata = createClient(url, {
   defaultPurpose: "analytics",
-  timeoutMs: 30_000,
-  fetch: customFetch,   // override for testing
+  maxRetries: 3,
+  retryBackoffMs: 500,
 });
 ```
 
-### `RelataClient`
+### `QueryResult` wire-shape normalisation
 
-#### `.query<T>(sql, options?): Promise<QueryResult<T>>`
+The server replies with one of two shapes:
 
-Execute raw SQL. Returns `{ rows, queryId, elapsedMs, rowCount }`.
+| Wire shape | Meaning |
+|---|---|
+| `{"data": [...rows...], "query_id": "...", "elapsed_ms": N}` | Rich (row data in `data`) |
+| `{"rows": <int count>, "query_id": "...", "elapsed_ms": N}` | Legacy (row count in `rows`) |
 
-#### `.select(type): QueryBuilder`
+The SDK normalises both so callers always see `result.rows` as an array, matching the
+Python `_normalise_wire_shape` validator:
 
-Begin a fluent query builder.
+```typescript
+const result = await relata.query("SELECT * FROM Person LIMIT 5");
+result.rows;        // Record<string, unknown>[] — always an array
+result.rowCount;    // number — always rows.length
+result.columns;     // string[] — column names when the server sends them
+result.queryId;     // string
+result.elapsedMs;   // number
+```
 
-#### `.health(): Promise<HealthResponse>`
+## `Memory` — agent memory
 
-`GET /health` — server liveness check.
+Mem0-style governed agent memory over `/memory/*` (ADR-144). Construct with a mandatory
+`purpose`.
 
-#### `.status(): Promise<StatusResponse>`
+```typescript
+import { Memory } from "@relata/sdk";
 
-`GET /status` — profile, role, quota.
+const m = new Memory("http://localhost:9090", {
+  purpose: "agent-notes",
+  bearerToken: process.env.RELATA_TOKEN,
+  sessionId: "sess-1",         // optional default session
+});
 
-#### `.auditCount(): Promise<AuditCountResponse>`
+const id1 = await m.add("Alice prefers dark mode");
+const id2 = await m.add("Bob likes light mode", { memoryClass: "episodic", confidence: 0.8 });
+const ids = await m.addBatch(["first", "second", { content: "third", confidence: 0.5 }]);
 
-`GET /audit/count` — entry count + `chainValid` flag.
+const hits = await m.search("ui preferences", { topK: 5, asOf: "2025-01-01" });
+const mem  = await m.get(id1);          // Record<string, unknown> | null
+const newId = await m.update(id1, "Alice prefers dark mode (revised)");
+const decision = await m.forget(id1);   // governed retention-policy retract
 
-#### `.clusterNodes(): Promise<ClusterNode[]>`
+// The five cognitive verbs (#77):
+await m.associate(id1, id2, "contradicts", { confidence: 0.9 });
+const eps = await m.episodes({ sessionId: "sess-1" });
+const chain = await m.justify(id1);
+const resolved = await m.resolve(id1, { policy: "highest_confidence" });
+const summary = await m.summarise([id1, id2], { summaryContent: "both prefer different modes" });
+```
 
-`GET /cluster/nodes` — list cluster members.
+| Method | HTTP | Description |
+|---|---|---|
+| `.add(content, opts?)` | `POST /memory/remember` | Store a memory; returns its id |
+| `.addBatch(items, opts?)` | `POST /memory/remember/batch` | Bulk store; returns index-aligned ids |
+| `.search(query, opts?)` | `GET /memory/recall` | Recall ranked by confidence × recency × relevance |
+| `.get(memoryId)` | `GET /memory/recognize/:id` | Fetch one memory or `null` |
+| `.update(memoryId, content)` | `POST /memory/consolidate` | Governed supersede; returns new id |
+| `.forget(memoryId)` | `DELETE /memory/forget/:id` | Governed retention-policy retract |
+| `.associate(src, tgt, relation, opts?)` | `POST /memory/associate` | Link two memories |
+| `.episodes(opts?)` | `GET /memory/episodes` | List episodes |
+| `.justify(memoryId)` | `GET /memory/justify/:id` | PROV-O assertion chain |
+| `.resolve(memoryId, opts?)` | `POST /memory/resolve/:id` | Resolve a contradiction |
+| `.summarise(sourceIds, opts?)` | `POST /memory/summarise` | Summary belief from sources |
 
-### `QueryBuilder`
+The MCP envelope (`{"content": [{"type":"text","text":"<json>"}]}`) is unwrapped
+transparently.
+
+## `QueryBuilder` — fluent SQL
 
 Fluent builder returned by `relata.select(type)`.
+
+```typescript
+const result = await relata
+  .select("Person")
+  .purpose("analytics")
+  .where("name LIKE 'Ahmed%'")
+  .asOf("2025-01-01T00:00:00Z")
+  .withProvenance()
+  .orderBy("name")
+  .limit(20)
+  .execute<{ id: string; name: string }>();
+```
 
 | Method | Description |
 |---|---|
@@ -152,40 +260,138 @@ Fluent builder returned by `relata.select(type)`.
 | `.where(condition)` | Append `AND` condition |
 | `.asOf(timestamp)` | Bi-temporal `AS OF` clause |
 | `.withProvenance()` | Attach PROV-O metadata |
-| `.orderBy(col, dir?)` | Add `ORDER BY` clause |
-| `.limit(n)` | Set `LIMIT` |
-| `.offset(n)` | Set `OFFSET` |
+| `.orderBy(col, dir?)` | Add `ORDER BY` clause (`ASC` or `DESC`) |
+| `.limit(n)` | Set `LIMIT` (positive integer) |
+| `.offset(n)` | Set `OFFSET` (non-negative integer) |
 | `.pathsBetween(a, b, opts?)` | Switch to `PATHS_BETWEEN` sub-builder |
 | `.toSQL()` | Return SQL string without executing |
 | `.execute<T>()` | Execute and return `QueryResult<T>` |
 
-### Error handling
+### `PathsQueryBuilder`
+
+Returned by `.pathsBetween(a, b, opts?)`. Same
+`.purpose / .limit / .withProvenance / .asOf / .execute<T>()` surface.
+
+## Typed v1.1 clients — `fromClient(client)`
+
+Each typed client inherits the parent client's auth, tenant, and header context, so
+governance stays consistent across the surface. TypeScript is async-native, so every
+method returns a `Promise` (no `Async*` classes).
+
+```typescript
+import { createClient, GovernanceClient, McpClient, AuditClient } from "@relata/sdk";
+
+const relata = createClient(url, { bearerToken: token, defaultPurpose: "compliance", tenant: "acme" });
+const gov    = GovernanceClient.fromClient(relata);
+const mcp    = McpClient.fromClient(relata);
+const audit  = AuditClient.fromClient(relata);
+
+const rule   = await gov.createRule({ name: "big-xfer", object_type: "Transaction", condition: "amount_usd > 1000000", action: "alert" });
+const tools  = await mcp.listTools();
+const entries = await audit.entries({ purpose: "compliance", limit: 50 });
+```
+
+| Module | Class | Surface |
+|---|---|---|
+| `governance.ts` | `GovernanceClient` | Rules, retention (holds + WORM), breakglass, alerts, DSAR |
+| `mcp.ts` | `McpClient` | 22+ typed MCP tool wrappers + generic `callTool` |
+| `a2a.ts` | `A2AClient` | A2A tasks + LangGraph checkpoints + agent card |
+| `audit.ts` | `AuditClient` | Audit entries (filtered/paginated) + signed receipts + PDF export |
+| `identity.ts` | `IdentityClient` | Identity label/uncertainty + lookup tables + `ERASE SUBJECT` |
+| `objects.ts` | `ObjectClient` | Typed upsert + batch via `/ingest?object_type=` |
+| `ingest.ts` | `IngestClient` | Bulk NDJSON + CSV + media status |
+| `vectors.ts` | `VectorClient` | KNN + hybrid search + similar-to (SQL-backed) |
+| `s3.ts` | `S3Client` | Native-fetch wrapper for the S3 protocol door (no boto3) |
+| `system.ts` | `SystemClient` | LLM config + test + jobs status |
+| `streaming.ts` | `StreamingClient` | NDJSON row streams + SSE consumers (watch/alerts) + Arrow IPC |
+| `tenants.ts` | `TenantAdminClient` | Tenant CRUD + quota + sharing agreements + platform admin |
+| `backup.ts` | `BackupClient` | Backup / restore / PITR (admin) |
+| `tokens.ts` | `TokenClient` | Dedup / uniqueness tokens (test-and-set) |
+| `log.ts` | `LogClient` | Ordered integrity log (append / head / load leaves) |
+
+### Streaming — async iterables
+
+`StreamingClient` exposes every streaming surface as an `AsyncIterable<T>`:
+
+```typescript
+import { StreamingClient } from "@relata/sdk";
+
+const streaming = StreamingClient.fromClient(relata);
+
+// NDJSON row stream
+for await (const row of streaming.queryRows("SELECT * FROM Person", { purpose: "analytics" })) {
+  console.log(row);
+}
+
+// SSE watch
+for await (const ev of streaming.watch("SELECT * FROM Person", "analytics")) {
+  console.log(ev); // { event: "RowsAppended", ... }
+}
+
+// SSE alerts
+for await (const alert of streaming.alerts()) {
+  console.log(alert);
+}
+
+// Raw Arrow IPC byte stream
+for await (const chunk of streaming.queryArrowRaw("SELECT * FROM Person", { purpose: "analytics" })) {
+  // chunk: Uint8Array — feed to a columnar reader
+}
+```
+
+SSE consumers reconnect with exponential backoff until you break out of the
+`for await` loop.
+
+### S3 door — native fetch only
+
+The Python SDK ships `boto3` / `aiobotocore` / `httpx` flavours; this TypeScript port
+ships **only** the native-fetch equivalent (`S3Client.http(method, path, opts)`) because
+boto3 is Python-only and the TS SDK has zero runtime dependencies. Convenience wrappers
+(`listBuckets`, `createBucket`, `putObject`, `getObject`, `deleteObject`) are included.
+
+```typescript
+import { S3Client } from "@relata/sdk";
+const s3 = S3Client.fromClient(relata);
+await s3.createBucket("acme-intel");
+await s3.putObject("acme-intel", "report.pdf", pdfBytes, { contentType: "application/pdf" });
+const obj = await s3.getObject("acme-intel", "report.pdf");
+console.log(obj.body); // Uint8Array
+```
+
+## Response models
+
+| Model | Fields |
+|---|---|
+| `QueryResult<T>` | `rows`, `queryId`, `elapsedMs`, `rowCount`, `columns` |
+| `HealthResponse` | `status`, `profile`, `nodeId` |
+| `StatusResponse` | `profile`, `role`, `queryQuota` |
+| `AuditCountResponse` | `entries`, `chainValid` |
+| `ClusterNode` | `nodeId`, `role`, `url` |
+| `IngestDocumentResponse` | `reportId`, `chunksIngested`, `warnings`, `schemaVersion`, `queueDepth` |
+| `VersionInfo` | `version`, `commit`, `profile`, `schemaVersion`, `features` |
+| `Stats` | `records`, `states`, `snapshotRows`, `logLeaves`, `tokens`, `raw` |
+| `ReadyReport` | `isReady`, `status`, `reason`, `detail` |
+
+## Error handling
 
 All errors extend `RelataError`. Import and catch by type:
 
 ```typescript
 import {
-  PurposeError,
-  AuthError,
-  QuotaError,
-  ForbiddenError,
-  BadRequestError,
-  ServerError,
-  NetworkError,
-  TimeoutError,
+  PurposeError, AuthError, QuotaError, RateLimitedError, ForbiddenError,
+  NotFoundError, ConflictError, ValidationError,
+  BadRequestError, ServerError, NetworkError, TimeoutError,
 } from "@relata/sdk";
 
 try {
   const r = await relata.query("SELECT * FROM Person LIMIT 10");
 } catch (err) {
   if (err instanceof PurposeError) {
-    // No purpose declared or purpose not in PurposeRegistry
     console.error("Fix:", err.message);
-  } else if (err instanceof QuotaError) {
-    // Per-principal cost quota exhausted
-    console.error(`Quota hit. Retry after: ${err.retryAfterSeconds}s`);
-  } else if (err instanceof AuthError) {
-    console.error("Set RELATA_TOKEN environment variable.");
+  } else if (err instanceof RateLimitedError) {
+    console.error(`Rate limited. Retry after: ${err.retryAfterSeconds}s`);
+  } else if (err instanceof NotFoundError) {
+    console.error(`Not found. Code: ${err.code}, requestId: ${err.requestId}`);
   } else if (err instanceof TimeoutError) {
     console.error(`Timed out after ${err.timeoutMs}ms`);
   } else if (err instanceof NetworkError) {
@@ -196,16 +402,35 @@ try {
 }
 ```
 
+Every error carries the RFC 7807 problem+json fields (`code`, `typeUrl`, `retryable`,
+`requestId`) when the server emits them. `RateLimitedError` extends `QuotaError` so
+existing `catch (e instanceof QuotaError)` callers keep working.
+
 | Error class | HTTP | Cause |
 |---|---|---|
 | `PurposeError` | 400 | Purpose missing or not in registry |
 | `BadRequestError` | 400 | SQL syntax error or bad parameter |
 | `AuthError` | 401 | Bearer token missing or invalid |
 | `ForbiddenError` | 403 | Cedar ACL denies access |
-| `QuotaError` | 429 | Per-principal cost quota exhausted |
+| `NotFoundError` | 404 | Resource does not exist |
+| `ConflictError` | 409 | Version or uniqueness conflict |
+| `ValidationError` | 422 | Request body failed validation |
+| `RateLimitedError` | 429 | Per-principal cost quota or rate limit (extends `QuotaError`) |
+| `QuotaError` | 429 | Back-compat alias for `RateLimitedError` |
 | `ServerError` | 5xx | Server-side error |
 | `NetworkError` | 0 | Network failure (DNS, connection refused) |
 | `TimeoutError` | 0 | Request exceeded `timeoutMs` |
+
+## Async
+
+TypeScript is async-native — every method returns a `Promise`. There are no separate
+`Async*` classes. Use `async`/`await` directly:
+
+```typescript
+const relata = createClient("http://localhost:9090", { defaultPurpose: "analytics" });
+const result = await relata.query("SELECT * FROM Person LIMIT 5");
+for (const row of result.rows) console.log(row);
+```
 
 ## CLI helper
 
@@ -219,28 +444,26 @@ npx relata query "SELECT * FROM Person LIMIT 5" --purpose analytics
 
 Options: `--url`, `--token`, `--purpose`, `--timeout`, `--json`.
 
-Environment variables: `RELATA_TOKEN`, `RELATA_PURPOSE`, `RELATA_URL`.
+## Extended SQL dialect
 
-## Examples
+Relata extends ANSI SQL with enterprise operators — usable from raw `relata.query(sql)`
+or via the builder:
 
-See [`examples/`](examples/) for complete runnable examples:
-
-| File | What it shows |
+| Operator | Description |
 |---|---|
-| `basic-query.ts` | Health check, raw SQL, typed query, fluent builder |
-| `analytics.ts` | Full analytics workflow (identity, cases, financials, graph) |
-| `face-search.ts` | `MATCH_FACE` operator with co-occurrence detection |
-| `graph-traversal.ts` | `PATHS_BETWEEN`, `NETWORK_EXPAND`, `MATCH`, Pregel BFS |
-| `audit.ts` | Audit chain verification, anomaly detection, compliance report |
+| `AS OF 'timestamp'` | Bi-temporal snapshot query |
+| `WITH PROVENANCE` | Attach PROV-O provenance to rows |
+| `PATHS_BETWEEN(a, b, max_hops => 4)` | Shortest graph paths |
+| `NETWORK_EXPAND(seed_id => ..., hops => 3)` | Network expansion |
+| `MATCH_FACE(image_bytes => ..., threshold => 0.70)` | Face recognition |
+| `LOOKUP_IDENTITY(column, value)` | IdentityIndex universal lookup |
+| `HYBRID_SCORE(...)` | Combined BM25 + vector similarity |
+| `PREGEL_BFS(seed_id => ..., max_rounds => 4)` | Iterative graph BFS |
+| `GENERATE_REPORT(type => ..., period => ...)` | Signed compliance report |
+| `SIMILAR TO <Type> WHERE id = '...'` | Multi-vector similarity |
+| `ERASE SUBJECT '<id>' REASON '<r>' [CERTIFY]` | GDPR Art. 17 crypto-shred |
 
-Run any example:
-```bash
-RELATA_TOKEN=secret node --experimental-strip-types examples/basic-query.ts
-# or
-deno run --allow-net examples/basic-query.ts
-# or
-bun run examples/basic-query.ts
-```
+See the [SQL reference](https://www.relatadb.dev/docs/reference/sql) for full syntax.
 
 ## Environment variables
 
@@ -251,6 +474,38 @@ bun run examples/basic-query.ts
 | `RELATA_URL` | `http://localhost:9090` | Server URL (examples / CLI) |
 | `PROBE_IMAGE` | — | Path to probe JPEG for face-search example |
 
+## Examples
+
+See [`examples/`](./examples/) for runnable workflows:
+
+| File | What it shows |
+|---|---|
+| `basic-query.ts` | Health check, raw SQL, typed query, fluent builder |
+| `analytics.ts` | Full analytics workflow (identity, cases, financials, graph) |
+| `face-search.ts` | `MATCH_FACE` operator with co-occurrence detection |
+| `graph-traversal.ts` | `PATHS_BETWEEN`, `NETWORK_EXPAND`, `MATCH`, Pregel BFS |
+| `audit.ts` | Audit chain verification, anomaly detection, compliance report |
+
+Run any example:
+
+```bash
+RELATA_TOKEN=secret node --experimental-strip-types examples/basic-query.ts
+# or
+deno run --allow-net examples/basic-query.ts
+# or
+bun run examples/basic-query.ts
+```
+
+## Deployment profiles
+
+| Profile | Use case | Start command |
+|---|---|---|
+| `lite` | Embedded / single-process / dev | `RELATA_PROFILE=lite relata serve` |
+| `server` | Single-node production | `RELATA_PROFILE=server relata serve` |
+| `cluster` | Multi-node distributed (alpha) | `RELATA_PROFILE=cluster relata serve` |
+
+The SDK works identically across all three.
+
 ## License
 
-AGPL-3.0-only — see [LICENSE](../../LICENSE).
+AGPL-3.0-only — see the root `LICENSE` file.
