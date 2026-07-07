@@ -12,11 +12,16 @@
 /**
  * The result of a SQL query executed against Relata.
  *
+ * The wire shape returned by `POST /query` is normalised by the client so that
+ * `rows` is **always** an array of row objects, regardless of whether the
+ * server sent `data: [...]` (the rich shape) or `rows: <int>` (the legacy
+ * count-only shape). See `RelataClient.query` for details.
+ *
  * @typeParam T - Shape of each row. Defaults to `Record<string, unknown>`.
  *               Pass a concrete interface for typed access:
  *               ```typescript
  *               const r = await relata.query<Person>("SELECT * FROM Person LIMIT 10");
- *               r.rows[0].name; // typed as string | undefined
+ *               r.rows[0]?.name; // typed as string | undefined
  *               ```
  */
 export interface QueryResult<T = Record<string, unknown>> {
@@ -28,6 +33,8 @@ export interface QueryResult<T = Record<string, unknown>> {
   elapsedMs: number;
   /** Number of rows in `rows`. Convenience alias for `rows.length`. */
   rowCount: number;
+  /** Column names in projection order, when the server sends them. */
+  columns: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -36,6 +43,9 @@ export interface QueryResult<T = Record<string, unknown>> {
 
 /**
  * Options for constructing a `RelataClient`.
+ *
+ * All fields except `baseUrl` are optional. The same shape is accepted by the
+ * `createClient(url, options?)` factory (with `baseUrl` passed positionally).
  */
 export interface RelataClientOptions {
   /**
@@ -56,7 +66,7 @@ export interface RelataClientOptions {
    *
    * Every Relata query **must** declare a purpose registered in the tenant's
    * `PurposeRegistry` (SPECS §5.22.4). Common values: `"analytics"`,
-   * `"audit"`, `"analysis"`, `"compliance"`.
+   * `"audit"`, `"analysis"`, `"compliance_review"`.
    */
   defaultPurpose?: string;
 
@@ -73,6 +83,46 @@ export interface RelataClientOptions {
    * Defaults to `globalThis.fetch`.
    */
   fetch?: typeof globalThis.fetch;
+
+  /**
+   * Tenant / organisation id sent as `X-Organization-Id` on every request.
+   * Required for multi-tenant deployments.
+   */
+  tenant?: string;
+
+  /**
+   * Delegation principal sent as `X-Acting-As` — the caller asserts
+   * membership and the server's `wire_acting_as()` parses it (#55). Pairs
+   * with `delegatedBy`.
+   */
+  actingAs?: string;
+
+  /**
+   * Delegation chain root sent as `X-Delegated-By`.
+   */
+  delegatedBy?: string;
+
+  /**
+   * Optional dict of arbitrary HTTP headers overlaid on every request (e.g.
+   * `{"X-Request-ID": "..."}` for correlation, or
+   * `{"X-Verified-Principal": "..."}` for proxy-trust deployments).
+   * Caller-supplied headers win over the SDK defaults.
+   */
+  headers?: Record<string, string>;
+
+  /**
+   * Maximum number of retries on transient failures (HTTP 502/503/504 and
+   * network-level errors). Defaults to `0` (off). When greater than zero the
+   * client retries with an exponential backoff (`retryBackoffMs * 2^attempt`).
+   */
+  maxRetries?: number;
+
+  /**
+   * Base backoff in milliseconds for the retry loop. The n-th retry waits
+   * approximately `retryBackoffMs * 2^n` before firing. Defaults to `500`
+   * (0.5s), matching the Python SDK.
+   */
+  retryBackoffMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -171,13 +221,6 @@ export interface QueryOptions {
 // Raw wire shapes (internal — used for JSON parsing)
 // ---------------------------------------------------------------------------
 
-/** @internal Wire shape returned by `POST /query`. */
-export interface WireQueryResponse {
-  rows: Record<string, unknown>[];
-  query_id: string;
-  elapsed_ms: number;
-}
-
 /** @internal Wire shape returned by `GET /health`. */
 export interface WireHealthResponse {
   status: string;
@@ -212,7 +255,108 @@ export interface WireClusterNodesResponse {
 
 /** @internal Wire error envelope returned by the server. */
 export interface WireErrorResponse {
-  error: string;
+  error?: string;
+  /** RFC 7807 dotted problem code, e.g. `"RELATA.QUERY.PURPOSE_REQUIRED"`. */
   code?: string;
+  /** RFC 7807 `type` URL linking to the error docs. */
+  type?: string;
+  /** RFC 7807 human-readable detail. */
+  detail?: string;
+  /** Server-side message alias (older shape). */
+  message?: string;
+  /** Whether the server says the request can be retried. */
+  retryable?: boolean;
+  /** `X-Request-ID` echoed back in the body, when available. */
+  request_id?: string;
+  /** Server-assigned query id, present when the error occurred mid-execution. */
   query_id?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Ingest / introspection
+// ---------------------------------------------------------------------------
+
+/**
+ * Response from `POST /ingest/document` — the datagrep-extractor envelope.
+ */
+export interface IngestDocumentResponse {
+  /** Server-assigned manifest id for the ingested document. */
+  reportId: string;
+  /** Number of chunks accepted into the ingest queue. */
+  chunksIngested: number;
+  /** Non-fatal protocol warnings (e.g. newer-minor-version fields). */
+  warnings: string[];
+  /** Protocol version the server parsed the document as. */
+  schemaVersion: string;
+  /** Current ingest queue depth after this submission. */
+  queueDepth: number;
+}
+
+/**
+ * Response from `GET /version` — runtime build-info.
+ */
+export interface VersionInfo {
+  /** Relata server version (e.g. `"1.1.0"`). */
+  version: string;
+  /** Git commit hash the binary was built from. */
+  commit: string | undefined;
+  /** Deployment profile — `lite` / `server` / `cluster`. */
+  profile: string | undefined;
+  /** Ontology / row-model schema version, useful for migration gating. */
+  schemaVersion: string | undefined;
+  /** Compiled-in feature flags. */
+  features: string[];
+}
+
+/**
+ * Response from `GET /debug/stats` — engine-wide counts for health dashboards.
+ *
+ * The shape mirrors the storage-backend contract §9. Every field the server
+ * populates is exposed; fields the server does not yet emit default to
+ * `undefined` so the model is forward-compatible.
+ */
+export interface Stats {
+  /** Total content-addressed blobs (partner §2). */
+  records: number | undefined;
+  /** Total live rows across all types (partner §3). */
+  states: number | undefined;
+  /** Total rows in incrementally-refreshed MVs (partner §4). */
+  snapshotRows: number | undefined;
+  /** Current WAL write_seq (partner §5; pending server support). */
+  logLeaves: number | undefined;
+  /** Current dedup-token count (partner §7). */
+  tokens: number | undefined;
+  /** Full server response, in case the caller wants an unmodelled field. */
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Response from `GET /health/ready` — the 9-condition readiness report.
+ */
+export interface ReadyReport {
+  /** `true` when the node is ready to serve (HTTP 200). */
+  isReady: boolean;
+  /** Server-side status string (e.g. `"ok"`, `"shedding"`). */
+  status: string;
+  /** Machine-friendly shed reason (queue_backpressure / wal_failures / ...). */
+  reason: string | undefined;
+  /** Human-friendly explanation. */
+  detail: string | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Raw wire shapes (internal — used for JSON parsing)
+// ---------------------------------------------------------------------------
+
+/** @internal Wire shape returned by `POST /query`. The client normalises the
+ * `data`/`rows` ambiguity into the public `QueryResult` shape. */
+export interface WireQueryResponse {
+  /** When an array, the actual row data. When a number, a row count. */
+  rows?: unknown;
+  /** Some servers send the row data under `data` instead of `rows`. */
+  data?: unknown;
+  /** Column names in projection order, when the server sends them. */
+  columns?: string[];
+  query_id?: string;
+  elapsed_ms?: number;
 }

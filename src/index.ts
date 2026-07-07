@@ -2,8 +2,9 @@
  * @relata/sdk — TypeScript SDK for the Relata data engine.
  *
  * Relata is a Rust data engine for ontology-driven, enterprise-grade workloads.
- * This SDK provides a typed HTTP client, a fluent query builder, and full TypeScript
- * types for all API responses.
+ * This SDK provides a typed HTTP client, a fluent query builder, an
+ * agent-memory client, 12+ typed v1.1 clients that mirror the server's REST
+ * surface, and full TypeScript types for all API responses.
  *
  * **Quick start**
  *
@@ -13,6 +14,8 @@
  * const relata = createClient("http://localhost:8080", {
  *   bearerToken: process.env.RELATA_TOKEN,
  *   defaultPurpose: "analytics",
+ *   tenant: "acme",        // X-Organization-Id
+ *   maxRetries: 3,         // retry on 502/503/504 + network errors
  * });
  *
  * // Raw SQL
@@ -28,13 +31,16 @@
  *   .limit(20)
  *   .execute<{ id: string; name: string }>();
  *
- * // Graph traversal
- * const paths = await relata
- *   .select("Person")
- *   .pathsBetween("customer-001", "device-042", { maxHops: 3 })
- *   .purpose("security_incident")
- *   .limit(100)
- *   .execute();
+ * // Memory (Mem0-style governed agent memory)
+ * import { Memory } from "@relata/sdk";
+ * const m = new Memory("http://localhost:8080", { purpose: "agent-notes" });
+ * const id = await m.add("Alice prefers dark mode");
+ * const hits = await m.search("ui preferences");
+ *
+ * // Typed clients (inherit auth + tenant via fromClient)
+ * import { GovernanceClient, McpClient } from "@relata/sdk";
+ * const gov = GovernanceClient.fromClient(relata);
+ * await gov.importSigma(open("rules.yml").read());
  * ```
  *
  * **Key concepts**
@@ -42,13 +48,18 @@
  * - SQL is extended with `AS OF`, `WITH PROVENANCE`, `PATHS_BETWEEN`, `MATCH_FACE`,
  *   `LOOKUP_IDENTITY`, `HYBRID_SCORE`, `NETWORK_EXPAND`.
  * - Bearer token auth via `Authorization: Bearer <token>`.
+ * - Multi-tenant: pass `tenant` (X-Organization-Id), `actingAs` (X-Acting-As),
+ *   `delegatedBy` (X-Delegated-By) to `createClient`.
+ * - RFC 7807 problem+json error mapping with `X-Request-ID` propagation.
  * - Zero runtime dependencies — uses native `fetch` (Node 18+, Deno, Bun, browser).
+ * - TypeScript is async-native: every method returns a `Promise`; there are no
+ *   separate `Async*` classes.
  *
  * @module
  */
 
 // ---------------------------------------------------------------------------
-// Client
+// Core client
 // ---------------------------------------------------------------------------
 
 export { RelataClient } from "./client.ts";
@@ -62,7 +73,7 @@ export { QueryBuilder, PathsQueryBuilder } from "./query.ts";
 export type { SortDirection } from "./query.ts";
 
 // ---------------------------------------------------------------------------
-// Types
+// Types — response models
 // ---------------------------------------------------------------------------
 
 export type {
@@ -70,9 +81,13 @@ export type {
   ClusterNode,
   ClusterNodesResponse,
   HealthResponse,
+  IngestDocumentResponse,
   QueryOptions,
   QueryResult,
+  ReadyReport,
+  Stats,
   StatusResponse,
+  VersionInfo,
 } from "./types.ts";
 
 // ---------------------------------------------------------------------------
@@ -82,14 +97,67 @@ export type {
 export {
   AuthError,
   BadRequestError,
+  ConflictError,
   ForbiddenError,
   NetworkError,
+  NotFoundError,
   PurposeError,
   QuotaError,
+  RateLimitedError,
   RelataError,
   ServerError,
   TimeoutError,
+  ValidationError,
 } from "./errors.ts";
+
+// ---------------------------------------------------------------------------
+// Memory — Mem0-style governed agent memory
+// ---------------------------------------------------------------------------
+
+export { Memory } from "./memory.ts";
+export type { MemoryOptions } from "./memory.ts";
+
+// ---------------------------------------------------------------------------
+// Typed v1.1 clients — `fromClient(client)` factories
+// ---------------------------------------------------------------------------
+
+export { GovernanceClient } from "./governance.ts";
+
+export { McpClient } from "./mcp.ts";
+export { unwrapMcp } from "./mcp.ts";
+
+export { A2AClient } from "./a2a.ts";
+
+export { AuditClient } from "./audit.ts";
+
+export { IdentityClient } from "./identity.ts";
+
+export { ObjectClient } from "./objects.ts";
+export type { RelataRow, ObjectClientCtor } from "./objects.ts";
+
+export { IngestClient } from "./ingest.ts";
+
+export { VectorClient } from "./vectors.ts";
+export type { VectorRow } from "./vectors.ts";
+
+export { S3Client } from "./s3.ts";
+export type { S3ClientOptions, S3HttpResponse } from "./s3.ts";
+
+export { SystemClient } from "./system.ts";
+
+export { StreamingClient } from "./streaming.ts";
+export { StreamingHttpError } from "./streaming.ts";
+
+export { TenantAdminClient } from "./tenants.ts";
+
+export { BackupClient } from "./backup.ts";
+export type { BackupRef, RestoreStatus } from "./backup.ts";
+
+export { TokenClient } from "./tokens.ts";
+export type { TokenStats } from "./tokens.ts";
+
+export { LogClient } from "./log.ts";
+export type { LogLeaf } from "./log.ts";
 
 // ---------------------------------------------------------------------------
 // Convenience factory
@@ -110,6 +178,8 @@ import type { RelataClientOptions } from "./types.ts";
  *   bearerToken: process.env.RELATA_TOKEN,
  *   defaultPurpose: "analytics",
  *   timeoutMs: 30_000,
+ *   tenant: "acme",
+ *   maxRetries: 3,
  * });
  * ```
  *
