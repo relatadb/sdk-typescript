@@ -498,9 +498,11 @@ bun run examples/basic-query.ts
 
 ## Deployment profiles
 
+> `lite` is kept as a silent legacy alias for `free` (ADR-204).
+
 | Profile | Use case | Start command |
 |---|---|---|
-| `lite` | Embedded / single-process / dev | `RELATA_PROFILE=lite relata serve` |
+| `free` | Embedded / single-process / dev | `RELATA_PROFILE=free relata serve` |
 | `server` | Single-node production | `RELATA_PROFILE=server relata serve` |
 | `cluster` | Multi-node distributed (alpha) | `RELATA_PROFILE=cluster relata serve` |
 

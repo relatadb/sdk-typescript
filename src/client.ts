@@ -332,7 +332,7 @@ export class RelataClient {
   /**
    * Fetch the list of nodes in the Relata cluster.
    *
-   * Returns a single-element list in `lite` and `server` profiles.
+   * Returns a single-element list in `free` and `server` profiles.
    *
    * @throws {AuthError} Token missing or invalid.
    * @throws {NetworkError} Server unreachable.

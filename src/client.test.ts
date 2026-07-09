@@ -227,8 +227,8 @@ test("stats / version / ready / ingestDocument: map wire shapes", async () => {
 
 test("transport: auto-generates X-Request-ID per request", async () => {
   const { fetch, calls } = mockFetch([
-    { body: { status: "ok", profile: "lite", node_id: "n1" } },
-    { body: { status: "ok", profile: "lite", node_id: "n1" } },
+    { body: { status: "ok", profile: "free", node_id: "n1" } },
+    { body: { status: "ok", profile: "free", node_id: "n1" } },
   ]);
   const relata = new RelataClient({ baseUrl: "http://x", fetch });
   await relata.health();
@@ -242,7 +242,7 @@ test("transport: auto-generates X-Request-ID per request", async () => {
 
 test("transport: caller-supplied X-Request-ID is respected", async () => {
   const { fetch, calls } = mockFetch({
-    body: { status: "ok", profile: "lite", node_id: "n1" },
+    body: { status: "ok", profile: "free", node_id: "n1" },
   });
   const relata = new RelataClient({
     baseUrl: "http://x",
@@ -255,7 +255,7 @@ test("transport: caller-supplied X-Request-ID is respected", async () => {
 
 test("transport: tenant / actingAs / delegatedBy become request headers", async () => {
   const { fetch, calls } = mockFetch({
-    body: { status: "ok", profile: "lite", node_id: "n1" },
+    body: { status: "ok", profile: "free", node_id: "n1" },
   });
   const relata = new RelataClient({
     baseUrl: "http://x",
@@ -274,7 +274,7 @@ test("retry: retries on 503 then succeeds", async () => {
   const { fetch, calls } = mockFetch([
     { status: 503, body: { error: "shedding" } },
     { status: 503, body: { error: "shedding" } },
-    { body: { status: "ok", profile: "lite", node_id: "n1" } },
+    { body: { status: "ok", profile: "free", node_id: "n1" } },
   ]);
   const relata = new RelataClient({
     baseUrl: "http://x",
@@ -317,7 +317,7 @@ test("retry: retries on network errors (raw throw) then succeeds", async () => {
       throw new TypeError("connect ECONNREFUSED");
     }
     return new Response(
-      JSON.stringify({ status: "ok", profile: "lite", node_id: "n1" }),
+      JSON.stringify({ status: "ok", profile: "free", node_id: "n1" }),
       { status: 200, headers: { "content-type": "application/json" } },
     );
   }) as typeof globalThis.fetch;
@@ -454,7 +454,7 @@ test("RFC 7807: 5xx with retryable=true surfaces ServerError carrying retryable"
 
 test("createClient: factory wires options through to RelataClient", async () => {
   const { fetch, calls } = mockFetch({
-    body: { status: "ok", profile: "lite", node_id: "n1" },
+    body: { status: "ok", profile: "free", node_id: "n1" },
   });
   const relata = createClient("http://x/", {
     bearerToken: "tok",
