@@ -4,16 +4,24 @@
   "description": "TypeScript SDK for the Relata data engine — ontology-driven, enterprise-grade workloads",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
-    "relata": "./src/cli.ts"
+    "relata": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc --outDir dist",
+    "build": "tsup",
+    "prepublishOnly": "npm run build",
     "test": "node --experimental-strip-types --test src/**/*.test.ts"
   },
   "keywords": [
@@ -28,6 +36,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@types/node": "^25.9.0",
+    "tsup": "^8.5.1",
     "typescript": "^5.0.0"
   },
   "engines": {
@@ -36,5 +45,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/relata/relata"
+  },
+  "allowScripts": {
+    "esbuild@0.27.7": true
   }
 }
