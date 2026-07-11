@@ -467,3 +467,44 @@ test("createClient: factory wires options through to RelataClient", async () => 
   assert.equal(calls[0]?.headers["authorization"], "Bearer tok");
   assert.equal(calls[0]?.headers["x-organization-id"], "t");
 });
+
+// ---------------------------------------------------------------------------
+// search() — #670
+// ---------------------------------------------------------------------------
+
+test("search: maps wire shape to SearchResponse", async () => {
+  const { fetch, calls } = mockFetch({
+    body: {
+      hits: [
+        {
+          id: "p1",
+          object_type: "Person",
+          fields: { name: "Alice Smith" },
+          score: 1.23,
+          highlights: { name: "<em>Alice</em> Smith" },
+        },
+      ],
+      total: 1,
+      facets: { agency_id: { EUROPOL: 1 } },
+      processing_time_ms: 5,
+    },
+  });
+  const relata = new RelataClient({
+    baseUrl: "http://x",
+    defaultPurpose: "p",
+    fetch,
+  });
+  const result = await relata.search({ query: "alice smith", type: "Person", limit: 10 });
+  assert.equal(result.total, 1);
+  assert.equal(result.hits.length, 1);
+  assert.equal(result.hits[0]?.id, "p1");
+  assert.equal(result.hits[0]?.objectType, "Person");
+  assert.ok(Math.abs((result.hits[0]?.score ?? 0) - 1.23) < 0.001);
+  assert.equal(result.hits[0]?.highlights["name"], "<em>Alice</em> Smith");
+  assert.equal(result.processingTimeMs, 5);
+  // verify request body
+  const sentBody = JSON.parse(calls[0]?.body as string);
+  assert.equal(sentBody.query, "alice smith");
+  assert.equal(sentBody.type, "Person");
+  assert.equal(sentBody.limit, 10);
+});

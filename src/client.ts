@@ -35,6 +35,8 @@ import {
   type QueryResult,
   type ReadyReport,
   type RelataClientOptions,
+  type SearchOptions,
+  type SearchResponse,
   type Stats,
   type StatusResponse,
   type VersionInfo,
@@ -43,6 +45,7 @@ import {
   type WireErrorResponse,
   type WireHealthResponse,
   type WireQueryResponse,
+  type WireSearchResponse,
   type WireStatusResponse,
 } from "./types.ts";
 import {
@@ -246,6 +249,49 @@ export class RelataClient {
       elapsedMs: wire.elapsed_ms ?? 0,
       rowCount: rows.length,
       columns,
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Public API — full-text search (#670)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Full-text search over a governed object type (`POST /search`).
+   *
+   * ```typescript
+   * const results = await relata.search({
+   *   query: "alice smith",
+   *   type: "Person",
+   *   limit: 10,
+   *   facets: ["agency_id"],
+   *   highlight: true,
+   * });
+   * console.log(results.hits[0]?.fields["name"]);
+   * ```
+   */
+  async search(params: { query: string; type: string } & SearchOptions): Promise<SearchResponse> {
+    const body: Record<string, unknown> = {
+      query: params.query,
+      type: params.type,
+      highlight: params.highlight ?? false,
+    };
+    if (params.limit !== undefined) body["limit"] = params.limit;
+    if (params.facets?.length) body["facets"] = params.facets;
+    if (params.filters && Object.keys(params.filters).length) body["filters"] = params.filters;
+
+    const wire = await this.#post<WireSearchResponse>("/search", body);
+    return {
+      hits: (wire.hits ?? []).map((h) => ({
+        id: h.id,
+        objectType: h.object_type,
+        fields: h.fields,
+        score: h.score,
+        highlights: h.highlights ?? {},
+      })),
+      total: wire.total ?? 0,
+      facets: wire.facets ?? {},
+      processingTimeMs: wire.processing_time_ms ?? 0,
     };
   }
 

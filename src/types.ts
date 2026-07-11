@@ -360,3 +360,59 @@ export interface WireQueryResponse {
   query_id?: string;
   elapsed_ms?: number;
 }
+
+// ---------------------------------------------------------------------------
+// Search (#670)
+// ---------------------------------------------------------------------------
+
+/** A single document returned by `POST /search`. */
+export interface SearchHit {
+  /** Object ID. */
+  id: string;
+  /** Object type name. */
+  objectType: string;
+  /** Object fields as a plain object. */
+  fields: Record<string, unknown>;
+  /** BM25 relevance score. */
+  score: number;
+  /** Field-level snippets with `<em>` highlights (present when `highlight: true`). */
+  highlights: Record<string, string>;
+}
+
+/** Response from `POST /search` (#670). */
+export interface SearchResponse {
+  /** Matching documents sorted by descending score. */
+  hits: SearchHit[];
+  /** Total matching documents (may exceed `hits.length` when a limit is set). */
+  total: number;
+  /** Facet counts keyed by field name then value. */
+  facets: Record<string, Record<string, number>>;
+  /** Server-side processing time in milliseconds. */
+  processingTimeMs: number;
+}
+
+/** Options for the `search()` client method (#670). */
+export interface SearchOptions {
+  /** Maximum number of hits to return (server default: 20). */
+  limit?: number;
+  /** Field names to aggregate counts for. */
+  facets?: string[];
+  /** Include field-level `<em>` highlight snippets. */
+  highlight?: boolean;
+  /** Equality filters applied server-side (`{field: value}`). */
+  filters?: Record<string, string>;
+}
+
+/** @internal Wire shape for `POST /search`. */
+export interface WireSearchResponse {
+  hits?: Array<{
+    id: string;
+    object_type: string;
+    fields: Record<string, unknown>;
+    score: number;
+    highlights?: Record<string, string>;
+  }>;
+  total?: number;
+  facets?: Record<string, Record<string, number>>;
+  processing_time_ms?: number;
+}
