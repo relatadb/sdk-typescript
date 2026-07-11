@@ -8,17 +8,20 @@ import { test } from "node:test";
 import { SystemClient } from "./system.ts";
 
 type MockResponse = { status?: number; body?: unknown };
+type Call = { url: string; method: string; body: string | undefined };
 
 function mockFetch(responses: MockResponse[] | MockResponse) {
   const queue = Array.isArray(responses) ? [...responses] : [responses];
-  const calls: Array<{ url: string; method: string; body?: string }> = [];
+  const calls: Call[] = [];
   const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     const urlString = typeof url === "string" ? url : url.toString();
-    calls.push({
+    const body = typeof init?.body === "string" ? (init.body as string) : undefined;
+    const entry: Call = {
       url: urlString,
       method: init?.method ?? "GET",
-      body: typeof init?.body === "string" ? (init.body as string) : undefined,
-    });
+      body,
+    };
+    calls.push(entry);
     const next = queue.shift() ?? { body: {} };
     const status = next.status ?? 200;
     const bodyText =
@@ -34,10 +37,11 @@ const BASE = "http://localhost:8080";
 test("jobStatus: GET /jobs/:name", async () => {
   const { fetch, calls } = mockFetch({ body: { name: "c2_beacon", status: "Running" } });
   const s = new SystemClient({ baseUrl: BASE, fetch });
-  const got = await s.jobStatus("c2_beacon");
-  deepEqual((got as Record<string, unknown>).status, "Running");
-  deepEqual(calls[0].method, "GET");
-  if (!calls[0].url.includes("/jobs/c2_beacon")) throw new Error(`url=${calls[0].url}`);
+  const got = (await s.jobStatus("c2_beacon")) as { status: string };
+  const c = calls[0]!;
+  deepEqual(got.status, "Running");
+  deepEqual(c.method, "GET");
+  if (!c.url.includes("/jobs/c2_beacon")) throw new Error(`url=${c.url}`);
 });
 
 test("runWorkflow: POST /workflows/:name/run returns run_id", async () => {
@@ -45,10 +49,11 @@ test("runWorkflow: POST /workflows/:name/run returns run_id", async () => {
     body: { run_id: "enrich/abc-123", status: "Running" },
   });
   const s = new SystemClient({ baseUrl: BASE, fetch });
-  const got = await s.runWorkflow("enrich");
-  deepEqual((got as Record<string, unknown>).run_id, "enrich/abc-123");
-  deepEqual(calls[0].method, "POST");
-  if (!calls[0].url.includes("/workflows/enrich/run")) throw new Error(`url=${calls[0].url}`);
+  const got = (await s.runWorkflow("enrich")) as { run_id: string };
+  const c = calls[0]!;
+  deepEqual(got.run_id, "enrich/abc-123");
+  deepEqual(c.method, "POST");
+  if (!c.url.includes("/workflows/enrich/run")) throw new Error(`url=${c.url}`);
 });
 
 test("workflowRun: surfaces attempt_count + last_error (#711/#713)", async () => {
@@ -72,7 +77,8 @@ test("registerWorkflow: POST /workflows with steps", async () => {
   const { fetch, calls } = mockFetch({ body: { name: "wf" } });
   const s = new SystemClient({ baseUrl: BASE, fetch });
   await s.registerWorkflow("wf", [{ name: "q1", kind: "query", sql: "SELECT 1" }]);
-  deepEqual(calls[0].method, "POST");
-  if (!calls[0].url.endsWith("/workflows")) throw new Error(`url=${calls[0].url}`);
-  if (!calls[0].body?.includes('"name":"wf"')) throw new Error(`body=${calls[0].body}`);
+  const c = calls[0]!;
+  deepEqual(c.method, "POST");
+  if (!c.url.endsWith("/workflows")) throw new Error(`url=${c.url}`);
+  if (c.body === undefined || !c.body.includes('"name":"wf"')) throw new Error(`body=${c.body}`);
 });
