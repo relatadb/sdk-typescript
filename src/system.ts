@@ -100,6 +100,46 @@ export class SystemClient extends TypedClientBase {
   async workflowRun(runId: string): Promise<WorkflowRun> {
     return this._get(`/workflows/runs/${encodeURIComponent(runId)}`) as Promise<WorkflowRun>;
   }
+
+  // ── feed ───────────────────────────────────────────────────────────────────
+
+  async feedHealth(): Promise<Record<string, unknown>> {
+    return this._get('/feed/health');
+  }
+
+  async feedChannels(): Promise<Record<string, unknown>> {
+    return this._get('/feed/channels');
+  }
+
+  async feedPublish(channel: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this._post('/feed/publish', { channel, payload });
+  }
+
+  // ── notifications ──────────────────────────────────────────────────────────
+
+  async notificationRules(): Promise<Record<string, unknown>[]> {
+    const data = await this._get<Record<string, unknown>>('/notifications/rules');
+    return Array.isArray(data) ? data : ((data.rules as Record<string, unknown>[]) ?? []);
+  }
+
+  async createNotificationRule(rule: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this._post('/notifications/rules', rule);
+  }
+
+  async deleteNotificationRule(id: string): Promise<Record<string, unknown>> {
+    return this._delete(`/notifications/rules/${encodeURIComponent(id)}`);
+  }
+
+  // ── pipelines ──────────────────────────────────────────────────────────────
+
+  async listPipelines(): Promise<Record<string, unknown>[]> {
+    const data = await this._get<Record<string, unknown>>('/pipelines');
+    return Array.isArray(data) ? data : ((data.pipelines as Record<string, unknown>[]) ?? []);
+  }
+
+  async definePipeline(definition: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this._post('/pipelines', definition);
+  }
 }
 
 /** Typed response for `workflowRun` — surfaces durable-resume fields from #711/#713. */
