@@ -59,4 +59,65 @@ export class SystemClient extends TypedClientBase {
   async jobsStatus(): Promise<Record<string, unknown>> {
     return this._get("/jobs");
   }
+
+  /** Status of a single background job by name. Wraps `GET /jobs/:name`. */
+  async jobStatus(name: string): Promise<Record<string, unknown>> {
+    return this._get(`/jobs/${encodeURIComponent(name)}`);
+  }
+
+  /** List registered workflow definition names. Wraps `GET /workflows`. */
+  async listWorkflows(): Promise<Record<string, unknown>> {
+    return this._get("/workflows");
+  }
+
+  /** Fetch one workflow definition. Wraps `GET /workflows/:name`. */
+  async getWorkflow(name: string): Promise<Record<string, unknown>> {
+    return this._get(`/workflows/${encodeURIComponent(name)}`);
+  }
+
+  /** Register a workflow definition. Wraps `POST /workflows`. */
+  async registerWorkflow(
+    name: string,
+    steps: Record<string, unknown>[],
+  ): Promise<Record<string, unknown>> {
+    return this._post("/workflows", { name, steps });
+  }
+
+  /** Start a workflow execution; returns `run_id`. Wraps `POST /workflows/:name/run`. */
+  async runWorkflow(name: string): Promise<Record<string, unknown>> {
+    return this._post(`/workflows/${encodeURIComponent(name)}/run`, {});
+  }
+
+  /** Latest run status for a workflow by name. Wraps `GET /workflows/:name/status`. */
+  async workflowStatus(name: string): Promise<Record<string, unknown>> {
+    return this._get(`/workflows/${encodeURIComponent(name)}/status`);
+  }
+
+  /**
+   * Step-level detail of a run by `run_id` — surfaces `attempt_count`,
+   * `last_error`, per-step status. Wraps `GET /workflows/runs/:run_id`.
+   */
+  async workflowRun(runId: string): Promise<WorkflowRun> {
+    return this._get(`/workflows/runs/${encodeURIComponent(runId)}`) as Promise<WorkflowRun>;
+  }
+}
+
+/** Typed response for `workflowRun` — surfaces durable-resume fields from #711/#713. */
+export interface WorkflowRun {
+  run_id: string;
+  workflow_name: string;
+  status: string;
+  attempt_count: number;
+  last_error: string | null;
+  steps: WorkflowStepStatus[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Per-step status within a `WorkflowRun`. */
+export interface WorkflowStepStatus {
+  name: string;
+  status: string;
+  attempt_count: number;
+  last_error: string | null;
 }

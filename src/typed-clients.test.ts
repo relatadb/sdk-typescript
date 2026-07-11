@@ -479,6 +479,45 @@ test("SystemClient: llmConfig, testLlm, jobsStatus", async () => {
   assert.equal(calls[2]?.url, "http://x/jobs");
 });
 
+test("SystemClient: jobs and workflow methods (#723)", async () => {
+  const queue: MockResponse[] = [
+    { body: { name: "c2_beacon_detect", status: "ok" } }, // jobStatus
+    { body: { workflows: ["demo_flow"] } }, // listWorkflows
+    { body: { name: "demo_flow" } }, // registerWorkflow
+    { body: { name: "demo_flow", steps: [] } }, // getWorkflow
+    { body: { run_id: "run-1", status: "running" } }, // runWorkflow
+    { body: { run_id: "run-1", status: "ok" } }, // workflowStatus
+    { body: { run_id: "run-1", attempt_count: 1, last_error: null, steps: [] } }, // workflowRun
+  ];
+  const { fetch, calls } = mockFetch(queue);
+  const sys = new SystemClient({ baseUrl: "http://x", fetch });
+
+  await sys.jobStatus("c2_beacon_detect");
+  assert.equal(calls[0]?.url, "http://x/jobs/c2_beacon_detect");
+
+  await sys.listWorkflows();
+  assert.equal(calls[1]?.url, "http://x/workflows");
+
+  await sys.registerWorkflow("demo_flow", []);
+  assert.equal(calls[2]?.url, "http://x/workflows");
+  assert.equal(calls[2]?.method, "POST");
+
+  await sys.getWorkflow("demo_flow");
+  assert.equal(calls[3]?.url, "http://x/workflows/demo_flow");
+
+  await sys.runWorkflow("demo_flow");
+  assert.equal(calls[4]?.url, "http://x/workflows/demo_flow/run");
+  assert.equal(calls[4]?.method, "POST");
+
+  await sys.workflowStatus("demo_flow");
+  assert.equal(calls[5]?.url, "http://x/workflows/demo_flow/status");
+
+  const detail = await sys.workflowRun("run-1");
+  assert.equal(calls[6]?.url, "http://x/workflows/runs/run-1");
+  assert.equal(detail.attempt_count, 1);
+  assert.equal(detail.last_error, null);
+});
+
 // ---------------------------------------------------------------------------
 // IngestClient
 // ---------------------------------------------------------------------------

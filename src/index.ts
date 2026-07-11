@@ -144,6 +144,7 @@ export { S3Client } from "./s3.ts";
 export type { S3ClientOptions, S3HttpResponse } from "./s3.ts";
 
 export { SystemClient } from "./system.ts";
+export type { WorkflowRun, WorkflowStepStatus } from "./system.ts";
 
 export { StreamingClient } from "./streaming.ts";
 export { StreamingHttpError } from "./streaming.ts";
