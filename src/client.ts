@@ -31,10 +31,15 @@ import {
   type ClusterNode,
   type HealthResponse,
   type IngestDocumentResponse,
+  type IngestResponse,
   type QueryOptions,
   type QueryResult,
   type ReadyReport,
+  type RecallOptions,
+  type RecallResponse,
   type RelataClientOptions,
+  type RememberOptions,
+  type RememberResponse,
   type SearchOptions,
   type SearchResponse,
   type Stats,
@@ -492,6 +497,35 @@ export class RelataClient {
   }
 
   // -------------------------------------------------------------------------
+  // Public API — ingest + memory verbs (#751)
+  // -------------------------------------------------------------------------
+
+  /** Ingest an array of objects into Relata (`POST /ingest`). */
+  async ingest(objects: object[]): Promise<IngestResponse> {
+    return this.#post<IngestResponse>("/ingest", { objects });
+  }
+
+  /** Store a memory item (`POST /memory/remember`). */
+  async remember(content: string, opts?: RememberOptions): Promise<RememberResponse> {
+    return this.#post<RememberResponse>("/memory/remember", { content, ...opts });
+  }
+
+  /** Recall memory items matching a query (`GET /memory/recall`). */
+  async recall(query: string, opts?: RecallOptions): Promise<RecallResponse> {
+    const params = new URLSearchParams({ q: query });
+    if (opts?.session_id !== undefined) params.set("session_id", opts.session_id);
+    if (opts?.top_k !== undefined) params.set("top_k", String(opts.top_k));
+    if (opts?.as_of !== undefined) params.set("as_of", opts.as_of);
+    if (opts?.purpose !== undefined) params.set("purpose", opts.purpose);
+    return this.#get<RecallResponse>(`/memory/recall?${params}`);
+  }
+
+  /** Delete a memory item (`DELETE /memory/forget/:id`). */
+  async forget(id: string): Promise<void> {
+    await this.#delete<unknown>(`/memory/forget/${encodeURIComponent(id)}`);
+  }
+
+  // -------------------------------------------------------------------------
   // Public accessors — context inherited by typed clients via fromClient()
   // -------------------------------------------------------------------------
 
@@ -559,6 +593,11 @@ export class RelataClient {
     return this.#send<T>("POST", path, body, timeoutMs);
   }
 
+  /** @internal */
+  async #delete<T>(path: string, timeoutMs?: number): Promise<T> {
+    return this.#send<T>("DELETE", path, undefined, timeoutMs);
+  }
+
   /**
    * @internal
    * Core request dispatcher: timeout, retry, X-Request-ID, error mapping.
@@ -570,7 +609,7 @@ export class RelataClient {
    * - Exponential backoff: `retryBackoffMs * 2^attempt`.
    */
   async #send<T>(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "DELETE",
     path: string,
     body: Record<string, unknown> | undefined,
     timeoutMs: number | undefined,

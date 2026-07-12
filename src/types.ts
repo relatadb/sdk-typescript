@@ -403,6 +403,53 @@ export interface SearchOptions {
   filters?: Record<string, string>;
 }
 
+// ---------------------------------------------------------------------------
+// Ingest (#751)
+// ---------------------------------------------------------------------------
+
+/** Response from `POST /ingest`. */
+export interface IngestResponse {
+  rows_written: number;
+}
+
+// ---------------------------------------------------------------------------
+// Memory verbs (#751)
+// ---------------------------------------------------------------------------
+
+/** Options for `RelataClient.remember()`. */
+export interface RememberOptions {
+  session_id?: string;
+  confidence?: number;
+  memory_class?: "episodic" | "semantic" | "procedural";
+  purpose?: string;
+}
+
+/** Response from `POST /memory/remember`. */
+export interface RememberResponse {
+  id: string;
+}
+
+/** Options for `RelataClient.recall()`. */
+export interface RecallOptions {
+  session_id?: string;
+  top_k?: number;
+  as_of?: string;
+  purpose?: string;
+}
+
+/** A single memory item returned by `GET /memory/recall`. */
+export interface RecallItem {
+  id: string;
+  content: string;
+  confidence: number;
+  memory_class: string;
+}
+
+/** Response from `GET /memory/recall`. */
+export interface RecallResponse {
+  items: RecallItem[];
+}
+
 /** @internal Wire shape for `POST /search`. */
 export interface WireSearchResponse {
   hits?: Array<{
