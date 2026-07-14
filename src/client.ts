@@ -505,6 +505,48 @@ export class RelataClient {
     return this.#post<IngestResponse>("/ingest", { objects });
   }
 
+  /**
+   * Stream rows from an async iterable into batched `POST /ingest` calls
+   * with backpressure. Memory is O(batchSize), not O(totalRows). Returns
+   * the total number of rows successfully ingested. Stops on first error.
+   *
+   * ```ts
+   * async function* gen() { yield { name: "Alice" }; yield { name: "Bob" }; }
+   * const total = await client.ingestIter("Person", "onboarding", gen(), 500);
+   * ```
+   */
+  async ingestIter(
+    objectType: string,
+    purpose: string,
+    source: AsyncIterable<object> | Iterable<object>,
+    batchSize = 500,
+  ): Promise<number> {
+    const iter = Symbol.asyncIterator in source
+      ? source as AsyncIterable<object>
+      : (async function* () { for (const x of source as Iterable<object>) yield x; })();
+    let total = 0;
+    let batch: object[] = [];
+    for await (const row of iter) {
+      batch.push(row);
+      if (batch.length >= batchSize) {
+        await this.#ingestBatch(objectType, purpose, batch);
+        total += batch.length;
+        batch = [];
+      }
+    }
+    if (batch.length > 0) {
+      await this.#ingestBatch(objectType, purpose, batch);
+      total += batch.length;
+    }
+    return total;
+  }
+
+  /** Send a batch of objects to the ingest endpoint. */
+  async #ingestBatch(objectType: string, purpose: string, batch: object[]): Promise<void> {
+    const params = new URLSearchParams({ object_type: objectType, purpose });
+    await this.#post(`/ingest?${params}`, { objects: batch });
+  }
+
   /** Store a memory item (`POST /memory/remember`). */
   async remember(content: string, opts?: RememberOptions): Promise<RememberResponse> {
     return this.#post<RememberResponse>("/memory/remember", { content, ...opts });

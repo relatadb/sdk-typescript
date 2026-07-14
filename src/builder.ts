@@ -87,6 +87,8 @@ export class QueryBuilder {
   #select: string[] = [];
   #where: WhereClause[] = [];
   #limit: number | undefined;
+  #asOf: string | undefined;
+  #withProvenance = false;
 
   /** Declare the query purpose (required). */
   purpose(p: string): this {
@@ -129,6 +131,21 @@ export class QueryBuilder {
     return this;
   }
 
+  /**
+   * Bi-temporal point-in-time query: appends `AS OF '<ts>'` so the result
+   * reflects the data as it was at `timestamp`.
+   */
+  asOf(timestamp: string): this {
+    this.#asOf = timestamp;
+    return this;
+  }
+
+  /** Append `WITH PROVENANCE` so each row carries its PROV-O derivation chain. */
+  withProvenance(): this {
+    this.#withProvenance = true;
+    return this;
+  }
+
   /** Serialise the builder state to the IR JSON document. */
   build(): SelectIR {
     if (this.#from === undefined) {
@@ -153,6 +170,12 @@ export class QueryBuilder {
     }
     if (this.#limit !== undefined) {
       ir.limit = this.#limit;
+    }
+    if (this.#asOf !== undefined) {
+      ir.as_of = this.#asOf;
+    }
+    if (this.#withProvenance) {
+      ir.with_provenance = true;
     }
     return ir;
   }
@@ -223,6 +246,100 @@ export function hybridSearch(params: {
     ir.alpha = params.alpha;
   }
   return ir;
+}
+
+// ── Graph traversal DSL (Phase 3) ────────────────────────────────────────────
+
+/**
+ * Fluent graph-traversal builder. Unlike the `pathsBetween()` function, this
+ * class lets you compose link-type filters, max/min hops, and temporal
+ * constraints incrementally.
+ *
+ * ```ts
+ * import { graph } from "@relata/sdk/builder";
+ *
+ * const ir = graph("investigation")
+ *   .from("alice@acme.com")
+ *   .to("bob@acme.com")
+ *   .maxHops(3)
+ *   .withLinkType("knows")
+ *   .build();
+ * ```
+ */
+export class GraphTraversal {
+  #purpose: string | undefined;
+  #fromId: string | undefined;
+  #toId: string | undefined;
+  #maxHops: number | undefined;
+  #minHops: number | undefined;
+  #linkType: string | undefined;
+  #asOf: string | undefined;
+
+  /** Declare the query purpose (required). */
+  purpose(p: string): this {
+    this.#purpose = p;
+    return this;
+  }
+
+  /** Source entity (identity value or object id). */
+  from(id: string): this {
+    this.#fromId = id;
+    return this;
+  }
+
+  /** Destination entity. */
+  to(id: string): this {
+    this.#toId = id;
+    return this;
+  }
+
+  /** Maximum path length (hops). */
+  maxHops(n: number): this {
+    this.#maxHops = n;
+    return this;
+  }
+
+  /** Minimum path length — use `minHops(2)` to exclude direct edges. */
+  minHops(n: number): this {
+    this.#minHops = n;
+    return this;
+  }
+
+  /** Restrict traversal to a specific link type. */
+  withLinkType(linkType: string): this {
+    this.#linkType = linkType;
+    return this;
+  }
+
+  /** Bi-temporal constraint — only traverse edges valid at `timestamp`. */
+  asOf(timestamp: string): this {
+    this.#asOf = timestamp;
+    return this;
+  }
+
+  /** Serialise to the canonical IR JSON document. */
+  build(): PathsBetweenIR {
+    if (this.#fromId === undefined || this.#toId === undefined || this.#purpose === undefined) {
+      throw new Error("GraphTraversal.build requires purpose(), from(), and to()");
+    }
+    const ir: PathsBetweenIR = {
+      relata_query_ir: IR_VERSION,
+      kind: "paths_between",
+      purpose: this.#purpose,
+      from_id: this.#fromId,
+      to_id: this.#toId,
+    };
+    if (this.#maxHops !== undefined) ir.max_hops = this.#maxHops;
+    if (this.#minHops !== undefined) ir.min_hops = this.#minHops;
+    if (this.#linkType !== undefined) ir.link_type = this.#linkType;
+    if (this.#asOf !== undefined) ir.as_of = this.#asOf;
+    return ir;
+  }
+}
+
+/** Start a new {@link GraphTraversal} builder with the given purpose. */
+export function graph(purpose: string): GraphTraversal {
+  return new GraphTraversal().purpose(purpose);
 }
 
 export type {

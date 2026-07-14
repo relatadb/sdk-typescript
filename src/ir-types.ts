@@ -45,6 +45,10 @@ export interface SelectIR {
   select?: string[];
   where?: WhereClause[];
   limit?: number;
+  /** Bi-temporal `AS OF '<ts>'` snapshot timestamp. */
+  as_of?: string;
+  /** Whether to append `WITH PROVENANCE`. */
+  with_provenance?: boolean;
 }
 
 /** `kind: "paths_between"` IR document. */
@@ -55,6 +59,9 @@ export interface PathsBetweenIR {
   from_id: string;
   to_id: string;
   max_hops?: number;
+  min_hops?: number;
+  link_type?: string;
+  as_of?: string;
 }
 
 /** `kind: "lookup_identity"` IR document. */
