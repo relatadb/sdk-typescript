@@ -385,10 +385,25 @@ export interface SearchResponse {
   hits: SearchHit[];
   /** Total matching documents (may exceed `hits.length` when a limit is set). */
   total: number;
+  /** Full matching-set size (#967). */
+  estimatedTotalHits?: number;
   /** Facet counts keyed by field name then value. */
   facets: Record<string, Record<string, number>>;
+  /** Numeric facet stats: min/max/sum/avg (#967). */
+  facetStats?: Record<string, { min: number; max: number; sum: number; avg: number; count: number }>;
   /** Server-side processing time in milliseconds. */
   processingTimeMs: number;
+}
+
+/** Matching strategy for multi-term queries (#967). */
+export type MatchingStrategy = "all" | "last" | "frequency" | "any";
+
+/** Per-query typo tolerance config (#967). */
+export interface TypoTolerance {
+  enabled?: boolean;
+  minWordSize?: number;
+  disableOnWords?: string[];
+  disableOnAttributes?: string[];
 }
 
 /** Options for the `search()` client method (#670). */
@@ -401,6 +416,10 @@ export interface SearchOptions {
   highlight?: boolean;
   /** Equality filters applied server-side (`{field: value}`). */
   filters?: Record<string, string>;
+  /** Matching strategy: "all" (AND), "last", "frequency", "any" (OR) (#967). */
+  matchingStrategy?: MatchingStrategy;
+  /** Per-query typo tolerance override (#967). */
+  typoTolerance?: TypoTolerance;
 }
 
 // ---------------------------------------------------------------------------
@@ -460,6 +479,8 @@ export interface WireSearchResponse {
     highlights?: Record<string, string>;
   }>;
   total?: number;
+  estimatedTotalHits?: number;
   facets?: Record<string, Record<string, number>>;
+  facetStats?: Record<string, { min: number; max: number; sum: number; avg: number; count: number }>;
   processing_time_ms?: number;
 }

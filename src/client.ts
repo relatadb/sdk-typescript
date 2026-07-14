@@ -284,6 +284,8 @@ export class RelataClient {
     if (params.limit !== undefined) body["limit"] = params.limit;
     if (params.facets?.length) body["facets"] = params.facets;
     if (params.filters && Object.keys(params.filters).length) body["filters"] = params.filters;
+    if (params.matchingStrategy) body["matching_strategy"] = params.matchingStrategy;
+    if (params.typoTolerance) body["typo_tolerance"] = params.typoTolerance;
 
     const wire = await this.#post<WireSearchResponse>("/search", body);
     return {
@@ -295,7 +297,32 @@ export class RelataClient {
         highlights: h.highlights ?? {},
       })),
       total: wire.total ?? 0,
+      estimatedTotalHits: wire.estimatedTotalHits ?? wire.total ?? 0,
       facets: wire.facets ?? {},
+      ...(wire.facetStats ? { facetStats: wire.facetStats } : {}),
+      processingTimeMs: wire.processing_time_ms ?? 0,
+    };
+  }
+
+  /**
+   * Federated multi-query search (#967). Runs N queries in one round-trip.
+   *
+   * ```ts
+   * const resp = await client.multiSearch([
+   *   { query: "alice", type: "Person", limit: 5 },
+   *   { query: "transfer", type: "Transaction", limit: 10 },
+   * ]);
+   * ```
+   */
+  async multiSearch(
+    queries: { query: string; type: string; limit?: number; matchingStrategy?: string }[],
+  ): Promise<{ results: SearchResponse[]; processingTimeMs: number }> {
+    const wire = await this.#post<{ results: unknown[]; processing_time_ms: number }>(
+      "/multi-search",
+      { queries },
+    );
+    return {
+      results: (wire.results ?? []) as SearchResponse[],
       processingTimeMs: wire.processing_time_ms ?? 0,
     };
   }
