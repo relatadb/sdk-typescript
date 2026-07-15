@@ -445,6 +445,12 @@ export class RelataClient {
 
   // ── SPARQL, sessions & cluster (#967 Tier 2d) ────────────────────────────
 
+  /** Bulk export all rows of a type (#967 Tier 5c). */
+  async exportData(objectType: string, format?: string): Promise<Record<string, unknown>> {
+    const fmt = format ?? "json";
+    return this.#get(`/export?type=${objectType}&format=${fmt}&purpose=export`);
+  }
+
   /** Execute a SPARQL query. */
   async sparql(query: string): Promise<Record<string, unknown>> {
     return this.#post("/sparql", { query });
