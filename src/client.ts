@@ -451,6 +451,14 @@ export class RelataClient {
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
+  /** Ontological merge of two identities (#967). */
+  async fuseIdentities(idA: string, idB: string, purpose?: string): Promise<Record<string, unknown>> {
+    const a = idA.replace(/'/g, "''");
+    const b = idB.replace(/'/g, "''");
+    const sql = `FUSE_IDENTITIES('${a}', '${b}')`;
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+  }
+
   // ── Graph algorithm operators (#967) ─────────────────────────────────────
 
   async graphDijkstra(objectType: string, fromId: string, toId: string, purpose?: string): Promise<Record<string, unknown>> {
