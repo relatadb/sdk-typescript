@@ -443,6 +443,106 @@ export class RelataClient {
     return this.#post("/query", { purpose: "gdpr-erasure", sql });
   }
 
+  // ── Entity merge, dedup & identity (#967) ────────────────────────────────
+
+  /** Resolve an identity to its full cluster of linked identifiers. */
+  async identityCluster(value: string, purpose?: string): Promise<Record<string, unknown>> {
+    const sql = `RESOLVE_IDENTITY('${value.replace(/'/g, "''")}', MODE => 'cluster')`;
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+  }
+
+  // ── Graph algorithm operators (#967) ─────────────────────────────────────
+
+  async graphDijkstra(objectType: string, fromId: string, toId: string, purpose?: string): Promise<Record<string, unknown>> {
+    const sql = `GRAPH_DIJKSTRA('${objectType}', FROM => '${fromId}', TO => '${toId}')`;
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+  }
+
+  async graphPageRank(objectType: string, opts?: { damping?: number; maxIter?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const parts = [`GRAPH_PAGERANK('${objectType}'`];
+    if (opts?.damping !== undefined) parts.push(`, DAMPING => ${opts.damping}`);
+    if (opts?.maxIter !== undefined) parts.push(`, MAX_ITER => ${opts.maxIter}`);
+    parts.push(")");
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
+  }
+
+  async graphSCC(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_SCC('${objectType}')` });
+  }
+
+  async graphCycles(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_CYCLES('${objectType}')` });
+  }
+
+  async graphCommunity(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_COMMUNITY('${objectType}')` });
+  }
+
+  async graphNodeSimilarity(objectType: string, node: string, purpose?: string): Promise<Record<string, unknown>> {
+    const sql = `GRAPH_NODE_SIMILARITY('${objectType}', NODE => '${node}')`;
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+  }
+
+  async graphLinkPredict(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_LINK_PREDICT('${objectType}')` });
+  }
+
+  async graphTriangleCount(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `TRIANGLE_COUNT('${objectType}')` });
+  }
+
+  // ── Intelligence operators (#967) ────────────────────────────────────────
+
+  async beneficialOwnershipChain(party: string, opts?: { maxDepth?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const parts = [`BENEFICIAL_OWNERSHIP_CHAIN('${party}'`];
+    if (opts?.maxDepth !== undefined) parts.push(`, MAX_DEPTH => ${opts.maxDepth}`);
+    parts.push(")");
+    return this.#post("/query", { purpose: opts?.purpose ?? "compliance", sql: parts.join("") });
+  }
+
+  async sanctionsScreen(party: string, opts?: { threshold?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const parts = [`SANCTIONS_SCREEN('${party}'`];
+    if (opts?.threshold !== undefined) parts.push(`, THRESHOLD => ${opts.threshold}`);
+    parts.push(")");
+    return this.#post("/query", { purpose: opts?.purpose ?? "compliance", sql: parts.join("") });
+  }
+
+  async convoyDetect(opts?: { radiusM?: number; timeTolSecs?: number; minPoints?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const parts: string[] = [];
+    if (opts?.radiusM !== undefined) parts.push(`RADIUS => ${opts.radiusM}`);
+    if (opts?.timeTolSecs !== undefined) parts.push(`TIME_TOL => ${opts.timeTolSecs * 1_000_000_000}`);
+    if (opts?.minPoints !== undefined) parts.push(`MIN_POINTS => ${opts.minPoints}`);
+    const sql = `CONVOY(${parts.join(", ")})`;
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
+  }
+
+  async burnerDetect(opts?: { maxAgeDays?: number; maxCalls?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const parts: string[] = [];
+    if (opts?.maxAgeDays !== undefined) parts.push(`MAX_AGE => ${opts.maxAgeDays * 86_400_000_000_000}`);
+    if (opts?.maxCalls !== undefined) parts.push(`MAX_CALLS => ${opts.maxCalls}`);
+    const sql = `BURNER_DETECT(${parts.join(", ")})`;
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
+  }
+
+  async cryptoTrace(entity: string, purpose?: string): Promise<Record<string, unknown>> {
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRYPTO_TRACE('${entity}')` });
+  }
+
+  async dnsTunnelDetect(entity: string, purpose?: string): Promise<Record<string, unknown>> {
+    return this.#post("/query", { purpose: purpose ?? "security", sql: `DNS_TUNNEL_DETECT('${entity}')` });
+  }
+
+  async crimePatternCluster(area: string, purpose?: string): Promise<Record<string, unknown>> {
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRIME_PATTERN_CLUSTER('${area}')` });
+  }
+
+  async geofence(fence: string, opts?: { targetType?: string; purpose?: string }): Promise<Record<string, unknown>> {
+    const parts = [`GEOFENCE('${fence}'`];
+    if (opts?.targetType !== undefined) parts.push(`, TARGET_TYPE => '${opts.targetType}'`);
+    parts.push(")");
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
+  }
+
   // -------------------------------------------------------------------------
   // Public API — fluent QueryBuilder
   // -------------------------------------------------------------------------
