@@ -67,6 +67,24 @@ export class ObjectClient extends TypedClientBase {
   }
 
   /**
+   * Typed upsert — accepts any typed object with a `_pk` field. The type
+   * system catches malformed fields at compile time (#967 Tier 2a).
+   *
+   * ```ts
+   * interface Person { _pk: string; name: string; email: string }
+   * await objects.typedUpsert("Person", { _pk: "p1", name: "Alice", email: "a@b.com" });
+   * ```
+   */
+  async typedUpsert<T extends { _pk: string }>(
+    objectType: string,
+    obj: T,
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const { _pk, ...fields } = obj;
+    return this.upsert(objectType, _pk, fields as RelataRow, opts);
+  }
+
+  /**
    * Bulk upsert. Each row must carry its own `id` key.
    * Wraps `POST /ingest?object_type=<Type>` with an NDJSON body.
    *
