@@ -328,6 +328,122 @@ export class RelataClient {
   }
 
   // -------------------------------------------------------------------------
+  // Public API — types, ontology, rules, links, identity (#967)
+  // -------------------------------------------------------------------------
+
+  /** List all registered object types. */
+  async listTypes(): Promise<Record<string, unknown>> {
+    return this.#get("/types");
+  }
+
+  /** Register a custom object type at runtime. */
+  async registerType(name: string, spec?: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.#post("/types", { name, ...spec });
+  }
+
+  /** Deregister a custom type. Admin token required. */
+  async deregisterType(name: string): Promise<Record<string, unknown>> {
+    return this.#delete(`/types/${name}`);
+  }
+
+  /** Get type detail (properties, owner, row count). */
+  async typeDetail(name: string): Promise<Record<string, unknown>> {
+    return this.#get(`/types/${name}`);
+  }
+
+  /** SHACL schema migration — type specs, link types, property constraints. */
+  async ontologyMigrate(schema: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.#post("/ontology/migrate", schema);
+  }
+
+  /** Register identity enrichment rules for SmartIngest. */
+  async enrichmentRules(rules: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.#post("/ontology/enrichment-rules", rules);
+  }
+
+  /** List installed modules / extensions. */
+  async listModules(): Promise<Record<string, unknown>> {
+    return this.#get("/modules");
+  }
+
+  /** Create a typed governed link (edge) between two objects. */
+  async createLink(params: {
+    linkName: string;
+    sourceId: string;
+    sourceType: string;
+    targetId: string;
+    targetType: string;
+  }): Promise<Record<string, unknown>> {
+    return this.#post("/links", {
+      link_name: params.linkName,
+      source_id: params.sourceId,
+      source_type: params.sourceType,
+      target_id: params.targetId,
+      target_type: params.targetType,
+    });
+  }
+
+  /** List detection rules. */
+  async listRules(): Promise<Record<string, unknown>> {
+    return this.#get("/rules");
+  }
+
+  /** Create a detection rule. */
+  async createRule(rule: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.#post("/rules", rule);
+  }
+
+  /** Disable (logically delete) a rule. */
+  async disableRule(ruleId: string): Promise<Record<string, unknown>> {
+    return this.#delete(`/rules/${ruleId}`);
+  }
+
+  /** Import a Sigma rule (YAML string). */
+  async importSigma(sigmaYaml: string): Promise<Record<string, unknown>> {
+    return this.#post("/rules/sigma", { sigma: sigmaYaml });
+  }
+
+  /** Snooze a rule for ``durationSecs``. */
+  async snoozeRule(ruleId: string, durationSecs: number): Promise<Record<string, unknown>> {
+    return this.#post(`/rules/${ruleId}/snooze`, { duration_secs: durationSecs });
+  }
+
+  /** Suppress all future matches of ``pattern`` for a rule. */
+  async suppressRule(ruleId: string, pattern: string): Promise<Record<string, unknown>> {
+    return this.#post(`/rules/${ruleId}/suppress`, { pattern });
+  }
+
+  /** Add an exception entry so specific matches are ignored. */
+  async addRuleException(ruleId: string, exception: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.#post(`/rules/${ruleId}/exceptions`, exception);
+  }
+
+  /** Retrieve tuning state (snoozes, suppressions, exceptions). */
+  async getRuleTuning(ruleId: string): Promise<Record<string, unknown>> {
+    return this.#get(`/rules/${ruleId}/tuning`);
+  }
+
+  /** Resolve an identity value to all known objects/clusters via SQL. */
+  async resolveIdentity(value: string, purpose?: string): Promise<Record<string, unknown>> {
+    const sql = `RESOLVE_IDENTITY('${value.replace(/'/g, "''")}')`;
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+  }
+
+  /** Detect identities in free text via SmartIngest. */
+  async detectIdentities(text: string, purpose?: string): Promise<Record<string, unknown>> {
+    const sql = `DETECT_IDENTITIES('${text.replace(/'/g, "''")}')`;
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+  }
+
+  /** GDPR Art. 17 erasure — irreversible crypto-shred of a subject's data. */
+  async eraseSubject(subject: string, reason?: string): Promise<Record<string, unknown>> {
+    const s = subject.replace(/'/g, "''");
+    const r = (reason ?? "gdpr-art17-request").replace(/'/g, "''");
+    const sql = `ERASE SUBJECT '${s}' REASON '${r}' CERTIFY`;
+    return this.#post("/query", { purpose: "gdpr-erasure", sql });
+  }
+
+  // -------------------------------------------------------------------------
   // Public API — fluent QueryBuilder
   // -------------------------------------------------------------------------
 
