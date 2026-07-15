@@ -34,6 +34,10 @@
   ],
   "author": "Relata contributors",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/OpenWorkBench-Co/RelataDB/tree/develop/sdks/typescript",
+  "bugs": {
+    "url": "https://github.com/OpenWorkBench-Co/RelataDB/issues"
+  },
   "devDependencies": {
     "@types/node": "^25.9.0",
     "tsup": "^8.5.1",
@@ -44,7 +48,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/relata/relata"
+    "url": "https://github.com/OpenWorkBench-Co/RelataDB",
+    "directory": "sdks/typescript"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "allowScripts": {
     "esbuild@0.27.7": true
