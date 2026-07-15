@@ -496,6 +496,14 @@ export class RelataClient {
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
+  /** Ontological unmerge — inverse of fuseIdentities (#967). */
+  async splitIdentities(idA: string, idB: string, purpose?: string): Promise<Record<string, unknown>> {
+    const a = idA.replace(/'/g, "''");
+    const b = idB.replace(/'/g, "''");
+    const sql = `SPLIT_IDENTITIES('${a}', '${b}')`;
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+  }
+
   // ── Graph algorithm operators (#967) ─────────────────────────────────────
 
   async graphDijkstra(objectType: string, fromId: string, toId: string, purpose?: string): Promise<Record<string, unknown>> {
