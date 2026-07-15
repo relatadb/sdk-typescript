@@ -451,6 +451,21 @@ export class RelataClient {
     return this.#get(`/export?type=${objectType}&format=${fmt}&purpose=export`);
   }
 
+  /** Register a webhook for push notifications (#967 Tier 5b). */
+  async registerWebhook(url: string, eventTypes?: string[]): Promise<Record<string, unknown>> {
+    return this.#post("/webhooks", { url, event_types: eventTypes ?? [] });
+  }
+
+  /** List registered webhooks. */
+  async listWebhooks(): Promise<Record<string, unknown>> {
+    return this.#get("/webhooks");
+  }
+
+  /** Delete a webhook. */
+  async deleteWebhook(id: string): Promise<Record<string, unknown>> {
+    return this.#delete(`/webhooks/${id}`);
+  }
+
   /** Execute a SPARQL query. */
   async sparql(query: string): Promise<Record<string, unknown>> {
     return this.#post("/sparql", { query });
