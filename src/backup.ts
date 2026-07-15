@@ -114,6 +114,11 @@ export class BackupClient extends TypedClientBase {
     return toRestoreStatus(resp);
   }
 
+  /** Trigger background compaction of the row store (#967). */
+  async compact(): Promise<Record<string, unknown>> {
+    return this._post("/admin/compact", {});
+  }
+
   /**
    * Block until the restore completes or fails. Rejects with `Error` if
    * `timeoutMs` elapses.
