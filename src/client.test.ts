@@ -485,7 +485,7 @@ test("search: maps wire shape to SearchResponse", async () => {
         },
       ],
       total: 1,
-      facets: { agency_id: { EUROPOL: 1 } },
+      facets: { tenant_id: { EUROPOL: 1 } },
       processing_time_ms: 5,
     },
   });

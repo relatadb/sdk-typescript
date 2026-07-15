@@ -269,7 +269,7 @@ export class RelataClient {
    *   query: "alice smith",
    *   type: "Person",
    *   limit: 10,
-   *   facets: ["agency_id"],
+   *   facets: ["tenant_id"],
    *   highlight: true,
    * });
    * console.log(results.hits[0]?.fields["name"]);
