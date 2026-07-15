@@ -443,6 +443,43 @@ export class RelataClient {
     return this.#post("/query", { purpose: "gdpr-erasure", sql });
   }
 
+  // ── SPARQL, sessions & cluster (#967 Tier 2d) ────────────────────────────
+
+  /** Execute a SPARQL query. */
+  async sparql(query: string): Promise<Record<string, unknown>> {
+    return this.#post("/sparql", { query });
+  }
+
+  /** Get cluster topology. */
+  async clusterTopology(): Promise<Record<string, unknown>> {
+    return this.#get("/cluster/topology");
+  }
+
+  /** Trigger a cluster rebalance. */
+  async clusterRebalance(): Promise<Record<string, unknown>> {
+    return this.#post("/cluster/rebalance", {});
+  }
+
+  /** Drain a node for maintenance. */
+  async clusterDrain(nodeId: string): Promise<Record<string, unknown>> {
+    return this.#post(`/cluster/drain/${nodeId}`, {});
+  }
+
+  /** View uncommitted session changes. */
+  async sessionDiff(sessionId: string): Promise<Record<string, unknown>> {
+    return this.#get(`/session/${sessionId}/diff`);
+  }
+
+  /** Commit a session's draft writes. */
+  async sessionCommit(sessionId: string): Promise<Record<string, unknown>> {
+    return this.#post(`/session/${sessionId}/commit`, {});
+  }
+
+  /** Discard uncommitted session changes. */
+  async sessionDiscard(sessionId: string): Promise<Record<string, unknown>> {
+    return this.#delete(`/session/${sessionId}/draft`);
+  }
+
   // ── Entity merge, dedup & identity (#967) ────────────────────────────────
 
   /** Resolve an identity to its full cluster of linked identifiers. */
