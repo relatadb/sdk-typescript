@@ -6,7 +6,7 @@
  * dependencies; uses the platform-native `fetch` API.
  *
  * ```typescript
- * import { createClient } from "@relata/sdk";
+ * import { createClient } from "@zysec-ai/relata-sdk";
  *
  * const relata = createClient("http://localhost:8080", {
  *   bearerToken: process.env.RELATA_TOKEN,

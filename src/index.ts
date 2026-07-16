@@ -1,5 +1,5 @@
 /**
- * @relata/sdk — TypeScript SDK for the Relata data engine.
+ * @zysec-ai/relata-sdk — TypeScript SDK for the Relata data engine.
  *
  * Relata is a Rust data engine for ontology-driven, enterprise-grade workloads.
  * This SDK provides a typed HTTP client, a fluent query builder, an
@@ -9,7 +9,7 @@
  * **Quick start**
  *
  * ```typescript
- * import { createClient } from "@relata/sdk";
+ * import { createClient } from "@zysec-ai/relata-sdk";
  *
  * const relata = createClient("http://localhost:8080", {
  *   bearerToken: process.env.RELATA_TOKEN,
@@ -32,13 +32,13 @@
  *   .execute<{ id: string; name: string }>();
  *
  * // Memory (Mem0-style governed agent memory)
- * import { Memory } from "@relata/sdk";
+ * import { Memory } from "@zysec-ai/relata-sdk";
  * const m = new Memory("http://localhost:8080", { purpose: "agent-notes" });
  * const id = await m.add("Alice prefers dark mode");
  * const hits = await m.search("ui preferences");
  *
  * // Typed clients (inherit auth + tenant via fromClient)
- * import { GovernanceClient, McpClient } from "@relata/sdk";
+ * import { GovernanceClient, McpClient } from "@zysec-ai/relata-sdk";
  * const gov = GovernanceClient.fromClient(relata);
  * await gov.importSigma(open("rules.yml").read());
  * ```
@@ -179,7 +179,7 @@ import type { RelataClientOptions } from "./types.ts";
  * This is the recommended entry point for most applications.
  *
  * ```typescript
- * import { createClient } from "@relata/sdk";
+ * import { createClient } from "@zysec-ai/relata-sdk";
  *
  * const relata = createClient("http://localhost:8080", {
  *   bearerToken: process.env.RELATA_TOKEN,

@@ -5,7 +5,7 @@
  * Catch by type to handle specific failure modes:
  *
  * ```typescript
- * import { PurposeError, QuotaError, AuthError } from "@relata/sdk";
+ * import { PurposeError, QuotaError, AuthError } from "@zysec-ai/relata-sdk";
  *
  * try {
  *   await relata.query("SELECT * FROM Person");

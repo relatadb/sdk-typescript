@@ -1,4 +1,4 @@
-# @relata/sdk — TypeScript SDK
+# @zysec-ai/relata-sdk — TypeScript SDK
 
 TypeScript client for the [Relata](../../README.md) data engine — ontology-driven,
 enterprise-grade workloads. Zero runtime dependencies (native `fetch` only), typed
@@ -9,7 +9,7 @@ hardening (RFC 7807 problem+json, `X-Request-ID`, retry, multi-tenant headers).
 Compatible with Node.js 18+, Deno, Bun, and browser environments.
 
 - **Source:** [`sdks/typescript/src/`](./src/)
-- **Package:** `@relata/sdk`
+- **Package:** `@zysec-ai/relata-sdk`
 - **Runtime:** Node.js 18+, Deno, Bun, browsers (anywhere with native `fetch`)
 - **Runtime deps:** **zero** — uses native `fetch`, native `crypto.randomUUID()`, native `AbortController`
 - **Parity:** tracks the Python reference SDK (`../python/relata/`) method-for-method
@@ -21,17 +21,17 @@ split.
 ## Install
 
 ```bash
-npm install @relata/sdk
+npm install @zysec-ai/relata-sdk
 # or
-yarn add @relata/sdk
+yarn add @zysec-ai/relata-sdk
 # or
-bun add @relata/sdk
+bun add @zysec-ai/relata-sdk
 ```
 
 ## Quick start
 
 ```typescript
-import { createClient } from "@relata/sdk";
+import { createClient } from "@zysec-ai/relata-sdk";
 
 const relata = createClient("http://localhost:9090", {
   bearerToken: process.env.RELATA_TOKEN,   // required when server sets RELATA_BEARER_TOKEN
@@ -84,7 +84,7 @@ writes route through the governed write door. See the
 stay on by default.
 
 ```typescript
-import { Memory } from "@relata/sdk";
+import { Memory } from "@zysec-ai/relata-sdk";
 
 const m = new Memory("http://localhost:9090", {
   purpose: "agent-notes",
@@ -210,7 +210,7 @@ Mem0-style governed agent memory over `/memory/*` (ADR-144). Construct with a ma
 `purpose`.
 
 ```typescript
-import { Memory } from "@relata/sdk";
+import { Memory } from "@zysec-ai/relata-sdk";
 
 const m = new Memory("http://localhost:9090", {
   purpose: "agent-notes",
@@ -294,7 +294,7 @@ governance stays consistent across the surface. TypeScript is async-native, so e
 method returns a `Promise` (no `Async*` classes).
 
 ```typescript
-import { createClient, GovernanceClient, McpClient, AuditClient } from "@relata/sdk";
+import { createClient, GovernanceClient, McpClient, AuditClient } from "@zysec-ai/relata-sdk";
 
 const relata = createClient(url, { bearerToken: token, defaultPurpose: "compliance", tenant: "acme" });
 const gov    = GovernanceClient.fromClient(relata);
@@ -329,7 +329,7 @@ const entries = await audit.entries({ purpose: "compliance", limit: 50 });
 `StreamingClient` exposes every streaming surface as an `AsyncIterable<T>`:
 
 ```typescript
-import { StreamingClient } from "@relata/sdk";
+import { StreamingClient } from "@zysec-ai/relata-sdk";
 
 const streaming = StreamingClient.fromClient(relata);
 
@@ -365,7 +365,7 @@ boto3 is Python-only and the TS SDK has zero runtime dependencies. Convenience w
 (`listBuckets`, `createBucket`, `putObject`, `getObject`, `deleteObject`) are included.
 
 ```typescript
-import { S3Client } from "@relata/sdk";
+import { S3Client } from "@zysec-ai/relata-sdk";
 const s3 = S3Client.fromClient(relata);
 await s3.createBucket("acme-intel");
 await s3.putObject("acme-intel", "report.pdf", pdfBytes, { contentType: "application/pdf" });
@@ -396,7 +396,7 @@ import {
   PurposeError, AuthError, QuotaError, RateLimitedError, ForbiddenError,
   NotFoundError, ConflictError, ValidationError,
   BadRequestError, ServerError, NetworkError, TimeoutError,
-} from "@relata/sdk";
+} from "@zysec-ai/relata-sdk";
 
 try {
   const r = await relata.query("SELECT * FROM Person LIMIT 10");

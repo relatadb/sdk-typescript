@@ -1,5 +1,5 @@
 {
-  "name": "@relata/sdk",
+  "name": "@zysec-ai/relata-sdk",
   "version": "0.1.0",
   "description": "TypeScript SDK for the Relata data engine — ontology-driven, enterprise-grade workloads",
   "type": "module",

@@ -6,7 +6,7 @@
  * and the Rust `relata_sdk_rust::builder` serialises to identical JSON.
  *
  * ```ts
- * import { query, pathsBetween, lookupIdentity } from "@relata/sdk/builder";
+ * import { query, pathsBetween, lookupIdentity } from "@zysec-ai/relata-sdk/builder";
  *
  * const ir = query()
  *   .purpose("analytics")
@@ -256,7 +256,7 @@ export function hybridSearch(params: {
  * constraints incrementally.
  *
  * ```ts
- * import { graph } from "@relata/sdk/builder";
+ * import { graph } from "@zysec-ai/relata-sdk/builder";
  *
  * const ir = graph("investigation")
  *   .from("alice@acme.com")

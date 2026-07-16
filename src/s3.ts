@@ -56,7 +56,7 @@ export interface S3HttpResponse {
  * token, and tenant.
  *
  * ```typescript
- * import { createClient, S3Client } from "@relata/sdk";
+ * import { createClient, S3Client } from "@zysec-ai/relata-sdk";
  * const relata = createClient("http://localhost:9090", { bearerToken: tok });
  * const s3 = S3Client.fromClient(relata);
  *

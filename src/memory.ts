@@ -6,7 +6,7 @@
  * requests:
  *
  * ```typescript
- * import { Memory } from "@relata/sdk";
+ * import { Memory } from "@zysec-ai/relata-sdk";
  *
  * const m = new Memory("http://localhost:8080", { purpose: "agent-notes" });
  * const memId = await m.add("Alice prefers dark mode");

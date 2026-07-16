@@ -13,7 +13,7 @@
  * `RelataClient` via `fromClient`); governance is on by default.
  *
  * ```typescript
- * import { createClient, GovernanceClient } from "@relata/sdk";
+ * import { createClient, GovernanceClient } from "@zysec-ai/relata-sdk";
  *
  * const relata = createClient("http://localhost:8080", {
  *   bearerToken: process.env.RELATA_TOKEN!,
