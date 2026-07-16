@@ -1107,6 +1107,7 @@ export class RelataClient {
   #buildHeaders(generateRequestId: boolean): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: "application/json",
+      "Content-Type": "application/json",
       ...this.#extraHeaders,
     };
     if (this.#bearerToken !== undefined) {
