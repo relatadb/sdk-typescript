@@ -31,6 +31,7 @@ import {
   type ClusterNode,
   type HealthResponse,
   type IngestDocumentResponse,
+  type IngestDocumentTaskStatus,
   type IngestResponse,
   type QueryOptions,
   type QueryResult,
@@ -787,8 +788,9 @@ export class RelataClient {
    * @param chunksJsonl - Newline-delimited JSON string — one chunk per line,
    *   as produced by `dgrep run --mode chunks`.
    * @param manifestJson - JSON string of the extraction manifest.
-   * @returns The ingest receipt (`reportId`, `chunksIngested`, `warnings`,
-   *          `schemaVersion`, `queueDepth`).
+   * @returns The ingest receipt (`reportId`, `taskId`, `chunksIngested`,
+   *          `warnings`, `schemaVersion`, `queueDepth`). Poll `taskId` with
+   *          `ingestDocumentStatus()` to confirm storage completion (#1001).
    *
    * @throws {AuthError} Invalid/missing token.
    * @throws {RateLimitedError} Ingest queue full (HTTP 429).
@@ -806,10 +808,40 @@ export class RelataClient {
     );
     return {
       reportId: wire.report_id ?? "",
+      taskId: wire.task_id ?? "",
       chunksIngested: wire.chunks_ingested ?? 0,
       warnings: Array.isArray(wire.warnings) ? wire.warnings : [],
       schemaVersion: wire.schema_version ?? "",
       queueDepth: wire.queue_depth ?? 0,
+    };
+  }
+
+  /**
+   * Poll the status of an async document-ingest task (#1001).
+   *
+   * `POST /ingest/document` returns immediately with a `taskId`; chunks flush to
+   * storage in the background. Call this with the `taskId` until
+   * `status === "complete"`.
+   *
+   * @param taskId - The `taskId` returned by `ingestDocument()`.
+   * @returns The task status (`status`, `chunksTotal`, `chunksWritten`, …).
+   *
+   * @throws {AuthError} Invalid/missing token.
+   * @throws {NotFoundError} Unknown / wrong-endpoint `taskId` (HTTP 404).
+   * @throws {ServerError} Any other server-side failure (HTTP 5xx).
+   * @throws {NetworkError} Server unreachable.
+   */
+  async ingestDocumentStatus(taskId: string): Promise<IngestDocumentTaskStatus> {
+    const wire = await this.#get<WireIngestDocumentTaskStatus>(
+      `/ingest/document/${encodeURIComponent(taskId)}`,
+    );
+    return {
+      taskId: wire.task_id ?? taskId,
+      status: wire.status === "complete" ? "complete" : "pending",
+      reportId: wire.report_id ?? null,
+      chunksTotal: wire.chunks_total ?? 0,
+      chunksWritten: wire.chunks_written ?? 0,
+      warnings: Array.isArray(wire.warnings) ? wire.warnings : [],
     };
   }
 
@@ -1144,10 +1176,21 @@ export class RelataClient {
 /** @internal Wire shape for `POST /ingest/document`. */
 interface WireIngestDocumentResponse {
   report_id?: string;
+  task_id?: string;
   chunks_ingested?: number;
   warnings?: string[];
   schema_version?: string;
   queue_depth?: number;
+}
+
+/** @internal Wire shape for `GET /ingest/document/:task_id`. */
+interface WireIngestDocumentTaskStatus {
+  task_id?: string;
+  status?: string;
+  report_id?: string | null;
+  chunks_total?: number;
+  chunks_written?: number;
+  warnings?: string[];
 }
 
 /** @internal Wire shape for `GET /version`. */

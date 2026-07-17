@@ -282,6 +282,8 @@ export interface WireErrorResponse {
 export interface IngestDocumentResponse {
   /** Server-assigned manifest id for the ingested document. */
   reportId: string;
+  /** Async task id — poll with `ingestDocumentStatus(taskId)` until `status === "complete"` (#1001). */
+  taskId: string;
   /** Number of chunks accepted into the ingest queue. */
   chunksIngested: number;
   /** Non-fatal protocol warnings (e.g. newer-minor-version fields). */
@@ -290,6 +292,22 @@ export interface IngestDocumentResponse {
   schemaVersion: string;
   /** Current ingest queue depth after this submission. */
   queueDepth: number;
+}
+
+/**
+ * Status of an async document-ingest task — `GET /ingest/document/:task_id` (#1001).
+ *
+ * `status` is `"pending"` while chunks are still flushing to storage, then
+ * `"complete"` once the background writer confirms them. `chunksWritten` reaches
+ * `chunksTotal` on a successful completion.
+ */
+export interface IngestDocumentTaskStatus {
+  taskId: string;
+  status: "pending" | "complete";
+  reportId: string | null;
+  chunksTotal: number;
+  chunksWritten: number;
+  warnings: string[];
 }
 
 /**

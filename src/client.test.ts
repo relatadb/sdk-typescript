@@ -177,6 +177,7 @@ test("stats / version / ready / ingestDocument: map wire shapes", async () => {
     {
       body: {
         report_id: "r-1",
+        task_id: "t-1",
         chunks_ingested: 4,
         warnings: [],
         schema_version: "v1",
@@ -210,6 +211,7 @@ test("stats / version / ready / ingestDocument: map wire shapes", async () => {
     `{"schema": "v1"}`,
   );
   assert.equal(ingest.reportId, "r-1");
+  assert.equal(ingest.taskId, "t-1");
   assert.equal(ingest.chunksIngested, 4);
   assert.equal(ingest.queueDepth, 2);
 
@@ -223,6 +225,38 @@ test("stats / version / ready / ingestDocument: map wire shapes", async () => {
     chunks_jsonl: `{"chunk": 1}\n{"chunk": 2}`,
     manifest_json: `{"schema": "v1"}`,
   });
+});
+
+test("ingestDocumentStatus: maps the task-status wire shape and GET path", async () => {
+  const { fetch, calls } = mockFetch({
+    body: {
+      task_id: "t-1",
+      status: "complete",
+      report_id: "r-1",
+      chunks_total: 4,
+      chunks_written: 4,
+      warnings: [],
+    },
+  });
+  const relata = new RelataClient({
+    baseUrl: "http://x",
+    defaultPurpose: "analytics",
+    fetch,
+  });
+  const status = await relata.ingestDocumentStatus("t-1");
+  assert.equal(status.taskId, "t-1");
+  assert.equal(status.status, "complete");
+  assert.equal(status.reportId, "r-1");
+  assert.equal(status.chunksTotal, 4);
+  assert.equal(status.chunksWritten, 4);
+  // Unknown status normalises to "pending" rather than leaking arbitrary server text.
+  const { fetch: fetch2 } = mockFetch({ body: { task_id: "t-2", status: "weird" } });
+  const relata2 = new RelataClient({ baseUrl: "http://x", fetch: fetch2 });
+  const pending = await relata2.ingestDocumentStatus("t-2");
+  assert.equal(pending.status, "pending");
+  // GET path encodes the task id.
+  assert.equal(calls[0]?.method, "GET");
+  assert.equal(calls[0]?.url, "http://x/ingest/document/t-1");
 });
 
 test("transport: auto-generates X-Request-ID per request", async () => {

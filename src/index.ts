@@ -82,6 +82,7 @@ export type {
   ClusterNodesResponse,
   HealthResponse,
   IngestDocumentResponse,
+  IngestDocumentTaskStatus,
   IngestResponse,
   QueryOptions,
   QueryResult,
