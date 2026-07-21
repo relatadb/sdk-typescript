@@ -29,8 +29,13 @@ export interface QueryResult<T = Record<string, unknown>> {
   rows: T[];
   /** Server-assigned unique query identifier (UUID v4). */
   queryId: string;
-  /** Server-side wall-clock execution time in milliseconds. */
+  /** Server-side wall-clock execution time in milliseconds (legacy field). */
   elapsedMs: number;
+  /**
+   * Server-side processing time in milliseconds (#1252).
+   * Populated from `processing_time_ms` when present, falls back to `elapsed_ms`.
+   */
+  processingTimeMs?: number;
   /** Number of rows in `rows`. Convenience alias for `rows.length`. */
   rowCount: number;
   /** Column names in projection order, when the server sends them. */
@@ -377,6 +382,8 @@ export interface WireQueryResponse {
   columns?: string[];
   query_id?: string;
   elapsed_ms?: number;
+  /** Server-side processing time in ms (#1252). Falls back to elapsed_ms. */
+  processing_time_ms?: number;
 }
 
 // ---------------------------------------------------------------------------
