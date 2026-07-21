@@ -559,6 +559,29 @@ bun run examples/basic-query.ts
 
 The SDK works identically across all three.
 
+## Testing with an ephemeral server
+
+`src/_ephemeral.ts` exports `spawnEphemeral()` — starts a `relata serve` process
+on a random port, waits for readiness, and returns `{ port, token, baseUrl, stop }`.
+
+```ts
+import { spawnEphemeral } from './_ephemeral';
+
+describe('integration', () => {
+  let server: Awaited<ReturnType<typeof spawnEphemeral>>;
+  beforeAll(async () => { server = await spawnEphemeral(); });
+  afterAll(() => server.stop());
+
+  it('health', async () => {
+    const r = await fetch(`${server.baseUrl}/health`);
+    expect(r.ok).toBe(true);
+  });
+});
+```
+
+Set `RELATA_BIN` to the binary path and `RELATA_TEST_TOKEN` to override the
+bearer token (defaults: `relata` / `relata-test`).
+
 ## License
 
 AGPL-3.0-only — see the root `LICENSE` file.
