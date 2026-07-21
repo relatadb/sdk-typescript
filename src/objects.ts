@@ -9,8 +9,21 @@
 import { RelataClient } from "./client.ts";
 import { type TypedClientCtor, TypedClientBase, qs } from "./_typed-http.ts";
 
-/** Row shape accepted by `upsert` / `batchUpssert`. */
+/** Row shape accepted by `upsert` / `batchUpsert`. */
 export type RelataRow = Record<string, unknown>;
+
+/** Options for `list()`. */
+export interface ListObjectsOptions {
+  limit?: number;
+  cursor?: string;
+}
+
+/** Paginated response from `list()`. */
+export interface ListObjectsResponse<T = RelataRow> {
+  items: T[];
+  cursor?: string;
+  total?: number;
+}
 
 /** Serialise `rows` as newline-delimited JSON — one row per line. */
 function rowsToNdjson(rows: RelataRow[]): string {
@@ -100,6 +113,64 @@ export class ObjectClient extends TypedClientBase {
       ? rows.map((r) => ({ ...r, _source: opts.source }))
       : rows;
     return this.sendNdjson(objectType, prepared, opts.purpose);
+  }
+
+  /**
+   * Fetch a single state object by type and id.
+   * Wraps `GET /objects/{type}/{id}`.
+   *
+   * @returns The object fields, or `null` if not found (404).
+   */
+  async get(
+    objectType: string,
+    objectId: string,
+  ): Promise<Record<string, unknown> | null> {
+    const path = `/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`;
+    try {
+      return await this._get<Record<string, unknown>>(path);
+    } catch (err) {
+      // Re-export TypedHttpError from _typed-http so we can check status.
+      if (
+        err !== null &&
+        typeof err === "object" &&
+        "statusCode" in err &&
+        (err as { statusCode: number }).statusCode === 404
+      ) {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Delete a state object by type and id.
+   * Wraps `DELETE /objects/{type}/{id}`.
+   *
+   * @returns The server's delete receipt (e.g. `{ deleted: true }`).
+   */
+  async delete(
+    objectType: string,
+    objectId: string,
+  ): Promise<Record<string, unknown>> {
+    const path = `/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`;
+    return this._delete<Record<string, unknown>>(path);
+  }
+
+  /**
+   * List state objects of a given type with optional pagination.
+   * Wraps `GET /objects/{type}?limit=N&cursor=C`.
+   *
+   * @returns Paginated result with `items`, optional `cursor`, optional `total`.
+   */
+  async list<T = RelataRow>(
+    objectType: string,
+    opts: ListObjectsOptions = {},
+  ): Promise<ListObjectsResponse<T>> {
+    const params: Record<string, string | number | undefined> = {};
+    if (opts.limit !== undefined) params["limit"] = opts.limit;
+    if (opts.cursor !== undefined) params["cursor"] = opts.cursor;
+    const path = `/objects/${encodeURIComponent(objectType)}${qs(params)}`;
+    return this._get<ListObjectsResponse<T>>(path);
   }
 
   /** @internal Build the query string and POST the NDJSON body. */

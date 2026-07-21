@@ -140,7 +140,7 @@ export { AuditClient } from "./audit.ts";
 export { IdentityClient } from "./identity.ts";
 
 export { ObjectClient } from "./objects.ts";
-export type { RelataRow, ObjectClientCtor } from "./objects.ts";
+export type { RelataRow, ObjectClientCtor, ListObjectsOptions, ListObjectsResponse } from "./objects.ts";
 
 export { IngestClient } from "./ingest.ts";
 
