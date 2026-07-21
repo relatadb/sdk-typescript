@@ -260,6 +260,61 @@ export class RelataClient {
   }
 
   // -------------------------------------------------------------------------
+  // Public API — parameterized queries (#1162)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Execute a parameterized SQL query. Placeholders `$1`, `$2`, … in `sql`
+   * are substituted server-side with the corresponding values from `params`.
+   *
+   * ```typescript
+   * const r = await relata.queryWithParams(
+   *   "SELECT * FROM Person WHERE age = $1 AND city = $2",
+   *   [25, "Karachi"],
+   *   { purpose: "analytics" },
+   * );
+   * r.rows[0]?.name;
+   * ```
+   *
+   * @typeParam T - Row shape. Defaults to `Record<string, unknown>`.
+   * @param sql - SQL string with `$N` positional placeholders.
+   * @param params - Values to bind, in order. Null maps to SQL NULL.
+   * @param options - Optional per-call overrides (purpose, timeout).
+   */
+  async queryWithParams<T = Record<string, unknown>>(
+    sql: string,
+    params: unknown[],
+    options?: QueryOptions,
+  ): Promise<QueryResult<T>> {
+    const purpose = options?.purpose ?? this.#defaultPurpose;
+    if (!purpose) {
+      throw new PurposeError(undefined, "purpose field is required");
+    }
+    const wire = await this.#post<WireQueryResponse>(
+      "/query",
+      { purpose, sql, params },
+      options?.timeoutMs,
+    );
+    let rows: unknown[];
+    if (Array.isArray(wire.data)) {
+      rows = wire.data;
+    } else if (Array.isArray(wire.rows)) {
+      rows = wire.rows;
+    } else {
+      rows = [];
+    }
+    const columns = Array.isArray(wire.columns) ? wire.columns : [];
+    return {
+      rows: rows as T[],
+      queryId: wire.query_id ?? "",
+      elapsedMs: wire.elapsed_ms ?? 0,
+      processingTimeMs: wire.processing_time_ms ?? wire.elapsed_ms,
+      rowCount: rows.length,
+      columns,
+    };
+  }
+
+  // -------------------------------------------------------------------------
   // Public API — full-text search (#670)
   // -------------------------------------------------------------------------
 
@@ -988,6 +1043,20 @@ export class RelataClient {
   /** @internal */
   async #delete<T>(path: string, timeoutMs?: number): Promise<T> {
     return this.#send<T>("DELETE", path, undefined, timeoutMs);
+  }
+
+  /**
+   * Generic request for internal SDK modules (e.g. VectorClient.embed).
+   *
+   * @internal — not a stable public surface; used by typed sub-clients.
+   */
+  async request<T = unknown>(
+    method: "POST" | "GET" | "DELETE",
+    path: string,
+    body?: Record<string, unknown>,
+    timeoutMs?: number,
+  ): Promise<T> {
+    return this.#send<T>(method, path, body, timeoutMs);
   }
 
   /**

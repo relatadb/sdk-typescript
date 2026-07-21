@@ -133,4 +133,58 @@ export class VectorClient {
     });
     return result.rows;
   }
+
+  // ── #1172: direct embedding via /embed ────────────────────────────────────
+
+  /**
+   * Embed a single text string via `POST /embed`.
+   *
+   * Uses the server's built-in CPU lexical embedder when no sidecar is
+   * configured, or the GPU sidecar (`RELATA_ACCEL_ENDPOINT`) when set.
+   *
+   * ```typescript
+   * const { embedding, model, dim } = await vectors.embed("Alice Smith");
+   * ```
+   *
+   * @param text - Text to embed.
+   * @param opts - Optional model hint passed through to the server.
+   * @returns `{ embedding: number[], model: string, dim: number }`
+   */
+  async embed(
+    text: string,
+    opts: { model?: string } = {},
+  ): Promise<{ embedding: number[]; model: string; dim: number }> {
+    return this.#client.request<{ embedding: number[]; model: string; dim: number }>(
+      "POST",
+      "/embed",
+      { text, ...(opts.model !== undefined ? { model: opts.model } : {}) },
+    );
+  }
+
+  /**
+   * Embed multiple texts in one call via `POST /embed/batch`.
+   *
+   * ```typescript
+   * const { embeddings, dim, count } = await vectors.embedBatch(["Alice", "Bob"]);
+   * ```
+   *
+   * @param texts - Array of texts to embed.
+   * @param opts - Optional model hint.
+   * @returns `{ embeddings: number[][], model: string, dim: number, count: number }`
+   */
+  async embedBatch(
+    texts: string[],
+    opts: { model?: string } = {},
+  ): Promise<{ embeddings: number[][]; model: string; dim: number; count: number }> {
+    return this.#client.request<{
+      embeddings: number[][];
+      model: string;
+      dim: number;
+      count: number;
+    }>(
+      "POST",
+      "/embed/batch",
+      { texts, ...(opts.model !== undefined ? { model: opts.model } : {}) },
+    );
+  }
 }
