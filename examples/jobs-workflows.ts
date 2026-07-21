@@ -6,27 +6,53 @@
  */
 
 import { SystemClient } from "../src/system.ts";
+import { banner, exitOnRelataError, loadEnv, ok, out, step } from "./_helpers.ts";
 
-const sys = new SystemClient({ baseUrl: "http://localhost:9090", bearerToken: "demo" });
+const { url, token } = loadEnv();
+const sys = new SystemClient({
+  baseUrl: url,
+  bearerToken: token,
+});
 
-const jobs = await sys.jobsStatus();
-console.log("jobs:", jobs);
+try {
+  banner("Relata Jobs & Workflows Demo");
 
-const c2 = await sys.jobStatus("c2_beacon_detect");
-console.log("job/c2:", c2);
+  step("jobs.list");
+  const jobs = await sys.jobsStatus();
+  out(`  ${JSON.stringify(jobs)}`);
 
-const workflows = await sys.listWorkflows();
-console.log("workflows:", workflows);
+  step("jobs.get(c2_beacon_detect)");
+  const c2 = await sys.jobStatus("c2_beacon_detect");
+  out(`  ${JSON.stringify(c2)}`);
 
-await sys.registerWorkflow("demo_flow", [{ name: "s1", kind: "query", sql: "SELECT 1" }]);
-console.log("get_workflow:", await sys.getWorkflow("demo_flow"));
+  step("workflows.list");
+  const workflows = await sys.listWorkflows();
+  out(`  ${workflows.length} registered`);
 
-const run = await sys.runWorkflow("demo_flow");
-console.log("run:", run);
-console.log("workflow_status:", await sys.workflowStatus("demo_flow"));
+  step("workflows.register(demo_flow)");
+  await sys.registerWorkflow("demo_flow", [
+    { name: "s1", kind: "query", sql: "SELECT 1" },
+  ]);
+  ok("registered");
 
-const runId = run["run_id"] as string;
-if (runId) {
-  const detail = await sys.workflowRun(runId);
-  console.log("workflow_run detail:", detail.attempt_count, detail.last_error);
+  step("workflows.get(demo_flow)");
+  out(`  ${JSON.stringify(await sys.getWorkflow("demo_flow"))}`);
+
+  step("workflows.run(demo_flow)");
+  const run = await sys.runWorkflow("demo_flow");
+  out(`  run id: ${run["run_id"] ?? "(none)"}`);
+
+  step("workflows.status(demo_flow)");
+  out(`  ${JSON.stringify(await sys.workflowStatus("demo_flow"))}`);
+
+  const runId = run["run_id"] as string;
+  if (runId) {
+    step("workflows.run_detail");
+    const detail = await sys.workflowRun(runId);
+    out(
+      `  attempts: ${detail.attempt_count}, last_error: ${detail.last_error ?? "(none)"}`,
+    );
+  }
+} catch (err) {
+  exitOnRelataError(err);
 }

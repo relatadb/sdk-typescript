@@ -168,6 +168,13 @@ export { LogClient } from "./log.ts";
 export type { LogLeaf } from "./log.ts";
 
 // ---------------------------------------------------------------------------
+// Logger — pluggable diagnostic sink (silent by default)
+// ---------------------------------------------------------------------------
+
+export { ConsoleLogger, NoOpLogger, SafeLogger } from "./logger.ts";
+export type { Logger, LogContext } from "./logger.ts";
+
+// ---------------------------------------------------------------------------
 // Convenience factory
 // ---------------------------------------------------------------------------
 

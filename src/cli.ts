@@ -10,14 +10,19 @@
  *   status          Show server status
  *   audit           Show audit log count and chain validity
  *   nodes           List cluster nodes
- *   query <sql>     Execute a SQL query (requires --purpose)
+ *   query <sql>     Execute a SQL query
  *
  * Options:
  *   --url <url>         Relata server URL (default: http://localhost:9090)
  *   --token <token>     Bearer token (or RELATA_TOKEN env var)
- *   --purpose <purpose> Query purpose (or RELATA_PURPOSE env var)
+ *   --purpose <purpose> Per-query purpose (or RELATA_PURPOSE env var)
  *   --timeout <ms>      Request timeout in milliseconds (default: 30000)
  *   --json              Output raw JSON (default: pretty-printed)
+ *
+ * Exit codes:
+ *   0   success
+ *   1   usage error, missing argument, or generic failure
+ *   2   audit chain integrity failure (tamper alert)
  *
  * Examples:
  *   relata health --url http://localhost:9090
@@ -26,10 +31,38 @@
  */
 
 import { createClient } from "./index.ts";
-import { RelataError } from "./errors.ts";
+import { QuotaError, RelataError } from "./errors.ts";
 
+// ---------------------------------------------------------------------------
+// Output helpers — every byte the CLI writes goes through here. The shape is
+// deliberate: stdout carries data, stderr carries diagnostics, so JSON
+// consumers can pipe `--json` output safely even when warnings are emitted.
+// ---------------------------------------------------------------------------
+
+/** Human-readable messages and `--json` payloads go to stdout. */
+function out(message: string): void {
+  process.stdout.write(`${message}\n`);
+}
+
+/** JSON payload (compact or pretty) goes to stdout. */
+function outJson(data: unknown, pretty: boolean): void {
+  out(pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data));
+}
+
+/** Diagnostics go to stderr so they never corrupt a stdout pipe. */
+function err(message: string): void {
+  process.stderr.write(`${message}\n`);
+}
+
+/** Diagnostic + non-zero exit. Always exits the process. */
+function die(message: string, exitCode = 1): never {
+  err(message);
+  process.exit(exitCode);
+}
+
+/** Standard usage banner, written to stderr so `--help` works in pipes. */
 function usage(): void {
-  console.error(`
+  err(`
 Usage: relata <command> [options]
 
 Commands:
@@ -42,9 +75,14 @@ Commands:
 Options:
   --url <url>         Relata server URL        [default: http://localhost:9090]
   --token <token>     Bearer token             [env: RELATA_TOKEN]
-  --purpose <purpose> Query purpose            [env: RELATA_PURPOSE]
+  --purpose <purpose> Per-query purpose        [env: RELATA_PURPOSE]
   --timeout <ms>      Request timeout (ms)     [default: 30000]
   --json              Output raw JSON
+
+Exit codes:
+  0   success
+  1   usage error, missing argument, or generic failure
+  2   audit chain integrity failure
 
 Examples:
   relata health
@@ -52,6 +90,10 @@ Examples:
   relata audit --url http://prod-relata:8080 --token $RELATA_TOKEN
 `.trim());
 }
+
+// ---------------------------------------------------------------------------
+// Arg parsing
+// ---------------------------------------------------------------------------
 
 interface ParsedArgs {
   command: string;
@@ -106,7 +148,7 @@ function parseArgs(argv: string[]): ParsedArgs | null {
         rawJson = true;
         break;
       default:
-        console.error(`Unknown flag: ${flag}`);
+        err(`Error: unknown flag "${flag}"`);
         return null;
     }
   }
@@ -114,13 +156,9 @@ function parseArgs(argv: string[]): ParsedArgs | null {
   return { command, sql, url, token, purpose, timeoutMs, rawJson };
 }
 
-function print(data: unknown, rawJson: boolean): void {
-  if (rawJson) {
-    console.log(JSON.stringify(data));
-  } else {
-    console.log(JSON.stringify(data, null, 2));
-  }
-}
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv);
@@ -139,66 +177,75 @@ async function main(): Promise<void> {
   try {
     switch (command) {
       case "health": {
-        const r = await relata.health();
-        print(r, rawJson);
+        outJson(await relata.health(), rawJson);
         break;
       }
       case "status": {
-        const r = await relata.status();
-        print(r, rawJson);
+        outJson(await relata.status(), rawJson);
         break;
       }
       case "audit": {
         const r = await relata.auditCount();
         if (!rawJson) {
-          console.log(`Entries   : ${r.entries}`);
-          console.log(`Chain valid: ${r.chainValid ? "✓ yes" : "✗ NO — INVESTIGATE IMMEDIATELY"}`);
-          if (!r.chainValid) process.exit(2);
+          out(`Entries    : ${r.entries}`);
+          out(
+            `Chain valid: ${r.chainValid ? "yes" : "NO — TAMPER ALERT (exit 2)"}`,
+          );
         } else {
-          print(r, true);
+          outJson(r, true);
+        }
+        if (!r.chainValid) {
+          err("Audit chain integrity failure — investigate immediately.");
+          process.exit(2);
         }
         break;
       }
       case "nodes": {
-        const nodes = await relata.clusterNodes();
-        print(nodes, rawJson);
+        outJson(await relata.clusterNodes(), rawJson);
         break;
       }
       case "query": {
         if (!sql) {
-          console.error("Error: provide a SQL string after 'query', e.g.:\n  relata query \"SELECT * FROM Person LIMIT 5\"");
-          process.exit(1);
+          die(
+            'Error: provide a SQL string after \'query\', e.g.:\n  relata query "SELECT * FROM Person LIMIT 5"',
+          );
         }
         const r = await relata.query(sql);
         if (!rawJson) {
-          console.log(`Query ID : ${r.queryId}`);
-          console.log(`Elapsed  : ${r.elapsedMs}ms`);
-          console.log(`Rows     : ${r.rowCount}`);
-          console.log("---");
-          for (const row of r.rows) {
-            console.log(JSON.stringify(row));
-          }
+          out(`Query ID : ${r.queryId}`);
+          out(`Elapsed  : ${r.elapsedMs}ms`);
+          out(`Rows     : ${r.rowCount}`);
+          out("---");
+          for (const row of r.rows) out(JSON.stringify(row));
         } else {
-          print(r, true);
+          outJson(r, true);
         }
         break;
       }
       default:
-        console.error(`Unknown command: "${command}"`);
+        err(`Error: unknown command "${command}"`);
         usage();
         process.exit(1);
     }
-  } catch (err) {
-    if (err instanceof RelataError) {
-      console.error(`Error [${err.name}]: ${err.message}`);
-      if (err.queryId) console.error(`Query ID: ${err.queryId}`);
+  } catch (e: unknown) {
+    if (e instanceof RelataError) {
+      err(`Error [${e.name}]: ${e.message}`);
+      if (e.requestId) err(`  Request-ID : ${e.requestId}`);
+      if (e.queryId) err(`  Query-ID   : ${e.queryId}`);
+      if (e instanceof QuotaError && e.retryAfterSeconds !== undefined) {
+        err(`  Retry-After: ${e.retryAfterSeconds}s`);
+      }
       process.exit(1);
     }
-    throw err;
+    throw e;
   }
 }
 
-main().catch((err: unknown) => {
-  console.error("Fatal:", err);
+main().catch((e: unknown) => {
+  // Unknown fatal — print message + name, never the raw object, so logs stay
+  // greppable. Keep the stack on stderr for debugging.
+  const message = e instanceof Error ? e.message : String(e);
+  err(`Fatal: ${message}`);
+  if (e instanceof Error && e.stack) err(e.stack);
   process.exit(1);
 });

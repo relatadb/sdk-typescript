@@ -61,6 +61,7 @@ import {
   RelataError,
   TimeoutError,
 } from "./errors.ts";
+import { type Logger, NoOpLogger, SafeLogger } from "./logger.ts";
 import { QueryBuilder } from "./query.ts";
 
 // ---------------------------------------------------------------------------
@@ -101,6 +102,7 @@ export class RelataClient {
   readonly #delegatedBy: string | undefined;
   readonly #maxRetries: number;
   readonly #retryBackoffMs: number;
+  readonly #logger: Logger;
   /**
    * Caller-pinned static header bag. Each per-request header bag is built by
    * cloning this and overlaying the per-attempt `X-Request-ID`.
@@ -143,6 +145,9 @@ export class RelataClient {
     this.#delegatedBy = opts.delegatedBy;
     this.#maxRetries = opts.maxRetries ?? 0;
     this.#retryBackoffMs = opts.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
+    // Wrap the caller-supplied logger (or the silent default) in SafeLogger
+    // so a buggy custom logger can never take down an SDK-mediated request.
+    this.#logger = new SafeLogger(opts.logger ?? new NoOpLogger());
 
     // Compose the static extra-headers bag: tenant/delegation first, then
     // caller-supplied headers win. Per-attempt X-Request-ID is overlaid in
@@ -1115,6 +1120,11 @@ export class RelataClient {
         lastError = err;
         // Timeout — never retry (the operation may have side-effects).
         if (this.#isAbortError(err)) {
+          this.#logger.warn("request timed out", {
+            method,
+            path,
+            timeoutMs: effectiveTimeout,
+          });
           throw new TimeoutError(effectiveTimeout);
         }
         // Already-classified RelataError (any subclass) — retry only on the
@@ -1125,8 +1135,27 @@ export class RelataClient {
             attempt + 1 < maxAttempts &&
             RETRYABLE_STATUS_CODES.has(status)
           ) {
-            await this.#sleep(this.#retryBackoffMs * 2 ** attempt);
+            const backoffMs = this.#retryBackoffMs * 2 ** attempt;
+            this.#logger.warn("retrying after retryable HTTP status", {
+              method,
+              path,
+              status,
+              attempt: attempt + 1,
+              maxAttempts,
+              backoffMs,
+              requestId: err.requestId,
+            });
+            await this.#sleep(backoffMs);
             continue;
+          }
+          if (RETRYABLE_STATUS_CODES.has(status)) {
+            this.#logger.error("retries exhausted on retryable HTTP status", {
+              method,
+              path,
+              status,
+              maxAttempts,
+              requestId: err.requestId,
+            });
           }
           throw err;
         }
@@ -1138,9 +1167,24 @@ export class RelataClient {
           );
           lastError = wrapped;
           if (attempt + 1 < maxAttempts) {
-            await this.#sleep(this.#retryBackoffMs * 2 ** attempt);
+            const backoffMs = this.#retryBackoffMs * 2 ** attempt;
+            this.#logger.warn("retrying after network error", {
+              method,
+              path,
+              attempt: attempt + 1,
+              maxAttempts,
+              backoffMs,
+              cause: err.message,
+            });
+            await this.#sleep(backoffMs);
             continue;
           }
+          this.#logger.error("retries exhausted on network error", {
+            method,
+            path,
+            maxAttempts,
+            cause: err.message,
+          });
           throw wrapped;
         }
         throw err;
@@ -1148,7 +1192,13 @@ export class RelataClient {
         if (timer !== undefined) clearTimeout(timer);
       }
     }
-    // Exhausted retries on a network error.
+    // Defensive: the loop above always throws on the final attempt. If we
+    // ever reach here (no exception in the last iteration), surface it.
+    this.#logger.error("retries exhausted without final error", {
+      method,
+      path,
+      maxAttempts,
+    });
     throw lastError;
   }
 

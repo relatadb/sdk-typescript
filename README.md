@@ -184,6 +184,39 @@ const relata = createClient(url, {
 });
 ```
 
+### Logging (silent by default)
+
+The SDK **never** writes to `console` on its own — pass an explicit `logger`
+to get visibility into retry attempts, future deprecation warnings, etc. Two
+ready-to-use implementations ship in the box:
+
+```typescript
+import { createClient, ConsoleLogger, NoOpLogger, type Logger } from "@zysec-ai/relata-sdk";
+
+// 1. Use the bundled console logger (CLIs / scripts).
+const relata = createClient(url, {
+  logger: new ConsoleLogger("my-app"),  // → "relata:my-app WARN retrying ..."
+  maxRetries: 3,
+});
+
+// 2. Stay silent (default — equivalent to omitting `logger`).
+const quiet = createClient(url, { logger: new NoOpLogger() });
+
+// 3. Wire your own observability backend.
+const custom: Logger = {
+  debug: (msg, ctx) => myOtel.span(msg, ctx),
+  info:  (msg, ctx) => myOtel.span(msg, ctx),
+  warn:  (msg, ctx) => myOtel.warn(msg, ctx),
+  error: (msg, ctx) => myOtel.error(msg, ctx),
+};
+```
+
+`ConsoleLogger` writes `warn`/`error` to **stderr** and `info`/`debug` to
+**stdout**, so JSON-piping callers never see diagnostics on the data stream.
+Each line is shaped `<prefix> <LEVEL> <message>` followed by an optional
+JSON-encoded context object — stable enough for `grep` but not a substitute
+for a real structured logger in production.
+
 ### `QueryResult` wire-shape normalisation
 
 The server replies with one of two shapes:
@@ -459,6 +492,8 @@ npx relata query "SELECT * FROM Person LIMIT 5" --purpose analytics
 ```
 
 Options: `--url`, `--token`, `--purpose`, `--timeout`, `--json`.
+
+Exit codes: `0` success · `1` usage / SDK error · `2` audit-chain integrity failure.
 
 ## Extended SQL dialect
 

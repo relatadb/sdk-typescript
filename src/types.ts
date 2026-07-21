@@ -5,6 +5,8 @@
  * All int64 values that exceed Number.MAX_SAFE_INTEGER are represented as strings.
  */
 
+import type { Logger } from "./logger.ts";
+
 // ---------------------------------------------------------------------------
 // Query result
 // ---------------------------------------------------------------------------
@@ -128,6 +130,17 @@ export interface RelataClientOptions {
    * (0.5s), matching the Python SDK.
    */
   retryBackoffMs?: number;
+
+  /**
+   * Pluggable logger for SDK-side diagnostics (retry attempts, deprecation
+   * warnings, …). The library is **silent by default** — supplying a
+   * `Logger` (e.g. `new ConsoleLogger("my-app")`) is the only way the SDK
+   * will emit anything to the console. See `logger.ts` for the interface.
+   *
+   * The SDK never throws from a logger call; custom implementations must
+   * catch their own failures.
+   */
+  logger?: Logger;
 }
 
 // ---------------------------------------------------------------------------
