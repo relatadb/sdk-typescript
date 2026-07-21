@@ -49,7 +49,7 @@ export interface QueryResult<T = Record<string, unknown>> {
  */
 export interface RelataClientOptions {
   /**
-   * Base URL of the Relata server, e.g. `"http://localhost:8080"`.
+   * Base URL of the Relata server, e.g. `"http://localhost:9090"`.
    * Trailing slash is stripped automatically.
    */
   baseUrl: string;

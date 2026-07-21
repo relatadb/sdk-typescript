@@ -11,7 +11,7 @@
  * ```typescript
  * import { createClient } from "@zysec-ai/relata-sdk";
  *
- * const relata = createClient("http://localhost:8080", {
+ * const relata = createClient("http://localhost:9090", {
  *   bearerToken: process.env.RELATA_TOKEN,
  *   defaultPurpose: "analytics",
  *   tenant: "acme",        // X-Organization-Id
@@ -33,7 +33,7 @@
  *
  * // Memory (Mem0-style governed agent memory)
  * import { Memory } from "@zysec-ai/relata-sdk";
- * const m = new Memory("http://localhost:8080", { purpose: "agent-notes" });
+ * const m = new Memory("http://localhost:9090", { purpose: "agent-notes" });
  * const id = await m.add("Alice prefers dark mode");
  * const hits = await m.search("ui preferences");
  *
@@ -182,7 +182,7 @@ import type { RelataClientOptions } from "./types.ts";
  * ```typescript
  * import { createClient } from "@zysec-ai/relata-sdk";
  *
- * const relata = createClient("http://localhost:8080", {
+ * const relata = createClient("http://localhost:9090", {
  *   bearerToken: process.env.RELATA_TOKEN,
  *   defaultPurpose: "analytics",
  *   timeoutMs: 30_000,

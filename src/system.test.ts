@@ -32,7 +32,7 @@ function mockFetch(responses: MockResponse[] | MockResponse) {
   return { fetch, calls };
 }
 
-const BASE = "http://localhost:8080";
+const BASE = "http://localhost:9090";
 
 test("jobStatus: GET /jobs/:name", async () => {
   const { fetch, calls } = mockFetch({ body: { name: "c2_beacon", status: "Running" } });

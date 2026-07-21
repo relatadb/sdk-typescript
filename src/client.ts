@@ -8,7 +8,7 @@
  * ```typescript
  * import { createClient } from "@zysec-ai/relata-sdk";
  *
- * const relata = createClient("http://localhost:8080", {
+ * const relata = createClient("http://localhost:9090", {
  *   bearerToken: process.env.RELATA_TOKEN,
  *   defaultPurpose: "analytics",
  *   tenant: "org-acme",          // X-Organization-Id
@@ -117,7 +117,7 @@ export class RelataClient {
    * ```typescript
    * // Full options
    * const relata = new RelataClient({
-   *   baseUrl: "http://localhost:8080",
+   *   baseUrl: "http://localhost:9090",
    *   bearerToken: process.env.RELATA_TOKEN,
    *   defaultPurpose: "analytics",
    *   timeoutMs: 30_000,
@@ -126,7 +126,7 @@ export class RelataClient {
    * });
    *
    * // Convenience string shorthand
-   * const relata = new RelataClient("http://localhost:8080");
+   * const relata = new RelataClient("http://localhost:9090");
    * ```
    */
   constructor(options: RelataClientOptions | string) {

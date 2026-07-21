@@ -8,7 +8,7 @@
  * ```typescript
  * import { Memory } from "@zysec-ai/relata-sdk";
  *
- * const m = new Memory("http://localhost:8080", { purpose: "agent-notes" });
+ * const m = new Memory("http://localhost:9090", { purpose: "agent-notes" });
  * const memId = await m.add("Alice prefers dark mode");
  * const hits = await m.search("ui preferences", { topK: 5 });
  * await m.forget(memId);
@@ -155,7 +155,7 @@ export class Memory {
   /**
    * Construct a high-level memory client.
    *
-   * @param baseUrl - Relata server URL, e.g. `"http://localhost:8080"`.
+   * @param baseUrl - Relata server URL, e.g. `"http://localhost:9090"`.
    * @param options - Must include a non-empty `purpose`.
    *
    * @throws {PurposeError} When `purpose` is missing or empty.

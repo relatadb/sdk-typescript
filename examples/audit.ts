@@ -74,7 +74,7 @@ interface ReportSummary {
 // Setup
 // ---------------------------------------------------------------------------
 
-const RELATA_URL = process.env["RELATA_URL"] ?? "http://localhost:8080";
+const RELATA_URL = process.env["RELATA_URL"] ?? "http://localhost:9090";
 
 const relata = createClient(RELATA_URL, {
   bearerToken: process.env["RELATA_TOKEN"],

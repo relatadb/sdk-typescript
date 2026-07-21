@@ -15,7 +15,7 @@ import { createClient, PurposeError, AuthError, NetworkError } from "../src/inde
 // 1. Create a client (URL + optional bearer token + default purpose)
 // ---------------------------------------------------------------------------
 
-const relata = createClient("http://localhost:8080", {
+const relata = createClient("http://localhost:9090", {
   bearerToken: process.env["RELATA_TOKEN"],
   defaultPurpose: "analytics",
   timeoutMs: 15_000,

@@ -7,7 +7,7 @@
 
 import { SystemClient } from "../src/system.ts";
 
-const sys = new SystemClient({ baseUrl: "http://localhost:8080", bearerToken: "demo" });
+const sys = new SystemClient({ baseUrl: "http://localhost:9090", bearerToken: "demo" });
 
 const jobs = await sys.jobsStatus();
 console.log("jobs:", jobs);

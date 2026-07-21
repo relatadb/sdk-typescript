@@ -15,7 +15,7 @@
  * ```typescript
  * import { createClient, GovernanceClient } from "@zysec-ai/relata-sdk";
  *
- * const relata = createClient("http://localhost:8080", {
+ * const relata = createClient("http://localhost:9090", {
  *   bearerToken: process.env.RELATA_TOKEN!,
  *   defaultPurpose: "compliance",
  *   tenant: "acme",

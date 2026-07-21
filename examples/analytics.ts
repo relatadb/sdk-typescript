@@ -72,7 +72,7 @@ interface PathHop {
 // Client setup
 // ---------------------------------------------------------------------------
 
-const RELATA_URL = process.env["RELATA_URL"] ?? "http://localhost:8080";
+const RELATA_URL = process.env["RELATA_URL"] ?? "http://localhost:9090";
 const RELATA_TOKEN = process.env["RELATA_TOKEN"];
 
 const relata = createClient(RELATA_URL, {

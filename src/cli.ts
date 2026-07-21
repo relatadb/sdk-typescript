@@ -13,14 +13,14 @@
  *   query <sql>     Execute a SQL query (requires --purpose)
  *
  * Options:
- *   --url <url>         Relata server URL (default: http://localhost:8080)
+ *   --url <url>         Relata server URL (default: http://localhost:9090)
  *   --token <token>     Bearer token (or RELATA_TOKEN env var)
  *   --purpose <purpose> Query purpose (or RELATA_PURPOSE env var)
  *   --timeout <ms>      Request timeout in milliseconds (default: 30000)
  *   --json              Output raw JSON (default: pretty-printed)
  *
  * Examples:
- *   relata health --url http://localhost:8080
+ *   relata health --url http://localhost:9090
  *   relata query "SELECT * FROM Person LIMIT 5" --purpose analytics
  *   RELATA_TOKEN=secret relata audit
  */
@@ -40,7 +40,7 @@ Commands:
   query <sql>     Execute a SQL query
 
 Options:
-  --url <url>         Relata server URL        [default: http://localhost:8080]
+  --url <url>         Relata server URL        [default: http://localhost:9090]
   --token <token>     Bearer token             [env: RELATA_TOKEN]
   --purpose <purpose> Query purpose            [env: RELATA_PURPOSE]
   --timeout <ms>      Request timeout (ms)     [default: 30000]
@@ -72,7 +72,7 @@ function parseArgs(argv: string[]): ParsedArgs | null {
 
   const command = args[0] ?? "";
   let sql: string | undefined;
-  let url = "http://localhost:8080";
+  let url = "http://localhost:9090";
   let token = process.env["RELATA_TOKEN"];
   let purpose = process.env["RELATA_PURPOSE"];
   let timeoutMs = 30_000;
