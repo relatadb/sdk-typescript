@@ -92,7 +92,7 @@ export interface RelataClientOptions {
   fetch?: typeof globalThis.fetch;
 
   /**
-   * Tenant / organisation id sent as `X-Organization-Id` on every request.
+   * Tenant / organisation id sent as `X-Relata-Tenant-Id` on every request.
    * Required for multi-tenant deployments.
    */
   tenant?: string;

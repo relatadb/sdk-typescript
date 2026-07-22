@@ -34,7 +34,7 @@ function rowsToNdjson(rows: RelataRow[]): string {
 export interface ObjectClientCtor extends TypedClientCtor {
   /** Default purpose attached to ingest calls when not overridden per-call. */
   purpose?: string;
-  /** Tenant / `X-Organization-Id`. */
+  /** Tenant / `X-Relata-Tenant-Id`. */
   tenant?: string;
 }
 

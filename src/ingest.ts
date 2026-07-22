@@ -17,7 +17,7 @@ export type RelataRow = Record<string, unknown>;
 export interface IngestClientCtor extends TypedClientCtor {
   /** Default purpose attached to ingest calls when not overridden per-call. */
   purpose?: string;
-  /** Tenant / `X-Organization-Id`. */
+  /** Tenant / `X-Relata-Tenant-Id`. */
   tenant?: string;
 }
 

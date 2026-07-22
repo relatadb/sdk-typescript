@@ -36,7 +36,7 @@ import { createClient } from "@zysec-ai/relata-sdk";
 const relata = createClient("http://localhost:9090", {
   bearerToken: process.env.RELATA_TOKEN,   // required when server sets RELATA_BEARER_TOKEN
   defaultPurpose: "analytics",              // required — every query must declare a purpose
-  tenant: "org-acme",                       // X-Organization-Id (multi-tenant)
+  tenant: "org-acme",                       // X-Relata-Tenant-Id (multi-tenant)
   timeoutMs: 15_000,
   maxRetries: 3,                            // retry on 502/503/504 + network errors
 });
@@ -105,7 +105,7 @@ const relata = createClient("http://localhost:9090", {
   bearerToken: "...",
   defaultPurpose: "analytics",
   timeoutMs: 30_000,
-  tenant: "org-acme",         // X-Organization-Id
+  tenant: "org-acme",         // X-Relata-Tenant-Id
   actingAs: "user-bob",       // X-Acting-As (delegation)
   delegatedBy: "user-alice",  // X-Delegated-By
   maxRetries: 3,              // retry 502/503/504 + network errors
@@ -161,7 +161,7 @@ Common values: `"analytics"`, `"operations"`, `"security_incident"`,
 ```typescript
 const relata = createClient(url, {
   bearerToken: token,
-  tenant: "org-acme",           // X-Organization-Id
+  tenant: "org-acme",           // X-Relata-Tenant-Id
   actingAs: "user-bob",         // X-Acting-As
   delegatedBy: "user-alice",    // X-Delegated-By
 });

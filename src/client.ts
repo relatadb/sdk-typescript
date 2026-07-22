@@ -11,7 +11,7 @@
  * const relata = createClient("http://localhost:9090", {
  *   bearerToken: process.env.RELATA_TOKEN,
  *   defaultPurpose: "analytics",
- *   tenant: "org-acme",          // X-Organization-Id
+ *   tenant: "org-acme",          // X-Relata-Tenant-Id
  *   maxRetries: 3,               // retry on 502/503/504 + network errors
  * });
  *
@@ -154,7 +154,7 @@ export class RelataClient {
     // #buildHeaders so each request gets a fresh id unless the caller pinned
     // one in `opts.headers`.
     const extra: Record<string, string> = {};
-    if (opts.tenant !== undefined) extra["X-Organization-Id"] = opts.tenant;
+    if (opts.tenant !== undefined) extra["X-Relata-Tenant-Id"] = opts.tenant;
     if (opts.actingAs !== undefined) extra["X-Acting-As"] = opts.actingAs;
     if (opts.delegatedBy !== undefined) extra["X-Delegated-By"] = opts.delegatedBy;
     if (opts.headers !== undefined) {
@@ -387,6 +387,32 @@ export class RelataClient {
       results: (wire.results ?? []) as SearchResponse[],
       processingTimeMs: wire.processing_time_ms ?? 0,
     };
+  }
+
+  /**
+   * Execute a GraphQL query against the governed query path (ADR-220).
+   *
+   * @param query GraphQL query string.
+   * @param variables Optional variables map.
+   * @param operationName Optional operation name (multi-operation documents).
+   * @returns The `data` field — an array of row objects for a query, or the
+   *   `__schema` object for an introspection request.
+   * @throws {RelataError} if the server returns a non-empty `errors` array.
+   */
+  async graphql(
+    query: string,
+    variables?: Record<string, unknown>,
+    operationName?: string,
+  ): Promise<unknown> {
+    const body: Record<string, unknown> = { query };
+    if (variables !== undefined) body["variables"] = variables;
+    if (operationName !== undefined) body["operationName"] = operationName;
+    const wire = await this.#post<{ data?: unknown; errors?: { message?: string }[] }>("/graphql", body);
+    if (wire.errors && wire.errors.length > 0) {
+      const msg = wire.errors[0]?.message ?? "graphql error";
+      throw new RelataError(`graphql: ${msg}`, 200, msg);
+    }
+    return wire.data;
   }
 
   // -------------------------------------------------------------------------
@@ -996,7 +1022,7 @@ export class RelataClient {
     return this.#defaultPurpose;
   }
 
-  /** Tenant / `X-Organization-Id` declared on the client, if any. */
+  /** Tenant / `X-Relata-Tenant-Id` declared on the client, if any. */
   get tenant(): string | undefined {
     return this.#tenant;
   }

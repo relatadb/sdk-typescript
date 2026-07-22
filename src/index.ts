@@ -14,7 +14,7 @@
  * const relata = createClient("http://localhost:9090", {
  *   bearerToken: process.env.RELATA_TOKEN,
  *   defaultPurpose: "analytics",
- *   tenant: "acme",        // X-Organization-Id
+ *   tenant: "acme",        // X-Relata-Tenant-Id
  *   maxRetries: 3,         // retry on 502/503/504 + network errors
  * });
  *
@@ -48,7 +48,7 @@
  * - SQL is extended with `AS OF`, `WITH PROVENANCE`, `PATHS_BETWEEN`, `MATCH_FACE`,
  *   `LOOKUP_IDENTITY`, `HYBRID_SCORE`, `NETWORK_EXPAND`.
  * - Bearer token auth via `Authorization: Bearer <token>`.
- * - Multi-tenant: pass `tenant` (X-Organization-Id), `actingAs` (X-Acting-As),
+ * - Multi-tenant: pass `tenant` (X-Relata-Tenant-Id), `actingAs` (X-Acting-As),
  *   `delegatedBy` (X-Delegated-By) to `createClient`.
  * - RFC 7807 problem+json error mapping with `X-Request-ID` propagation.
  * - Zero runtime dependencies — uses native `fetch` (Node 18+, Deno, Bun, browser).

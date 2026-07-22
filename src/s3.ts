@@ -8,7 +8,7 @@
  * equivalent — a zero-runtime-dependency `http()` method that issues
  * standard S3 REST verbs (`GET /<bucket>`, `PUT /<bucket>/<key>`, etc.)
  * against the door endpoint, with the bearer token sent as both
- * `Authorization: Bearer <token>` and `X-Organization-Id` (when a tenant is
+ * `Authorization: Bearer <token>` and `X-Relata-Tenant-Id` (when a tenant is
  * set).
  *
  * The server ships a working S3 door at `crates/relata-cli/src/s3_server.rs`
@@ -31,7 +31,7 @@ import { RelataClient } from "./client.ts";
 export interface S3ClientOptions {
   /** Optional bearer token (also sent as `Authorization: Bearer <token>`). */
   bearerToken?: string;
-  /** Optional tenant sent as `X-Organization-Id`. */
+  /** Optional tenant sent as `X-Relata-Tenant-Id`. */
   tenant?: string;
   /** Optional region tag (the door is region-agnostic; defaults to `us-east-1`). */
   region?: string;
@@ -136,7 +136,7 @@ export class S3Client {
       headers["Authorization"] = `Bearer ${this.#bearerToken}`;
     }
     if (this.#tenant !== undefined) {
-      headers["X-Organization-Id"] = this.#tenant;
+      headers["X-Relata-Tenant-Id"] = this.#tenant;
     }
     if (opts.headers !== undefined) {
       for (const [k, v] of Object.entries(opts.headers)) headers[k] = v;
