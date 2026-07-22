@@ -1262,6 +1262,15 @@ export class RelataClient {
         err?.request_id ?? response.headers.get("x-request-id") ?? undefined;
       const retryAfter = response.headers.get("Retry-After");
       const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : undefined;
+      // #1321: surface the X-RateLimit-* quota headers to the caller.
+      const parseRateLimit = (h: string): number | undefined => {
+        const v = response.headers.get(h);
+        const n = v ? parseInt(v, 10) : NaN;
+        return Number.isFinite(n) ? n : undefined;
+      };
+      const rateLimitLimit = parseRateLimit("X-RateLimit-Limit");
+      const rateLimitRemaining = parseRateLimit("X-RateLimit-Remaining");
+      const rateLimitReset = parseRateLimit("X-RateLimit-Reset");
       const costUnitsUnknown = (err as Record<string, unknown>)["cost_units"];
       const costUnits =
         typeof costUnitsUnknown === "number" ? costUnitsUnknown : undefined;
@@ -1275,6 +1284,9 @@ export class RelataClient {
         typeUrl,
         retryable,
         requestId,
+        rateLimitLimit,
+        rateLimitRemaining,
+        rateLimitReset,
       });
     }
 

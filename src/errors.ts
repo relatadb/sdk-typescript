@@ -338,6 +338,13 @@ export class QuotaError extends RelataError {
  * `catch (e instanceof QuotaError)` callers keep working.
  */
 export class RateLimitedError extends QuotaError {
+  /** `X-RateLimit-Limit` — per-window request budget (#1321). */
+  readonly rateLimitLimit: number | undefined;
+  /** `X-RateLimit-Remaining` — requests remaining in the current window. */
+  readonly rateLimitRemaining: number | undefined;
+  /** `X-RateLimit-Reset` — unix seconds when the window resets. */
+  readonly rateLimitReset: number | undefined;
+
   constructor(
     serverMessage: string,
     retryAfterSeconds?: number,
@@ -348,6 +355,9 @@ export class RateLimitedError extends QuotaError {
       typeUrl?: string | undefined;
       retryable?: boolean | undefined;
       requestId?: string | undefined;
+      rateLimitLimit?: number | undefined;
+      rateLimitRemaining?: number | undefined;
+      rateLimitReset?: number | undefined;
     } = {},
   ) {
     super(
@@ -366,6 +376,9 @@ export class RateLimitedError extends QuotaError {
       },
     );
     this.name = "RateLimitedError";
+    this.rateLimitLimit = extras.rateLimitLimit;
+    this.rateLimitRemaining = extras.rateLimitRemaining;
+    this.rateLimitReset = extras.rateLimitReset;
   }
 }
 
@@ -463,10 +476,24 @@ export function mapHttpError(
     typeUrl?: string | undefined;
     retryable?: boolean | undefined;
     requestId?: string | undefined;
+    rateLimitLimit?: number | undefined;
+    rateLimitRemaining?: number | undefined;
+    rateLimitReset?: number | undefined;
   } = {},
 ): RelataError {
-  const { purpose, queryId, retryAfterSeconds, costUnits, code, typeUrl, retryable, requestId } =
-    extras;
+  const {
+    purpose,
+    queryId,
+    retryAfterSeconds,
+    costUnits,
+    code,
+    typeUrl,
+    retryable,
+    requestId,
+    rateLimitLimit,
+    rateLimitRemaining,
+    rateLimitReset,
+  } = extras;
   // Shared RFC 7807 bag handed to every subclass constructor below.
   const rfc7807 = { code, typeUrl, retryable, requestId };
 
@@ -499,6 +526,9 @@ export function mapHttpError(
         costUnits,
         queryId,
         ...rfc7807,
+        rateLimitLimit,
+        rateLimitRemaining,
+        rateLimitReset,
       });
     default:
       if (status >= 500) {
