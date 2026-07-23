@@ -258,7 +258,7 @@ export class RelataClient {
       rows: rows as T[],
       queryId: wire.query_id ?? "",
       elapsedMs: wire.elapsed_ms ?? 0,
-      processingTimeMs: wire.processing_time_ms ?? wire.elapsed_ms,
+      ...(wire.processing_time_ms !== undefined ? { processingTimeMs: wire.processing_time_ms } : wire.elapsed_ms !== undefined ? { processingTimeMs: wire.elapsed_ms } : {}),
       rowCount: rows.length,
       columns,
     };
@@ -313,7 +313,7 @@ export class RelataClient {
       rows: rows as T[],
       queryId: wire.query_id ?? "",
       elapsedMs: wire.elapsed_ms ?? 0,
-      processingTimeMs: wire.processing_time_ms ?? wire.elapsed_ms,
+      ...(wire.processing_time_ms !== undefined ? { processingTimeMs: wire.processing_time_ms } : wire.elapsed_ms !== undefined ? { processingTimeMs: wire.elapsed_ms } : {}),
       rowCount: rows.length,
       columns,
     };
