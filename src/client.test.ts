@@ -299,7 +299,7 @@ test("transport: tenant / actingAs / delegatedBy become request headers", async 
     delegatedBy: "user-alice",
   });
   await relata.health();
-  assert.equal(calls[0]?.headers["x-organization-id"], "acme");
+  assert.equal(calls[0]?.headers["x-relata-tenant-id"], "acme");
   assert.equal(calls[0]?.headers["x-acting-as"], "user-bob");
   assert.equal(calls[0]?.headers["x-delegated-by"], "user-alice");
 });
@@ -499,7 +499,7 @@ test("createClient: factory wires options through to RelataClient", async () => 
   await relata.health();
   assert.equal(calls[0]?.url, "http://x/health", "trailing slash stripped");
   assert.equal(calls[0]?.headers["authorization"], "Bearer tok");
-  assert.equal(calls[0]?.headers["x-organization-id"], "t");
+  assert.equal(calls[0]?.headers["x-relata-tenant-id"], "t");
 });
 
 // ---------------------------------------------------------------------------

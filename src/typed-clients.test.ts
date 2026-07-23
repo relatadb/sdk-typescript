@@ -110,7 +110,7 @@ test("fromClient: typed clients inherit baseUrl, bearerToken, tenant, purpose", 
   await gov.listRules();
   assert.equal(calls[0]?.url, "http://srv:8080/rules");
   assert.equal(calls[0]?.headers["authorization"], "Bearer tok");
-  assert.equal(calls[0]?.headers["x-organization-id"], "acme");
+  assert.equal(calls[0]?.headers["x-relata-tenant-id"], "acme");
 });
 
 // ---------------------------------------------------------------------------
@@ -598,7 +598,7 @@ test("S3Client: http() PUT/GET against the S3 door", async () => {
   assert.equal(calls[0]?.method, "PUT");
   assert.equal(calls[0]?.url, "http://x:9090/bucket/report.pdf");
   assert.equal(calls[0]?.headers["authorization"], "Bearer tok");
-  assert.equal(calls[0]?.headers["x-organization-id"], "acme");
+  assert.equal(calls[0]?.headers["x-relata-tenant-id"], "acme");
   assert.equal(calls[0]?.headers["content-type"], "application/pdf");
 
   const got = await s3.getObject("bucket", "report.pdf");
