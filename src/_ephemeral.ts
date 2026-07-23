@@ -59,8 +59,8 @@ export interface EphemeralServer {
 /** Spawn a `relata serve` process on a random port and resolve when ready. */
 export async function spawnEphemeral(): Promise<EphemeralServer> {
   const port = await freePort();
-  const token = process.env.RELATA_TEST_TOKEN ?? 'relata-test';
-  const bin = process.env.RELATA_BIN ?? 'relata';
+  const token = process.env['RELATA_TEST_TOKEN'] ?? 'relata-test';
+  const bin = process.env['RELATA_BIN'] ?? 'relata';
 
   const proc = child_process.spawn(bin, ['serve'], {
     env: { ...process.env, RELATA_PORT: String(port), RELATA_BEARER_TOKEN: token, RELATA_LOG_LEVEL: 'warn' },
