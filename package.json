@@ -32,7 +32,7 @@
     "bi-temporal",
     "graph"
   ],
-  "author": "Relata contributors",
+  "author": "ZySec AI",
   "license": "Apache-2.0",
   "homepage": "https://github.com/relatadb/RelataDB/tree/develop/sdks/typescript",
   "bugs": {
