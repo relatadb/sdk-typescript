@@ -1,6 +1,6 @@
 # @zysec-ai/relata-sdk — TypeScript SDK
 
-TypeScript client for the [Relata](../../README.md) data engine — ontology-driven,
+TypeScript client for the [Relata DB](https://relatadb.dev) data engine — ontology-driven,
 enterprise-grade workloads. Zero runtime dependencies (native `fetch` only), typed
 responses, fluent query builder, a Mem0-style governed memory client, and 12+ typed
 v1.1 clients that mirror the server's REST surface — all with full transport
@@ -8,11 +8,12 @@ hardening (RFC 7807 problem+json, `X-Request-ID`, retry, multi-tenant headers).
 
 Compatible with Node.js 18+, Deno, Bun, and browser environments.
 
-- **Source:** [`sdks/typescript/src/`](./src/)
+- **Repo:** [github.com/relatadb/sdk-typescript](https://github.com/relatadb/sdk-typescript)
 - **Package:** `@zysec-ai/relata-sdk`
+- **Docs:** [relatadb.dev](https://relatadb.dev) · [Issues](https://github.com/relatadb/sdk-typescript/issues)
 - **Runtime:** Node.js 18+, Deno, Bun, browsers (anywhere with native `fetch`)
 - **Runtime deps:** **zero** — uses native `fetch`, native `crypto.randomUUID()`, native `AbortController`
-- **Parity:** tracks the Python reference SDK (`../python/relata/`) method-for-method
+- **By:** [ZySec AI](https://zysec.ai) — Frontier Sovereign Intelligence · hello@zysec.ai
 
 TypeScript is **async-native**, so every SDK method returns a `Promise`. There are no
 separate `Async*` classes — that is the idiomatic parity with the Python SDK's sync/async
