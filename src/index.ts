@@ -135,6 +135,9 @@ export { unwrapMcp } from "./mcp.ts";
 
 export { A2AClient } from "./a2a.ts";
 
+export { SearchClient, buildSearchPayload } from "./search.ts";
+export type { SearchQuery, SearchFilter, SearchRankBy } from "./search.ts";
+
 export { AuditClient } from "./audit.ts";
 
 export { IdentityClient } from "./identity.ts";
