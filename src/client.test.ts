@@ -543,6 +543,32 @@ test("search: maps wire shape to SearchResponse", async () => {
   assert.equal(sentBody.limit, 10);
 });
 
+test("resolveIdentity: omits MODE by default, supports canonical/fuse", async () => {
+  const { fetch, calls } = mockFetch([
+    { body: { rows: [] } },
+    { body: { rows: [] } },
+    { body: { rows: [] } },
+  ]);
+  const relata = new RelataClient({ baseUrl: "http://x", fetch });
+  await relata.resolveIdentity("alice@example.com");
+  assert.equal(
+    JSON.parse(calls[0]?.body as string).sql,
+    "RESOLVE_IDENTITY('alice@example.com')",
+  );
+
+  await relata.resolveIdentity("alice@example.com", "analytics", "canonical");
+  assert.equal(
+    JSON.parse(calls[1]?.body as string).sql,
+    "RESOLVE_IDENTITY('alice@example.com', MODE => 'canonical')",
+  );
+
+  await relata.resolveIdentity("alice@example.com", "analytics", "fuse");
+  assert.equal(
+    JSON.parse(calls[2]?.body as string).sql,
+    "RESOLVE_IDENTITY('alice@example.com', MODE => 'fuse')",
+  );
+});
+
 test("sameIdentity: decodes the `match` verdict and emits SAME_IDENTITY SQL (#2246)", async () => {
   const { fetch, calls } = mockFetch({
     body: {
