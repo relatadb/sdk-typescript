@@ -1,5 +1,10 @@
 /**
- * graphql.ts — governed `/graphql` door (ADR-220).
+ * graphql.ts — governed `/graphql` door (ADR-020's 2026-08-01 update, #1173).
+ *
+ * Note: ADR-220 originally named a dedicated GraphQL protocol-door decision;
+ * that file was deleted and the number later recycled for an unrelated
+ * decision. This shipped `/graphql` door is documented instead by the
+ * ADR-020 update (2026-08-01) and issue #1173. See #2101.
  *
  * Demonstrates the four supported query shapes plus error handling:
  *  1. Schema introspection (`{ __schema { types { name } } }`)
