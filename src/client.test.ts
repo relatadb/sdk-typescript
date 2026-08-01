@@ -542,3 +542,26 @@ test("search: maps wire shape to SearchResponse", async () => {
   assert.equal(sentBody.type, "Person");
   assert.equal(sentBody.limit, 10);
 });
+
+test("sameIdentity: decodes the `match` verdict and emits SAME_IDENTITY SQL (#2246)", async () => {
+  const { fetch, calls } = mockFetch({
+    body: {
+      data: [{ match: true, confidence: 0.9, evidence: "direct_link(same_person)" }],
+      columns: ["match", "confidence", "evidence"],
+    },
+  });
+  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "analytics", fetch });
+  const verdict = await relata.sameIdentity("+111", "a@b.com");
+  assert.equal(verdict, true);
+  const sent = JSON.parse(calls[0]?.body as string);
+  assert.equal(sent.purpose, "analytics");
+  assert.equal(sent.sql, "SAME_IDENTITY('+111', 'a@b.com')");
+
+  // Disjoint pair → match=false → false; missing data → false.
+  const { fetch: f2 } = mockFetch({ body: { data: [{ match: false, confidence: 0, evidence: "no_evidence" }] } });
+  const r2 = new RelataClient({ baseUrl: "http://x", defaultPurpose: "analytics", fetch: f2 });
+  assert.equal(await r2.sameIdentity("x", "y"), false);
+  const { fetch: f3 } = mockFetch({ body: { data: [] } });
+  const r3 = new RelataClient({ baseUrl: "http://x", defaultPurpose: "analytics", fetch: f3 });
+  assert.equal(await r3.sameIdentity("x", "y"), false);
+});

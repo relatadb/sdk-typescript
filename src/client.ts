@@ -597,6 +597,22 @@ export class RelataClient {
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
+  /**
+   * Predicate: do two identifiers resolve to the same entity? Executes
+   * `SAME_IDENTITY('<a>', '<b>')` via `POST /query` and decodes the `match`
+   * verdict as a boolean (#2246).
+   */
+  async sameIdentity(a: string, b: string, purpose?: string): Promise<boolean> {
+    const ca = a.replace(/'/g, "''");
+    const cb = b.replace(/'/g, "''");
+    const sql = `SAME_IDENTITY('${ca}', '${cb}')`;
+    const wire = await this.#post<{ data?: Array<Record<string, unknown>> }>(
+      "/query",
+      { purpose: purpose ?? "analytics", sql },
+    );
+    return Boolean(Array.isArray(wire.data) && wire.data[0]?.["match"]);
+  }
+
   /** Ontological merge of two identities (#967). */
   async fuseIdentities(idA: string, idB: string, purpose?: string): Promise<Record<string, unknown>> {
     const a = idA.replace(/'/g, "''");
