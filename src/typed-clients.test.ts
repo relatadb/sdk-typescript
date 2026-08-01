@@ -240,6 +240,394 @@ test("McpClient: initialize, listTools, callTool, queryKnowledge", async () => {
   assert.equal(raw["ok"], true);
 });
 
+// ---------------------------------------------------------------------------
+// #2322 — 42 (+4) previously Rust-only MCP tool wrappers, ported to TS.
+//
+// Each assertion checks the wire tool `name` and the `arguments` sent match
+// the server's real registration (source of truth: the `input_schema`
+// blocks in `crates/relata-cli/src/serve.rs` and
+// `crates/relata-cli/src/serve/mcp/procedure.rs`), not merely that the
+// method exists.
+// ---------------------------------------------------------------------------
+
+async function callAndCapture(
+  fn: (mcp: McpClient) => Promise<unknown>,
+): Promise<{ name: unknown; arguments: Record<string, unknown> }> {
+  const { fetch, calls } = mockFetch([{ body: mcpEnvelope({ ok: true }) }]);
+  const mcp = new McpClient({ baseUrl: "http://x", fetch });
+  await fn(mcp);
+  return JSON.parse(calls[0]?.body ?? "{}");
+}
+
+test("McpClient #2322: rememberBatch sends items", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.rememberBatch([{ content: "a" }], { purpose: "analytics" }),
+  );
+  assert.equal(seen.name, "remember_batch");
+  assert.deepEqual(seen.arguments["items"], [{ content: "a" }]);
+  assert.equal(seen.arguments["purpose"], "analytics");
+});
+
+test("McpClient #2322: recognize sends id", async () => {
+  const seen = await callAndCapture((mcp) => mcp.recognize("mem-1"));
+  assert.equal(seen.name, "recognize");
+  assert.equal(seen.arguments["id"], "mem-1");
+});
+
+test("McpClient #2322: episodesIn sends session_id and limit", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.episodesIn("sess-1", { limit: 5 }),
+  );
+  assert.equal(seen.name, "episodes_in");
+  assert.equal(seen.arguments["session_id"], "sess-1");
+  assert.equal(seen.arguments["limit"], 5);
+});
+
+test("McpClient #2322: justify sends id", async () => {
+  const seen = await callAndCapture((mcp) => mcp.justify("mem-1"));
+  assert.equal(seen.name, "justify");
+  assert.equal(seen.arguments["id"], "mem-1");
+});
+
+test("McpClient #2322: consolidate sends id and content", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.consolidate("mem-1", "updated", { confidence: 0.5 }),
+  );
+  assert.equal(seen.name, "consolidate");
+  assert.equal(seen.arguments["id"], "mem-1");
+  assert.equal(seen.arguments["content"], "updated");
+  assert.equal(seen.arguments["confidence"], 0.5);
+});
+
+test("McpClient #2322: forget sends id and retain_days", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.forget("mem-1", { retainDays: 30 }),
+  );
+  assert.equal(seen.name, "forget");
+  assert.equal(seen.arguments["id"], "mem-1");
+  assert.equal(seen.arguments["retain_days"], 30);
+});
+
+test("McpClient #2322: rememberProcedure sends schema fields", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.rememberProcedure("agent-1", "onboarding", "do the thing"),
+  );
+  assert.equal(seen.name, "remember_procedure");
+  assert.equal(seen.arguments["agent_id"], "agent-1");
+  assert.equal(seen.arguments["name"], "onboarding");
+  assert.equal(seen.arguments["instruction_text"], "do the thing");
+});
+
+test("McpClient #2322: recallProcedure sends agent_id", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.recallProcedure("agent-1", { name: "onboarding", allVersions: true }),
+  );
+  assert.equal(seen.name, "recall_procedure");
+  assert.equal(seen.arguments["agent_id"], "agent-1");
+  assert.equal(seen.arguments["name"], "onboarding");
+  assert.equal(seen.arguments["all_versions"], true);
+});
+
+test("McpClient #2322: associate sends from_id/to_id/relation", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.associate("mem-1", "mem-2", { relation: "contradicts" }),
+  );
+  assert.equal(seen.name, "associate");
+  assert.equal(seen.arguments["from_id"], "mem-1");
+  assert.equal(seen.arguments["to_id"], "mem-2");
+  assert.equal(seen.arguments["relation"], "contradicts");
+});
+
+test("McpClient #2322: resolve sends id", async () => {
+  const seen = await callAndCapture((mcp) => mcp.resolve("mem-1"));
+  assert.equal(seen.name, "resolve");
+  assert.equal(seen.arguments["id"], "mem-1");
+});
+
+test("McpClient #2322: summarise sends ids", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.summarise({ ids: ["mem-1", "mem-2"], scope: "topic:fraud" }),
+  );
+  assert.equal(seen.name, "summarise");
+  assert.deepEqual(seen.arguments["ids"], ["mem-1", "mem-2"]);
+  assert.equal(seen.arguments["scope"], "topic:fraud");
+});
+
+test("McpClient #2322: nlQuery sends query", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.nlQuery("find all persons in Dublin", { interpret: true }),
+  );
+  assert.equal(seen.name, "nl_query");
+  assert.equal(seen.arguments["query"], "find all persons in Dublin");
+  assert.equal(seen.arguments["interpret"], true);
+});
+
+test("McpClient #2322: eraseSubject sends subject and reason", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.eraseSubject("alice@example.com", { reason: "user-request" }),
+  );
+  assert.equal(seen.name, "erase_subject");
+  assert.equal(seen.arguments["subject"], "alice@example.com");
+  assert.equal(seen.arguments["reason"], "user-request");
+});
+
+test("McpClient #2322: ingestMedia sends object_type", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.ingestMedia("MediaContent", { bytesB64: "Zm9v" }),
+  );
+  assert.equal(seen.name, "ingest_media");
+  assert.equal(seen.arguments["object_type"], "MediaContent");
+  assert.equal(seen.arguments["bytes_b64"], "Zm9v");
+});
+
+test("McpClient #2322: similarMultimodal sends entity_type and id", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.similarMultimodal("Document", "doc-1", { topK: 5 }),
+  );
+  assert.equal(seen.name, "similar_multimodal");
+  assert.equal(seen.arguments["entity_type"], "Document");
+  assert.equal(seen.arguments["id"], "doc-1");
+  assert.equal(seen.arguments["entity_id"], undefined);
+});
+
+test("McpClient #2322: hybridSearch sends entity_type and query", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.hybridSearch("Document", "fraud ring"),
+  );
+  assert.equal(seen.name, "hybrid_search");
+  assert.equal(seen.arguments["entity_type"], "Document");
+  assert.equal(seen.arguments["query"], "fraud ring");
+});
+
+test("McpClient #2322: pathsBetween sends from and to", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.pathsBetween("a", "b", { maxHops: 6 }),
+  );
+  assert.equal(seen.name, "paths_between");
+  assert.equal(seen.arguments["from"], "a");
+  assert.equal(seen.arguments["to"], "b");
+  assert.equal(seen.arguments["max_hops"], 6);
+});
+
+test("McpClient #2322: listLinkTypes sends no args", async () => {
+  const seen = await callAndCapture((mcp) => mcp.listLinkTypes());
+  assert.equal(seen.name, "list_link_types");
+});
+
+test("McpClient #2322: serverHealth sends no args", async () => {
+  const seen = await callAndCapture((mcp) => mcp.serverHealth());
+  assert.equal(seen.name, "server_health");
+});
+
+test("McpClient #2322: jobStatus sends no args", async () => {
+  const seen = await callAndCapture((mcp) => mcp.jobStatus());
+  assert.equal(seen.name, "job_status");
+});
+
+test("McpClient #2322: metrics sends no args", async () => {
+  const seen = await callAndCapture((mcp) => mcp.metrics());
+  assert.equal(seen.name, "metrics");
+});
+
+test("McpClient #2322: listRules sends no args", async () => {
+  const seen = await callAndCapture((mcp) => mcp.listRules());
+  assert.equal(seen.name, "list_rules");
+});
+
+test("McpClient #2322: createRule sends name and condition_sql", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.createRule("high-value-txn", "amount > 10000", { severity: "high" }),
+  );
+  assert.equal(seen.name, "create_rule");
+  assert.equal(seen.arguments["name"], "high-value-txn");
+  assert.equal(seen.arguments["condition_sql"], "amount > 10000");
+  assert.equal(seen.arguments["severity"], "high");
+  assert.equal(seen.arguments["purpose"], "security");
+});
+
+test("McpClient #2322: importSigma sends yaml key", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.importSigma("title: test\n"),
+  );
+  assert.equal(seen.name, "import_sigma");
+  assert.equal(seen.arguments["yaml"], "title: test\n");
+  assert.equal(seen.arguments["sigma_yaml"], undefined);
+});
+
+test("McpClient #2322: listJobs sends no args", async () => {
+  const seen = await callAndCapture((mcp) => mcp.listJobs());
+  assert.equal(seen.name, "list_jobs");
+});
+
+test("McpClient #2322: scheduleJob sends name", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.scheduleJob("transaction_ring"),
+  );
+  assert.equal(seen.name, "schedule_job");
+  assert.equal(seen.arguments["name"], "transaction_ring");
+});
+
+test("McpClient #2322: listWorkflows sends no args", async () => {
+  const seen = await callAndCapture((mcp) => mcp.listWorkflows());
+  assert.equal(seen.name, "list_workflows");
+});
+
+test("McpClient #2322: runWorkflow sends name", async () => {
+  const seen = await callAndCapture((mcp) => mcp.runWorkflow("aml-review"));
+  assert.equal(seen.name, "run_workflow");
+  assert.equal(seen.arguments["name"], "aml-review");
+});
+
+test("McpClient #2322: workflowStatus sends run_id", async () => {
+  const seen = await callAndCapture((mcp) => mcp.workflowStatus("run-1"));
+  assert.equal(seen.name, "workflow_status");
+  assert.equal(seen.arguments["run_id"], "run-1");
+});
+
+test("McpClient #2322: traceCrypto sends address", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.traceCrypto("bc1qxyz", { maxHops: 3 }),
+  );
+  assert.equal(seen.name, "trace_crypto");
+  assert.equal(seen.arguments["address"], "bc1qxyz");
+  assert.equal(seen.arguments["max_hops"], 3);
+  assert.equal(seen.arguments["purpose"], "analytics");
+});
+
+test("McpClient #2322: beneficialOwnership sends party", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.beneficialOwnership("Acme Holdings"),
+  );
+  assert.equal(seen.name, "beneficial_ownership");
+  assert.equal(seen.arguments["party"], "Acme Holdings");
+});
+
+test("McpClient #2322: reconstructWire sends account", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.reconstructWire("IE12BOFI90000112345678"),
+  );
+  assert.equal(seen.name, "reconstruct_wire");
+  assert.equal(seen.arguments["account"], "IE12BOFI90000112345678");
+});
+
+test("McpClient #2322: traceHawala sends seed", async () => {
+  const seen = await callAndCapture((mcp) => mcp.traceHawala("actor-1"));
+  assert.equal(seen.name, "trace_hawala");
+  assert.equal(seen.arguments["seed"], "actor-1");
+});
+
+test("McpClient #2322: geofence sends lat/lon", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.geofence(53.35, -6.26, { radiusM: 500 }),
+  );
+  assert.equal(seen.name, "geofence");
+  assert.equal(seen.arguments["lat"], 53.35);
+  assert.equal(seen.arguments["lon"], -6.26);
+  assert.equal(seen.arguments["radius_m"], 500);
+});
+
+test("McpClient #2322: resolveEntityIdentity sends identity", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.resolveEntityIdentity("alice@example.com"),
+  );
+  assert.equal(seen.name, "resolve_entity_identity");
+  assert.equal(seen.arguments["identity"], "alice@example.com");
+});
+
+test("McpClient #2322: detectCommunities sends entity_type", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.detectCommunities("Person", { algo: "leiden" }),
+  );
+  assert.equal(seen.name, "detect_communities");
+  assert.equal(seen.arguments["entity_type"], "Person");
+  assert.equal(seen.arguments["algo"], "leiden");
+});
+
+test("McpClient #2322: rankKeyNodes sends entity_type and metric", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.rankKeyNodes("Person", { metric: "betweenness" }),
+  );
+  assert.equal(seen.name, "rank_key_nodes");
+  assert.equal(seen.arguments["entity_type"], "Person");
+  assert.equal(seen.arguments["metric"], "betweenness");
+});
+
+test("McpClient #2322: hubAuthority sends entity_type", async () => {
+  const seen = await callAndCapture((mcp) => mcp.hubAuthority("Person"));
+  assert.equal(seen.name, "hub_authority");
+  assert.equal(seen.arguments["entity_type"], "Person");
+});
+
+test("McpClient #2322: predictLinks sends entity_type", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.predictLinks("Person", { fromId: "p1", toId: "p2", method: "jaccard" }),
+  );
+  assert.equal(seen.name, "predict_links");
+  assert.equal(seen.arguments["entity_type"], "Person");
+  assert.equal(seen.arguments["from_id"], "p1");
+  assert.equal(seen.arguments["to_id"], "p2");
+  assert.equal(seen.arguments["method"], "jaccard");
+});
+
+test("McpClient #2322: findScc sends entity_type", async () => {
+  const seen = await callAndCapture((mcp) => mcp.findScc("Person"));
+  assert.equal(seen.name, "find_scc");
+  assert.equal(seen.arguments["entity_type"], "Person");
+});
+
+test("McpClient #2322: screenSanctions sends name", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.screenSanctions("John Doe", { threshold: 0.9 }),
+  );
+  assert.equal(seen.name, "screen_sanctions");
+  assert.equal(seen.arguments["name"], "John Doe");
+  assert.equal(seen.arguments["threshold"], 0.9);
+  assert.equal(seen.arguments["purpose"], "compliance_review");
+});
+
+test("McpClient #2322: aggregateStats sends entity_type", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.aggregateStats("Transaction", { agg: "SUM", column: "amount" }),
+  );
+  assert.equal(seen.name, "aggregate_stats");
+  assert.equal(seen.arguments["entity_type"], "Transaction");
+  assert.equal(seen.arguments["agg"], "SUM");
+  assert.equal(seen.arguments["column"], "amount");
+});
+
+test("McpClient #2322: investigateEntity sends entity_type and id", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.investigateEntity("Person", "p1"),
+  );
+  assert.equal(seen.name, "investigate_entity");
+  assert.equal(seen.arguments["entity_type"], "Person");
+  assert.equal(seen.arguments["id"], "p1");
+});
+
+test("McpClient #2322: findThreats sends entity_type", async () => {
+  const seen = await callAndCapture((mcp) => mcp.findThreats("Person"));
+  assert.equal(seen.name, "find_threats");
+  assert.equal(seen.arguments["entity_type"], "Person");
+});
+
+test("McpClient #2322: searchVideoFrames sends query_id", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.searchVideoFrames("frame-1", { topK: 10 }),
+  );
+  assert.equal(seen.name, "search_video_frames");
+  assert.equal(seen.arguments["query_id"], "frame-1");
+  assert.equal(seen.arguments["top_k"], 10);
+});
+
+test("McpClient #2322: faceMatch sends probe_id", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.faceMatch("probe-1", { threshold: 0.9 }),
+  );
+  assert.equal(seen.name, "face_match");
+  assert.equal(seen.arguments["probe_id"], "probe-1");
+  assert.equal(seen.arguments["threshold"], 0.9);
+});
+
 test("unwrapMcp: returns response unchanged when not enveloped", () => {
   const flat = { rows: [1, 2, 3] };
   assert.equal(unwrapMcp(flat), flat);

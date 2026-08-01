@@ -360,4 +360,556 @@ export class McpClient extends TypedClientBase {
       top_k: opts.topK ?? 5,
     });
   }
+
+  // -------------------------------------------------------------------------
+  // #2322 — 42 (+4) previously Rust-only MCP tool wrappers, ported to TS.
+  // -------------------------------------------------------------------------
+
+  /** `remember_batch` — bulk `remember` write. */
+  async rememberBatch(
+    items: Record<string, unknown>[],
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = { items };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("remember_batch", args);
+  }
+
+  /** `recognize` — look up a stored memory item by id. */
+  async recognize(
+    memoryId: string,
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = { id: memoryId };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("recognize", args);
+  }
+
+  /** `episodes_in` — list Episodes within an AgentSession. */
+  async episodesIn(
+    sessionId: string,
+    opts: { limit?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      session_id: sessionId,
+      limit: opts.limit ?? 20,
+    };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("episodes_in", args);
+  }
+
+  /** `justify` — provenance/audit chain for a memory object. */
+  async justify(
+    memoryId: string,
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = { id: memoryId };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("justify", args);
+  }
+
+  /** `consolidate` — supersede a memory item with an updated belief. */
+  async consolidate(
+    memoryId: string,
+    content: string,
+    opts: { confidence?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      id: memoryId,
+      content,
+      confidence: opts.confidence ?? 1.0,
+    };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("consolidate", args);
+  }
+
+  /** `forget` — apply a retention policy to a memory item. */
+  async forget(
+    memoryId: string,
+    opts: { retainDays?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      id: memoryId,
+      retain_days: opts.retainDays ?? 0,
+    };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("forget", args);
+  }
+
+  /** `remember_procedure` — store a versioned agent procedure (T16/#2233). */
+  async rememberProcedure(
+    agentId: string,
+    name: string,
+    instructionText: string,
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      agent_id: agentId,
+      name,
+      instruction_text: instructionText,
+    };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("remember_procedure", args);
+  }
+
+  /** `recall_procedure` — read back stored procedures for an agent (T16/#2233). */
+  async recallProcedure(
+    agentId: string,
+    opts: {
+      name?: string;
+      allVersions?: boolean;
+      limit?: number;
+      purpose?: string;
+    } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      agent_id: agentId,
+      all_versions: opts.allVersions ?? false,
+      limit: opts.limit ?? 20,
+    };
+    if (opts.name !== undefined) args["name"] = opts.name;
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("recall_procedure", args);
+  }
+
+  /** `associate` — link two memory items/entities with a typed relation. */
+  async associate(
+    fromId: string,
+    toId: string,
+    opts: { relation?: string; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      from_id: fromId,
+      to_id: toId,
+      relation: opts.relation ?? "related_to",
+    };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("associate", args);
+  }
+
+  /** `resolve` — follow a memory's supersession chain to its canonical head. */
+  async resolve(
+    memoryId: string,
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = { id: memoryId };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("resolve", args);
+  }
+
+  /** `summarise` — governed, provenance-stamped summary of a session/topic. */
+  async summarise(
+    opts: {
+      ids?: string[];
+      sessionId?: string;
+      scope?: string;
+      contents?: string[];
+      purpose?: string;
+    } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {};
+    if (opts.ids !== undefined) args["ids"] = opts.ids;
+    if (opts.sessionId !== undefined) args["session_id"] = opts.sessionId;
+    if (opts.scope !== undefined) args["scope"] = opts.scope;
+    if (opts.contents !== undefined) args["contents"] = opts.contents;
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("summarise", args);
+  }
+
+  /** `nl_query` — natural-language question translated to SQL and executed. */
+  async nlQuery(
+    query: string,
+    opts: { purpose?: string; interpret?: boolean } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      query,
+      interpret: opts.interpret ?? false,
+    };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("nl_query", args);
+  }
+
+  /** `erase_subject` — GDPR Art. 17 crypto-shred erasure with a signed receipt. */
+  async eraseSubject(
+    subject: string,
+    opts: { reason?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("erase_subject", {
+      subject,
+      reason: opts.reason ?? "gdpr-art17-request",
+    });
+  }
+
+  /** `ingest_media` — ingest an image/audio/video (base64) or text payload. */
+  async ingestMedia(
+    objectType: string,
+    opts: {
+      modality?: string;
+      codec?: string;
+      bytesB64?: string;
+      text?: string;
+      tenantId?: string;
+      partitionKey?: string;
+    } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      object_type: objectType,
+      modality: opts.modality ?? "image",
+    };
+    if (opts.codec !== undefined) args["codec"] = opts.codec;
+    if (opts.bytesB64 !== undefined) args["bytes_b64"] = opts.bytesB64;
+    if (opts.text !== undefined) args["text"] = opts.text;
+    if (opts.tenantId !== undefined) args["tenant_id"] = opts.tenantId;
+    if (opts.partitionKey !== undefined)
+      args["partition_key"] = opts.partitionKey;
+    return this.callTool("ingest_media", args);
+  }
+
+  /** `similar_multimodal` — governed cross-modal similarity search (ADR-106). */
+  async similarMultimodal(
+    entityType: string,
+    entityId: string,
+    opts: { topK?: number; modality?: string; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      entity_type: entityType,
+      id: entityId,
+      top_k: opts.topK ?? 10,
+      modality: opts.modality ?? "text",
+    };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("similar_multimodal", args);
+  }
+
+  /** `hybrid_search` — governed BM25 ⊕ vector retrieval fused via RRF. */
+  async hybridSearch(
+    entityType: string,
+    query: string,
+    opts: { topK?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      entity_type: entityType,
+      query,
+      top_k: opts.topK ?? 10,
+    };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("hybrid_search", args);
+  }
+
+  /** `paths_between` — governed relationship/identity graph walk. */
+  async pathsBetween(
+    fromId: string,
+    toId: string,
+    opts: { maxHops?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      from: fromId,
+      to: toId,
+      max_hops: opts.maxHops ?? 4,
+    };
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    return this.callTool("paths_between", args);
+  }
+
+  /** `list_link_types` — every governed edge type defined in the ontology. */
+  async listLinkTypes(): Promise<Record<string, unknown>> {
+    return this.callTool("list_link_types", {});
+  }
+
+  /** `server_health` — readiness snapshot for an ops agent. */
+  async serverHealth(): Promise<Record<string, unknown>> {
+    return this.callTool("server_health", {});
+  }
+
+  /** `job_status` — list continuous detection jobs with live status. */
+  async jobStatus(): Promise<Record<string, unknown>> {
+    return this.callTool("job_status", {});
+  }
+
+  /** `metrics` — operational counters for a monitoring agent. */
+  async metrics(): Promise<Record<string, unknown>> {
+    return this.callTool("metrics", {});
+  }
+
+  /** `list_rules` — list detection rules (ADR-162). */
+  async listRules(): Promise<Record<string, unknown>> {
+    return this.callTool("list_rules", {});
+  }
+
+  /** `create_rule` — create a detection rule (ADR-162). */
+  async createRule(
+    name: string,
+    conditionSql: string,
+    opts: { severity?: string; description?: string; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      name,
+      condition_sql: conditionSql,
+      purpose: opts.purpose ?? "security",
+    };
+    if (opts.severity !== undefined) args["severity"] = opts.severity;
+    if (opts.description !== undefined) args["description"] = opts.description;
+    return this.callTool("create_rule", args);
+  }
+
+  /** `import_sigma` — import a Sigma detection rule (YAML). */
+  async importSigma(
+    sigmaYaml: string,
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("import_sigma", {
+      yaml: sigmaYaml,
+      purpose: opts.purpose ?? "security",
+    });
+  }
+
+  /** `list_jobs` — list all registered detection jobs with live status. */
+  async listJobs(): Promise<Record<string, unknown>> {
+    return this.callTool("list_jobs", {});
+  }
+
+  /** `schedule_job` — trigger an immediate run of a named detection job. */
+  async scheduleJob(name: string): Promise<Record<string, unknown>> {
+    return this.callTool("schedule_job", { name });
+  }
+
+  /** `list_workflows` — list all registered workflow definitions. */
+  async listWorkflows(): Promise<Record<string, unknown>> {
+    return this.callTool("list_workflows", {});
+  }
+
+  /** `run_workflow` — start a workflow execution by name. */
+  async runWorkflow(name: string): Promise<Record<string, unknown>> {
+    return this.callTool("run_workflow", { name });
+  }
+
+  /** `workflow_status` — query step-level status of a workflow run. */
+  async workflowStatus(runId: string): Promise<Record<string, unknown>> {
+    return this.callTool("workflow_status", { run_id: runId });
+  }
+
+  /** `trace_crypto` — follow a cryptocurrency address hop-by-hop. */
+  async traceCrypto(
+    address: string,
+    opts: { maxHops?: number; minAmount?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("trace_crypto", {
+      address,
+      max_hops: opts.maxHops ?? 5,
+      min_amount: opts.minAmount ?? 0,
+      purpose: opts.purpose ?? "analytics",
+    });
+  }
+
+  /** `beneficial_ownership` — trace the beneficial ownership chain for a party. */
+  async beneficialOwnership(
+    party: string,
+    opts: { maxDepth?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("beneficial_ownership", {
+      party,
+      max_depth: opts.maxDepth ?? 6,
+      purpose: opts.purpose ?? "analytics",
+    });
+  }
+
+  /** `reconstruct_wire` — reconstruct a wire-transfer chain for an account. */
+  async reconstructWire(
+    account: string,
+    opts: { tolerancePct?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("reconstruct_wire", {
+      account,
+      tolerance_pct: opts.tolerancePct ?? 5.0,
+      purpose: opts.purpose ?? "analytics",
+    });
+  }
+
+  /** `trace_hawala` — trace informal hawala value-transfer networks. */
+  async traceHawala(
+    seed: string,
+    opts: { maxHops?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("trace_hawala", {
+      seed,
+      max_hops: opts.maxHops ?? 5,
+      purpose: opts.purpose ?? "analytics",
+    });
+  }
+
+  /** `geofence` — spatial fence query over a circular area. */
+  async geofence(
+    lat: number,
+    lon: number,
+    opts: { radiusM?: number; targetType?: string; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("geofence", {
+      lat,
+      lon,
+      radius_m: opts.radiusM ?? 1000,
+      target_type: opts.targetType ?? "MovementEvent",
+      purpose: opts.purpose ?? "analytics",
+    });
+  }
+
+  /** `resolve_entity_identity` — resolve the canonical identity cluster. */
+  async resolveEntityIdentity(
+    identity: string,
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("resolve_entity_identity", {
+      identity,
+      purpose: opts.purpose ?? "analytics",
+    });
+  }
+
+  /** `detect_communities` — Louvain/Leiden community detection. */
+  async detectCommunities(
+    entityType: string,
+    opts: { algo?: string; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("detect_communities", {
+      entity_type: entityType,
+      algo: opts.algo ?? "louvain",
+      purpose: opts.purpose ?? "analytics",
+    });
+  }
+
+  /** `rank_key_nodes` — rank entities by PageRank or centrality metric. */
+  async rankKeyNodes(
+    entityType: string,
+    opts: {
+      metric?: string;
+      damping?: number;
+      maxIter?: number;
+      purpose?: string;
+    } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("rank_key_nodes", {
+      entity_type: entityType,
+      metric: opts.metric ?? "pagerank",
+      damping: opts.damping ?? 0.85,
+      max_iter: opts.maxIter ?? 20,
+      purpose: opts.purpose ?? "analytics",
+    });
+  }
+
+  /** `hub_authority` — HITS hub/authority scores for an entity type. */
+  async hubAuthority(
+    entityType: string,
+    opts: { maxIter?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("hub_authority", {
+      entity_type: entityType,
+      max_iter: opts.maxIter ?? 20,
+      purpose: opts.purpose ?? "analytics",
+    });
+  }
+
+  /** `predict_links` — score candidate edges between entities. */
+  async predictLinks(
+    entityType: string,
+    opts: {
+      fromId?: string;
+      toId?: string;
+      method?: string;
+      purpose?: string;
+    } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      entity_type: entityType,
+      method: opts.method ?? "common_neighbors",
+      purpose: opts.purpose ?? "analytics",
+    };
+    if (opts.fromId !== undefined) args["from_id"] = opts.fromId;
+    if (opts.toId !== undefined) args["to_id"] = opts.toId;
+    return this.callTool("predict_links", args);
+  }
+
+  /** `find_scc` — find strongly connected components in an entity type's graph. */
+  async findScc(
+    entityType: string,
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("find_scc", {
+      entity_type: entityType,
+      purpose: opts.purpose ?? "analytics",
+    });
+  }
+
+  /** `screen_sanctions` — screen a name/entity against sanctions lists. */
+  async screenSanctions(
+    name: string,
+    opts: { threshold?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const args: Record<string, unknown> = {
+      name,
+      purpose: opts.purpose ?? "compliance_review",
+    };
+    if (opts.threshold !== undefined) args["threshold"] = opts.threshold;
+    return this.callTool("screen_sanctions", args);
+  }
+
+  /** `aggregate_stats` — governed aggregate query over an entity type. */
+  async aggregateStats(
+    entityType: string,
+    opts: { agg?: string; column?: string; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("aggregate_stats", {
+      entity_type: entityType,
+      agg: opts.agg ?? "COUNT",
+      column: opts.column ?? "*",
+      purpose: opts.purpose ?? "analytics",
+    });
+  }
+
+  /** `investigate_entity` — composite profile + timeline + connections + risk. */
+  async investigateEntity(
+    entityType: string,
+    entityId: string,
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("investigate_entity", {
+      entity_type: entityType,
+      id: entityId,
+      purpose: opts.purpose ?? "security_incident",
+    });
+  }
+
+  /** `find_threats` — composite threat hunt over an entity type. */
+  async findThreats(
+    entityType: string,
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("find_threats", {
+      entity_type: entityType,
+      purpose: opts.purpose ?? "security_incident",
+    });
+  }
+
+  /** `search_video_frames` — similarity search over video frames/segments. */
+  async searchVideoFrames(
+    queryId: string,
+    opts: { mediaType?: string; topK?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("search_video_frames", {
+      query_id: queryId,
+      media_type: opts.mediaType ?? "VideoFrame",
+      top_k: opts.topK ?? 20,
+      purpose: opts.purpose ?? "security_incident",
+    });
+  }
+
+  /** `face_match` — GATED: match a probe face against indexed media. */
+  async faceMatch(
+    probeId: string,
+    opts: { threshold?: number; topK?: number; purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.callTool("face_match", {
+      probe_id: probeId,
+      threshold: opts.threshold ?? 0.8,
+      top_k: opts.topK ?? 10,
+      purpose: opts.purpose ?? "security_incident",
+    });
+  }
 }
