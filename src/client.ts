@@ -774,6 +774,18 @@ export class RelataClient {
     return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRYPTO_TRACE('${entity}')` });
   }
 
+  async wireReconstruction(account: string, opts?: { tolerancePct?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const parts = [`WIRE_RECONSTRUCTION('${account}'`];
+    if (opts?.tolerancePct !== undefined) parts.push(`, TOLERANCE_PCT => ${opts.tolerancePct}`);
+    parts.push(")");
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
+  }
+
+  async hawalaTrace(seed: string, opts?: { maxHops?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const maxHops = opts?.maxHops === undefined ? 5 : Math.min(10, Math.max(1, Math.trunc(opts.maxHops)));
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: `HAWALA_TRACE('${seed}', MAX_HOPS => ${maxHops})` });
+  }
+
   async dnsTunnelDetect(entity: string, purpose?: string): Promise<Record<string, unknown>> {
     return this.#post("/query", { purpose: purpose ?? "security", sql: `DNS_TUNNEL_DETECT('${entity}')` });
   }

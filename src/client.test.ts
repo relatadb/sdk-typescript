@@ -542,3 +542,25 @@ test("search: maps wire shape to SearchResponse", async () => {
   assert.equal(sentBody.type, "Person");
   assert.equal(sentBody.limit, 10);
 });
+
+// ---------------------------------------------------------------------------
+// #2249 — FinINT trace ops
+// ---------------------------------------------------------------------------
+
+test("wireReconstruction: builds WIRE_RECONSTRUCTION SQL with tolerance", async () => {
+  const { fetch, calls } = mockFetch({ body: { rows: [], query_id: "q1", elapsed_ms: 1 } });
+  const relata = new RelataClient({ baseUrl: "http://x", fetch });
+  await relata.wireReconstruction("ACC-007", { tolerancePct: 2.5, purpose: "finint" });
+  const sent = JSON.parse(calls[0]?.body as string);
+  assert.equal(sent.purpose, "finint");
+  assert.equal(sent.sql, "WIRE_RECONSTRUCTION('ACC-007', TOLERANCE_PCT => 2.5)");
+});
+
+test("hawalaTrace: clamps maxHops to 10 and defaults purpose to analytics", async () => {
+  const { fetch, calls } = mockFetch({ body: { rows: [], query_id: "q2", elapsed_ms: 1 } });
+  const relata = new RelataClient({ baseUrl: "http://x", fetch });
+  await relata.hawalaTrace("SEED-1", { maxHops: 99 });
+  const sent = JSON.parse(calls[0]?.body as string);
+  assert.equal(sent.purpose, "analytics");
+  assert.equal(sent.sql, "HAWALA_TRACE('SEED-1', MAX_HOPS => 10)");
+});
