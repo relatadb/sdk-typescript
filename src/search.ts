@@ -59,11 +59,11 @@ export function buildSearchPayload(q: SearchQuery): Record<string, unknown> {
   const body: Record<string, unknown> = { from: q.from, limit: q.limit ?? 20 };
   const rankBy = q.rankBy ??
     (q.text ? (["bm25", q.matchColumn ?? "*", q.text] as SearchRankBy) : undefined);
-  if (rankBy) body.rank_by = rankBy;
-  if (q.filters) body.filters = normaliseFilters(q.filters);
-  if (q.includeAttributes) body.include_attributes = q.includeAttributes;
-  if (q.consistency) body.consistency = q.consistency;
-  if (q.purpose) body.purpose = q.purpose;
+  if (rankBy) body["rank_by"] = rankBy;
+  if (q.filters) body["filters"] = normaliseFilters(q.filters);
+  if (q.includeAttributes) body["include_attributes"] = q.includeAttributes;
+  if (q.consistency) body["consistency"] = q.consistency;
+  if (q.purpose) body["purpose"] = q.purpose;
   return body;
 }
 
