@@ -178,6 +178,42 @@ export { ConsoleLogger, NoOpLogger, SafeLogger } from "./logger.ts";
 export type { Logger, LogContext } from "./logger.ts";
 
 // ---------------------------------------------------------------------------
+// Foundational typed surfaces — client canonical validation + AML decoders
+// (#2248, #2255)
+// ---------------------------------------------------------------------------
+
+export {
+  CanonicalError,
+  validateEmail, normalizeEmail,
+  validatePhone, normalizePhone,
+  validateIban, normalizeIban, mod97Valid,
+  validateImei, normalizeImei,
+  validateVin, normalizeVin,
+  validateMsisdn, normalizeMsisdn,
+  validateIpv4, normalizeIpv4,
+  validateIpv6, normalizeIpv6, parseIpv6, displayIpv6,
+} from "./canonical.ts";
+
+export {
+  decodeSanctionsHits,
+  decodeBeneficialOwners,
+  decodeCryptoTrace,
+  decodeWireHops,
+  decodeHawalaPairs,
+  decodeResolvedIdentities,
+  decodePathHops,
+} from "./aml.ts";
+export type {
+  SanctionsHit,
+  BeneficialOwner,
+  CryptoTraceHop,
+  WireHop,
+  HawalaPair,
+  ResolvedIdentity,
+  PathHop,
+} from "./aml.ts";
+
+// ---------------------------------------------------------------------------
 // Convenience factory
 // ---------------------------------------------------------------------------
 

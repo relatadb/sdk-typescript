@@ -705,6 +705,33 @@ export class RelataClient {
     return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
   }
 
+  // ── Maritime operators (#2247) ────────────────────────────────────────────
+
+  /** Vessel track — track a vessel's AIS position reports over a time window. */
+  async vesselTrack(mmsi: number, opts?: { windowSecs?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const parts = [`VESSEL_TRACK(${mmsi}`];
+    if (opts?.windowSecs !== undefined) parts.push(`, WINDOW => ${opts.windowSecs * 1_000_000_000}`);
+    parts.push(")");
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
+  }
+
+  /** Dark-fleet detection — flag vessels with AIS gaps (transponder-off periods). */
+  async darkFleetDetect(opts?: { maxGapHours?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const sql = opts?.maxGapHours !== undefined
+      ? `DARK_FLEET_DETECT(MAX_GAP_HOURS => ${opts.maxGapHours})`
+      : "DARK_FLEET_DETECT()";
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
+  }
+
+  /** Vessel-to-vessel (ship-to-ship) transfer detection — close-proximity encounters. */
+  async vesselToVesselTransfer(opts?: { proximityNm?: number; timeWindowMinutes?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const parts: string[] = [];
+    if (opts?.proximityNm !== undefined) parts.push(`PROXIMITY_NM => ${opts.proximityNm}`);
+    if (opts?.timeWindowMinutes !== undefined) parts.push(`TIME_WINDOW_MINUTES => ${opts.timeWindowMinutes}`);
+    const sql = parts.length ? `VESSEL_TO_VESSEL_TRANSFER(${parts.join(", ")})` : "VESSEL_TO_VESSEL_TRANSFER()";
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
+  }
+
   // -------------------------------------------------------------------------
   // Public API — fluent QueryBuilder
   // -------------------------------------------------------------------------
