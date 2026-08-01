@@ -22,6 +22,7 @@
  */
 
 import { RelataClient } from "./client.ts";
+import { assertNotRedirected } from "./errors.ts";
 
 // ---------------------------------------------------------------------------
 // S3Client
@@ -142,7 +143,7 @@ export class S3Client {
       for (const [k, v] of Object.entries(opts.headers)) headers[k] = v;
     }
 
-    const init: RequestInit = { method, headers };
+    const init: RequestInit = { method, headers, redirect: "manual" };
     if (opts.body !== undefined) {
       // `fetch` accepts `Uint8Array | string | Buffer` as BodyInit. Cast to
       // satisfy the TS lib's narrower union (which omits `Uint8Array<ArrayBuffer>`).
@@ -153,6 +154,7 @@ export class S3Client {
     }
 
     const response = await this.#fetch(url, init);
+    assertNotRedirected(response, url);
     const buf = await response.arrayBuffer();
     const respHeaders: Record<string, string> = {};
     response.headers.forEach((v, k) => {

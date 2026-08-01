@@ -55,6 +55,7 @@ import {
   type WireStatusResponse,
 } from "./types.ts";
 import {
+  assertNotRedirected,
   mapHttpError,
   NetworkError,
   PurposeError,
@@ -1419,7 +1420,9 @@ export class RelataClient {
         headers,
         signal: controller.signal,
         body,
+        redirect: "manual",
       });
+      assertNotRedirected(response, url);
       return await this.#parseResponse<T>(response, undefined);
     } catch (err) {
       if (this.#isAbortError(err)) {
@@ -1487,11 +1490,13 @@ export class RelataClient {
           method,
           headers,
           signal,
+          redirect: "manual",
         };
         if (method === "POST") {
           (init as RequestInit & { body: string }).body = JSON.stringify(body);
         }
         const response = await this.#fetch(url, init);
+        assertNotRedirected(response, url);
         const result = await this.#parseResponse<T>(
           response,
           body?.["purpose"] as string | undefined,

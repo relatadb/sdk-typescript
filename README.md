@@ -185,6 +185,18 @@ const relata = createClient(url, {
 });
 ```
 
+### Transport security — redirects are never followed
+
+Every `fetch()` call the SDK makes (the main client, the typed v1.1 clients,
+`Memory`, the S3 door client, and the streaming/SSE helpers) passes an
+explicit `redirect: "manual"` policy, and a 3xx response is treated as a
+hard `NetworkError` instead of being silently followed. This is a
+code-level guarantee that the `Authorization: Bearer <token>` header is
+never resent to a redirect target — independent of whatever the bound or
+caller-injected `fetch` implementation (`RelataClientOptions.fetch`) would
+otherwise default to. It matches the hardening `crates/relata-sdk-rust`
+shipped via `redirect::Policy::none()` (#1416); see #2364.
+
 ### Logging (silent by default)
 
 The SDK **never** writes to `console` on its own — pass an explicit `logger`

@@ -23,7 +23,12 @@
  * no separate `AsyncMemory` (the SDK-wide parity decision, see the README).
  */
 
-import { NetworkError, PurposeError, TimeoutError } from "./errors.ts";
+import {
+  assertNotRedirected,
+  NetworkError,
+  PurposeError,
+  TimeoutError,
+} from "./errors.ts";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -464,13 +469,19 @@ export class Memory {
           ? crypto.randomUUID()
           : `relata-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-      const init: RequestInit = { method, headers, signal: controller.signal };
+      const init: RequestInit = {
+        method,
+        headers,
+        signal: controller.signal,
+        redirect: "manual",
+      };
       if (body !== undefined) {
         headers["Content-Type"] = "application/json";
         (init as RequestInit & { body: string }).body = JSON.stringify(body);
       }
 
       const response = await this.#fetch(url, init);
+      assertNotRedirected(response, url);
       const contentType = response.headers.get("content-type") ?? "";
       const isJson =
         contentType.includes("application/json") ||
@@ -501,6 +512,7 @@ export class Memory {
       return (payload ?? {}) as Record<string, unknown>;
     } catch (err) {
       if (err instanceof MemoryHttpError) throw err;
+      if (err instanceof NetworkError) throw err;
       if (err instanceof Error && this.#isAbortError(err)) {
         throw new TimeoutError(this.#timeoutMs);
       }

@@ -452,6 +452,50 @@ export class TimeoutError extends NetworkError {
 }
 
 // ---------------------------------------------------------------------------
+// Redirect guard (#2364)
+// ---------------------------------------------------------------------------
+
+/**
+ * @internal
+ * Every `fetch()` call site in this SDK passes `redirect: "manual"` so a
+ * request never silently follows a 3xx response and resends the bearer
+ * token to a redirect target the caller did not choose — the TS-SDK
+ * analogue of `crates/relata-sdk-rust`'s `redirect::Policy::none()` (#1416).
+ * A spec-compliant runtime that honors `redirect: "manual"` resolves with an
+ * opaque response (`response.type === "opaqueredirect"`, `status === 0`); a
+ * runtime or an injected `opts.fetch` that only partially honors it may
+ * instead hand back the raw 3xx response with `Location` intact. Either
+ * shape is treated as a redirect here.
+ */
+export function isRedirectResponse(response: Response): boolean {
+  return (
+    response.type === "opaqueredirect" ||
+    (response.status >= 300 && response.status < 400)
+  );
+}
+
+/**
+ * @internal
+ * Throws a {@link NetworkError} if `response` is a redirect (see
+ * {@link isRedirectResponse}). Call this immediately after every `fetch()`
+ * in the SDK, before the response body or headers are inspected further —
+ * this is the code-level guarantee that the `Authorization` header is never
+ * replayed to a redirect target, independent of whatever the bound/injected
+ * `fetch` implementation would otherwise default to.
+ */
+export function assertNotRedirected(response: Response, url: string): void {
+  if (!isRedirectResponse(response)) return;
+  throw new NetworkError(
+    `Refusing to follow redirect from ${url}` +
+      (response.status ? ` (HTTP ${response.status})` : "") +
+      `. The Relata SDK sends every request with redirect: "manual" and ` +
+      `treats a redirect response as a hard error instead of resending ` +
+      `credentials to a target it did not request.`,
+    new Error("redirect blocked"),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Internal helper — map HTTP status + server body to a typed error
 // ---------------------------------------------------------------------------
 

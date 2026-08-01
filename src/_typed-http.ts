@@ -14,7 +14,12 @@
  * string builders for GET with params.
  */
 
-import { NetworkError, RelataError, TimeoutError } from "./errors.ts";
+import {
+  assertNotRedirected,
+  NetworkError,
+  RelataError,
+  TimeoutError,
+} from "./errors.ts";
 import type { RelataClient } from "./client.ts";
 
 // ---------------------------------------------------------------------------
@@ -207,7 +212,9 @@ export class TypedClientBase {
         headers,
         signal: controller.signal,
         body,
+        redirect: "manual",
       });
+      assertNotRedirected(response, url);
       return await this.#parse<T>(response, path);
     } catch (err) {
       if (err instanceof Error && this.#isAbortError(err)) {
@@ -251,7 +258,9 @@ export class TypedClientBase {
         headers,
         signal: controller.signal,
         body: JSON.stringify(body),
+        redirect: "manual",
       });
+      assertNotRedirected(response, url);
       if (!response.ok) {
         let errBody: Record<string, unknown>;
         try {
@@ -309,13 +318,19 @@ export class TypedClientBase {
 
     try {
       const headers = this.#buildHeaders();
-      const init: RequestInit = { method, headers, signal: controller.signal };
+      const init: RequestInit = {
+        method,
+        headers,
+        signal: controller.signal,
+        redirect: "manual",
+      };
       if (body !== undefined) {
         headers["Content-Type"] = "application/json";
         (init as RequestInit & { body: string }).body = JSON.stringify(body);
       }
 
       const response = await this.#fetch(url, init);
+      assertNotRedirected(response, url);
       return await this.#parse<T>(response, path);
     } catch (err) {
       if (err instanceof Error && this.#isAbortError(err)) {

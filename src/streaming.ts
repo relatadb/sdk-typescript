@@ -15,7 +15,7 @@
  */
 
 import { RelataClient } from "./client.ts";
-import { PurposeError } from "./errors.ts";
+import { assertNotRedirected, PurposeError } from "./errors.ts";
 
 /** Streaming client — async iterators over every streaming surface. */
 export class StreamingClient {
@@ -73,7 +73,9 @@ export class StreamingClient {
       method: "POST",
       headers: this.#headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ purpose, sql }),
+      redirect: "manual",
     });
+    assertNotRedirected(response, url);
     if (!response.ok) {
       const text = await response.text();
       throw new StreamingHttpError(response.status, text);
@@ -100,7 +102,9 @@ export class StreamingClient {
       method: "POST",
       headers: this.#headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ purpose, sql }),
+      redirect: "manual",
     });
+    assertNotRedirected(response, url);
     if (!response.ok) {
       await drainBody(response);
       throw new StreamingHttpError(response.status, await response.text());
@@ -169,8 +173,12 @@ export class StreamingClient {
         response = await this.#fetchImpl()(url, {
           method: "GET",
           headers: this.#headers({ Accept: "text/event-stream" }),
+          redirect: "manual",
         });
+        assertNotRedirected(response, url);
       } catch {
+        // A blocked redirect (see #2364) or a raw network failure both land
+        // here — neither is worth retrying against the same origin.
         if (!reconnect || retries >= maxRetries) return;
         await sleep(baseBackoffMs * 2 ** Math.min(retries, 5));
         retries++;
