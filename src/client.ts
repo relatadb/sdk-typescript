@@ -595,9 +595,24 @@ export class RelataClient {
     return this.#get(`/rules/${ruleId}/tuning`);
   }
 
-  /** Resolve an identity value to all known objects/clusters via SQL. */
-  async resolveIdentity(value: string, purpose?: string): Promise<Record<string, unknown>> {
-    const sql = `RESOLVE_IDENTITY('${value.replace(/'/g, "''")}')`;
+  /**
+   * Resolve an identity value to all known objects/clusters via SQL.
+   *
+   * `mode` selects the resolution strategy: `"canonical"` (single best
+   * match), `"cluster"` (server default — same as {@link identityCluster}),
+   * or `"fuse"` (merge overlapping clusters). Omit to use the server
+   * default (`cluster`).
+   */
+  async resolveIdentity(
+    value: string,
+    purpose?: string,
+    mode?: "canonical" | "cluster" | "fuse",
+  ): Promise<Record<string, unknown>> {
+    const escaped = value.replace(/'/g, "''");
+    const sql =
+      mode === undefined
+        ? `RESOLVE_IDENTITY('${escaped}')`
+        : `RESOLVE_IDENTITY('${escaped}', MODE => '${mode}')`;
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
