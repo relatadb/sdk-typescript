@@ -82,6 +82,90 @@ const RETRYABLE_STATUS_CODES: ReadonlySet<number> = new Set([502, 503, 504]);
 const DEFAULT_RETRY_BACKOFF_MS = 500;
 
 // ---------------------------------------------------------------------------
+// Multimedia operator + Arrow Flight builders (#2251, #2253)
+// ---------------------------------------------------------------------------
+
+/** @internal Quote a string as a SQL literal, doubling internal quotes. */
+function sqlLiteral(s: string): string {
+  return `'${s.replace(/'/g, "''")}'`;
+}
+
+/**
+ * Build a `SELECT * FROM FACE_SEARCH(...)` ticket (#2251). Mirrors the server
+ * operator in `relata_query::parser`: `FACE_SEARCH('<csv floats>', '<gallery>',
+ * K => n, THRESHOLD => f)` (defaults K=10, THRESHOLD=0.7).
+ * @internal
+ */
+export function buildFaceSearchSql(
+  galleryId: string,
+  embedding: number[] | string,
+  opts: { k?: number; threshold?: number } = {},
+): string {
+  const csv = typeof embedding === "string" ? embedding : embedding.map((x) => Number(x)).join(",");
+  const k = opts.k ?? 10;
+  const threshold = opts.threshold ?? 0.7;
+  return `SELECT * FROM FACE_SEARCH(${sqlLiteral(csv)}, ${sqlLiteral(galleryId)}, K => ${k}, THRESHOLD => ${threshold})`;
+}
+
+/**
+ * Build a `SELECT * FROM MATCH_PDQ(...)` ticket (#2251). Mirrors
+ * `MATCH_PDQ('<hash>', '<corpus>', THRESHOLD => f)` (default 0.9).
+ * @internal
+ */
+export function buildMatchPdqSql(
+  corpusId: string,
+  queryHash: string,
+  threshold = 0.9,
+): string {
+  return `SELECT * FROM MATCH_PDQ(${sqlLiteral(queryHash)}, ${sqlLiteral(corpusId)}, THRESHOLD => ${threshold})`;
+}
+
+/**
+ * Assemble an Arrow Flight `do_get` ticket from SQL + optional PURPOSE (#2253).
+ *
+ * The Flight door (`crates/relata-cli/src/flight_server.rs::do_get`) reads the
+ * ticket as raw UTF-8 SQL and extracts the purpose from a leading
+ * `PURPOSE '<id>'` SQL comment, defaulting to `"flight_query"` when absent.
+ * @internal
+ */
+export function buildFlightTicket(sql: string, purpose?: string): string {
+  if (!purpose) return sql;
+  return `/* PURPOSE '${purpose.replace(/'/g, "''")}' */ ${sql}`;
+}
+
+/**
+ * Resolve the Arrow Flight gRPC endpoint. Defaults to
+ * `grpc://<baseUrl host>:8815` (the server's default Flight port,
+ * `RELATA_FLIGHT_PORT`). @internal
+ */
+export function deriveFlightEndpoint(baseUrl: string, flightEndpoint?: string): string {
+  if (flightEndpoint) return flightEndpoint;
+  try {
+    const host = new URL(baseUrl).hostname || "localhost";
+    return `grpc://${host}:8815`;
+  } catch {
+    return "grpc://localhost:8815";
+  }
+}
+
+/**
+ * Adapter contract for `RelataClient.queryFlight()` (#2253). Performs the
+ * Arrow Flight `do_get` RPC against `endpoint` using `ticketSql` (UTF-8 bytes,
+ * PURPOSE comment already injected) as the ticket and `bearer` for the
+ * `authorization` metadata, returning the decoded columnar result.
+ *
+ * The TS SDK does not bundle a JS Arrow Flight client (one requires native
+ * gRPC + apache-arrow); supply an implementation built on your Flight stack.
+ */
+export type FlightTransport<T = unknown> = (
+  endpoint: string,
+  ticketSql: string,
+  bearer: string | undefined,
+) => Promise<T>;
+
+// ---------------------------------------------------------------------------
+// RelataClient
+// ---------------------------------------------------------------------------
 // RelataClient
 // ---------------------------------------------------------------------------
 
@@ -703,6 +787,118 @@ export class RelataClient {
     if (opts?.targetType !== undefined) parts.push(`, TARGET_TYPE => '${opts.targetType}'`);
     parts.push(")");
     return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
+  }
+
+  // ── Multimedia operators (#2251, epic #655 — ADR-030) ───────────────────
+  //
+  // Biometric / perceptual-hash search via the governed SQL operator door.
+  // Both route through `POST /query` so PURPOSE / ACL / cell-masking / tenant
+  // isolation apply identically to a hand-written query. The server operators
+  // are registered in `relata_query::parser`:
+  //  - FACE_SEARCH('<csv floats>', '<gallery>', K => n, THRESHOLD => f)
+  //  - MATCH_PDQ('<hash>', '<corpus>', THRESHOLD => f)
+
+  /**
+   * Biometric face k-NN search against a gallery (#2251, ADR-030).
+   *
+   * Executes `SELECT * FROM FACE_SEARCH(...)` through the governed `/query`
+   * door.
+   *
+   * @param galleryId - Gallery to search (matches `MediaEmbedding.gallery_id`).
+   * @param embedding - Probe face embedding as a number array, or a
+   *   pre-formatted comma-separated string.
+   * @param opts - `k` (max candidates, default 10), `threshold` (minimum
+   *   cosine similarity 0–1, default 0.7), `purpose` override.
+   *
+   * @example
+   * ```typescript
+   * const r = await relata.faceSearch("gallery-1", [0.1, 0.2, 0.3],
+   *   { k: 5, threshold: 0.6, purpose: "investigation" });
+   * r.rows[0]?.score; // number | undefined
+   * ```
+   */
+  async faceSearch<T = Record<string, unknown>>(
+    galleryId: string,
+    embedding: number[] | string,
+    opts?: { k?: number; threshold?: number; purpose?: string },
+  ): Promise<QueryResult<T>> {
+    const sql = buildFaceSearchSql(galleryId, embedding, opts);
+    const queryOpts: { purpose?: string } = {};
+    if (opts?.purpose !== undefined) queryOpts.purpose = opts.purpose;
+    return this.query<T>(sql, queryOpts);
+  }
+
+  /**
+   * Perceptual-hash (PDQ) near-duplicate search over a corpus (#2251).
+   *
+   * Executes `SELECT * FROM MATCH_PDQ(...)` through the governed `/query`
+   * door. PDQ near-duplicates differ by ≤ 31 bits (ADR-187).
+   *
+   * @param corpusId - Hash corpus (matches `MediaHash.corpus_id`).
+   * @param queryHash - PDQ hash as a hex string.
+   * @param opts - `threshold` (minimum Hamming similarity 0–1, default 0.9),
+   *   `purpose` override.
+   */
+  async matchPdq<T = Record<string, unknown>>(
+    corpusId: string,
+    queryHash: string,
+    opts?: { threshold?: number; purpose?: string },
+  ): Promise<QueryResult<T>> {
+    const sql = buildMatchPdqSql(corpusId, queryHash, opts?.threshold);
+    const queryOpts: { purpose?: string } = {};
+    if (opts?.purpose !== undefined) queryOpts.purpose = opts.purpose;
+    return this.query<T>(sql, queryOpts);
+  }
+
+  /**
+   * Execute a SQL query over Arrow Flight `do_get` and return the decoded
+   * columnar result — no JSON intermediate (#2253, #958).
+   *
+   * The Flight door is enabled server-side with `RELATA_FLIGHT_ENABLE=true`
+   * (default port 8815). The ticket is the raw UTF-8 SQL, optionally prefixed
+   * with a leading `PURPOSE '<id>'` SQL comment which the server extracts as
+   * the query purpose.
+   *
+   * **The TS SDK does not bundle a JS Arrow Flight client** (one requires
+   * native gRPC + apache-arrow). Supply a `transport` adapter built on your
+   * Flight stack; the SDK handles ticket/PURPOSE assembly, endpoint
+   * derivation, and bearer wiring. If `transport` is omitted a `RelataError`
+   * is thrown with install guidance.
+   *
+   * @param sql - SQL query string used verbatim as the Flight ticket.
+   * @param opts - `flightEndpoint` override, `purpose` (injected as a
+   *   `PURPOSE '...'` SQL comment), `bearerToken` override (defaults to the
+   *   client's token), and `transport` — the Flight `do_get` adapter.
+   *
+   * @typeParam T - Decoded result type (typically an `apache-arrow` `Table`).
+   *
+   * @example
+   * ```typescript
+   * const table = await relata.queryFlight(
+   *   "SELECT * FROM Person LIMIT 1000",
+   *   { purpose: "analytics", transport: myFlightAdapter },
+   * );
+   * ```
+   */
+  async queryFlight<T = unknown>(sql: string, opts?: {
+    flightEndpoint?: string;
+    purpose?: string;
+    bearerToken?: string;
+    transport?: FlightTransport<T>;
+  }): Promise<T> {
+    const endpoint = deriveFlightEndpoint(this.#baseUrl, opts?.flightEndpoint);
+    const ticketSql = buildFlightTicket(sql, opts?.purpose);
+    const bearer = opts?.bearerToken !== undefined ? opts.bearerToken : this.#bearerToken;
+    if (!opts?.transport) {
+      throw new RelataError(
+        "queryFlight() requires a `transport` Flight adapter",
+        0,
+        "queryFlight() requires a `transport` Flight adapter — the TS SDK does " +
+          "not bundle a JS Arrow Flight client. Install apache-arrow + a gRPC " +
+          "Flight client and pass a `transport` that performs do_get.",
+      );
+    }
+    return opts.transport(endpoint, ticketSql, bearer);
   }
 
   // -------------------------------------------------------------------------
