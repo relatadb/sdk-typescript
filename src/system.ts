@@ -107,6 +107,11 @@ export class SystemClient extends TypedClientBase {
     return this._get('/feed/health');
   }
 
+  /** List available RIFN feed channels. Wraps `GET /feed/channels`. */
+  async feedChannels(): Promise<Record<string, unknown>> {
+    return this._get('/feed/channels');
+  }
+
   async feedPublish(channel: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this._post('/feed/publish', { channel, payload });
   }

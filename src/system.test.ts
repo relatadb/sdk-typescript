@@ -82,3 +82,13 @@ test("registerWorkflow: POST /workflows with steps", async () => {
   if (!c.url.endsWith("/workflows")) throw new Error(`url=${c.url}`);
   if (c.body === undefined || !c.body.includes('"name":"wf"')) throw new Error(`body=${c.body}`);
 });
+
+test("feedChannels: GET /feed/channels (#2254)", async () => {
+  const { fetch, calls } = mockFetch({ body: { channels: ["threat-intel", "ioc-feed"] } });
+  const s = new SystemClient({ baseUrl: BASE, fetch });
+  const got = (await s.feedChannels()) as { channels: string[] };
+  const c = calls[0]!;
+  deepEqual(c.method, "GET");
+  deepEqual(got.channels, ["threat-intel", "ioc-feed"]);
+  if (!c.url.endsWith("/feed/channels")) throw new Error(`url=${c.url}`);
+});
