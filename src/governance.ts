@@ -28,10 +28,17 @@
 
 import { RelataClient } from "./client.ts";
 import { type TypedClientCtor, TypedClientBase, qs } from "./_typed-http.ts";
+import { PurposeError } from "./errors.ts";
 
 // ---------------------------------------------------------------------------
 // GovernanceClient
 // ---------------------------------------------------------------------------
+
+/** Options inherited from the parent client. */
+export interface GovernanceClientCtor extends TypedClientCtor {
+  /** Default purpose attached to calls that require one, when not overridden per-call. */
+  purpose?: string;
+}
 
 /**
  * Governance surface — rules / retention / breakglass / alerts / DSAR.
@@ -39,17 +46,36 @@ import { type TypedClientCtor, TypedClientBase, qs } from "./_typed-http.ts";
  * client's auth + tenant context.
  */
 export class GovernanceClient extends TypedClientBase {
+  readonly #purpose: string | undefined;
+
   /**
    * Construct a governance client directly. Most callers should use
    * {@link GovernanceClient.fromClient} instead.
    */
-  constructor(opts: TypedClientCtor) {
+  constructor(opts: GovernanceClientCtor) {
     super(opts);
+    this.#purpose = opts.purpose;
   }
 
-  /** Inherit the parent client's auth, tenant, and headers. */
+  /** Inherit the parent client's auth, tenant, purpose, and headers. */
   static fromClient(client: RelataClient): GovernanceClient {
-    return new GovernanceClient(TypedClientBase.clientToCtor(client));
+    const ctor = TypedClientBase.clientToCtor(client);
+    const govCtor: GovernanceClientCtor = { ...ctor };
+    if (client.defaultPurpose !== undefined) govCtor.purpose = client.defaultPurpose;
+    return new GovernanceClient(govCtor);
+  }
+
+  /** @internal Resolve the effective purpose or throw. */
+  #effectivePurpose(purpose: string | undefined): string {
+    const eff = purpose ?? this.#purpose;
+    if (!eff) {
+      throw new PurposeError(
+        undefined,
+        "This governance call requires a purpose. Pass `purpose` to the " +
+          "call or set `defaultPurpose` on the RelataClient.",
+      );
+    }
+    return eff;
   }
 
   // -------------------------------------------------------------------------
@@ -77,13 +103,18 @@ export class GovernanceClient extends TypedClientBase {
   /**
    * Create a detection rule. The `rule` shape matches the server's
    * `RuleSpec` (`name`, `object_type`, `condition`, `action`, ...).
-   * Wraps `POST /rules`. Returns the created rule record including its
-   * server-assigned `id`.
+   * Wraps `POST /rules?purpose=<p>`. Returns the created rule record
+   * including its server-assigned `id`.
+   *
+   * `purpose` is mandatory server-side — pass it here or via the client
+   * default.
    */
   async createRule(
     rule: Record<string, unknown>,
+    opts: { purpose?: string } = {},
   ): Promise<Record<string, unknown>> {
-    return this._post("/rules", rule);
+    const purpose = this.#effectivePurpose(opts.purpose);
+    return this._post(`/rules${qs({ purpose })}`, rule);
   }
 
   /**
@@ -96,13 +127,60 @@ export class GovernanceClient extends TypedClientBase {
 
   /**
    * Import a Sigma rule (YAML string).
-   * Wraps `POST /rules/sigma`. Returns the import summary
+   * Wraps `POST /rules/sigma?purpose=<p>`. Returns the import summary
    * (`rules_imported`, `rules_skipped`, `errors`).
+   *
+   * The server requires `purpose` as a query param and the raw YAML text as
+   * the request body — not a JSON envelope.
    */
   async importSigma(
     sigmaYaml: string,
+    opts: { purpose?: string } = {},
   ): Promise<Record<string, unknown>> {
-    return this._post("/rules/sigma", { sigma: sigmaYaml });
+    const purpose = this.#effectivePurpose(opts.purpose);
+    return this._sendRaw(
+      "POST",
+      `/rules/sigma${qs({ purpose })}`,
+      sigmaYaml,
+      "application/x-yaml",
+    );
+  }
+
+  /** Temporarily disable a rule for `durationSecs` (#967). */
+  async snoozeRule(
+    ruleId: string,
+    durationSecs: number,
+  ): Promise<Record<string, unknown>> {
+    return this._post(`/rules/${encodeURIComponent(ruleId)}/snooze`, {
+      duration_secs: durationSecs,
+    });
+  }
+
+  /**
+   * Permanently suppress future matches of the rule for a specific entity
+   * (#967). `condition` is an optional informational note.
+   */
+  async suppressRule(
+    ruleId: string,
+    entityId: string,
+    opts: { condition?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const body: Record<string, unknown> = { entity_id: entityId };
+    if (opts.condition !== undefined) body["condition"] = opts.condition;
+    return this._post(`/rules/${encodeURIComponent(ruleId)}/suppress`, body);
+  }
+
+  /** Add an exception entry so specific matches are ignored (#967). */
+  async addRuleException(
+    ruleId: string,
+    exception: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return this._post(`/rules/${encodeURIComponent(ruleId)}/exceptions`, exception);
+  }
+
+  /** Retrieve tuning state (snoozes, suppressions, exceptions) (#967). */
+  async getRuleTuning(ruleId: string): Promise<Record<string, unknown>> {
+    return this._get(`/rules/${encodeURIComponent(ruleId)}/tuning`);
   }
 
   // -------------------------------------------------------------------------

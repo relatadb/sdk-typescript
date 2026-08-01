@@ -127,7 +127,7 @@ test("GovernanceClient: listRules, createRule, importSigma, placeLegalHold, requ
     { body: { dsar_id: "d1" } }, // submitDsar
   ];
   const { fetch, calls } = mockFetch(queue);
-  const gov = new GovernanceClient({ baseUrl: "http://x", fetch });
+  const gov = new GovernanceClient({ baseUrl: "http://x", fetch, purpose: "compliance" });
 
   const rules = await gov.listRules({ objectType: "Transaction" });
   assert.equal(rules.length, 1);
@@ -136,10 +136,13 @@ test("GovernanceClient: listRules, createRule, importSigma, placeLegalHold, requ
   const rule = await gov.createRule({ name: "big-xfer" });
   assert.equal(rule["id"], "r2");
   assert.equal(calls[1]?.method, "POST");
+  assert.ok(calls[1]?.url.includes("/rules?purpose=compliance"));
 
   const sigma = await gov.importSigma("title: x");
   assert.equal(sigma["rules_imported"], 1);
-  assert.deepEqual(JSON.parse(calls[2]?.body ?? "{}"), { sigma: "title: x" });
+  assert.ok(calls[2]?.url.includes("/rules/sigma?purpose=compliance"));
+  assert.equal(calls[2]?.headers["content-type"], "application/x-yaml");
+  assert.equal(calls[2]?.body, "title: x");
 
   const hold = await gov.placeLegalHold("c1", "Person", { reason: "investigation" });
   assert.equal(hold["case_id"], "c1");
@@ -162,6 +165,43 @@ test("GovernanceClient: listRules, createRule, importSigma, placeLegalHold, requ
   assert.ok(calls[5]?.url.includes("subject_identity=alice%40x.com"));
   assert.ok(calls[5]?.url.includes("reason=gdpr-art-15"));
   assert.ok(calls[5]?.url.includes("scope=email"));
+});
+
+test("GovernanceClient: createRule/importSigma require a purpose", async () => {
+  const { fetch } = mockFetch({ body: {} });
+  const gov = new GovernanceClient({ baseUrl: "http://x", fetch });
+  await assert.rejects(() => gov.createRule({ name: "x" }), /purpose/i);
+  await assert.rejects(() => gov.importSigma("title: x"), /purpose/i);
+});
+
+test("GovernanceClient: suppressRule sends entity_id, not a bare pattern", async () => {
+  const { fetch, calls } = mockFetch({ body: { rule_id: "r1" } });
+  const gov = new GovernanceClient({ baseUrl: "http://x", fetch });
+  await gov.suppressRule("r1", "entity-42", { condition: "known FP" });
+  assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), {
+    entity_id: "entity-42",
+    condition: "known FP",
+  });
+});
+
+test("GovernanceClient: snoozeRule, addRuleException, getRuleTuning", async () => {
+  const queue: MockResponse[] = [
+    { body: { rule_id: "r1", snoozed_until: "2026-01-01T00:00:00Z" } },
+    { body: { rule_id: "r1" } },
+    { body: { snoozed_until_ns: null, suppressed_entities: [] } },
+  ];
+  const { fetch, calls } = mockFetch(queue);
+  const gov = new GovernanceClient({ baseUrl: "http://x", fetch });
+
+  await gov.snoozeRule("r1", 3600);
+  assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), { duration_secs: 3600 });
+
+  await gov.addRuleException("r1", { entity_id: "e1" });
+  assert.ok(calls[1]?.url.endsWith("/rules/r1/exceptions"));
+
+  await gov.getRuleTuning("r1");
+  assert.equal(calls[2]?.method, "GET");
+  assert.ok(calls[2]?.url.endsWith("/rules/r1/tuning"));
 });
 
 // ---------------------------------------------------------------------------

@@ -560,9 +560,21 @@ export class RelataClient {
     return this.#get("/rules");
   }
 
-  /** Create a detection rule. */
-  async createRule(rule: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.#post("/rules", rule);
+  /**
+   * Create a detection rule.
+   *
+   * `purpose` is mandatory server-side (`POST /rules?purpose=<p>`) — pass it
+   * here or set `defaultPurpose` on the client.
+   */
+  async createRule(
+    rule: Record<string, unknown>,
+    opts?: { purpose?: string },
+  ): Promise<Record<string, unknown>> {
+    const purpose = opts?.purpose ?? this.#defaultPurpose;
+    if (!purpose) {
+      throw new PurposeError(undefined, "purpose field is required");
+    }
+    return this.#post(`/rules?purpose=${encodeURIComponent(purpose)}`, rule);
   }
 
   /** Disable (logically delete) a rule. */
@@ -570,9 +582,26 @@ export class RelataClient {
     return this.#delete(`/rules/${ruleId}`);
   }
 
-  /** Import a Sigma rule (YAML string). */
-  async importSigma(sigmaYaml: string): Promise<Record<string, unknown>> {
-    return this.#post("/rules/sigma", { sigma: sigmaYaml });
+  /**
+   * Import a Sigma rule (YAML string).
+   *
+   * The server (`POST /rules/sigma?purpose=<p>`) requires `purpose` as a
+   * query param and the raw YAML text as the request body — not a JSON
+   * envelope.
+   */
+  async importSigma(
+    sigmaYaml: string,
+    opts?: { purpose?: string },
+  ): Promise<Record<string, unknown>> {
+    const purpose = opts?.purpose ?? this.#defaultPurpose;
+    if (!purpose) {
+      throw new PurposeError(undefined, "purpose field is required");
+    }
+    return this.#postRaw(
+      `/rules/sigma?purpose=${encodeURIComponent(purpose)}`,
+      sigmaYaml,
+      "application/x-yaml",
+    );
   }
 
   /** Snooze a rule for ``durationSecs``. */
@@ -580,9 +609,18 @@ export class RelataClient {
     return this.#post(`/rules/${ruleId}/snooze`, { duration_secs: durationSecs });
   }
 
-  /** Suppress all future matches of ``pattern`` for a rule. */
-  async suppressRule(ruleId: string, pattern: string): Promise<Record<string, unknown>> {
-    return this.#post(`/rules/${ruleId}/suppress`, { pattern });
+  /**
+   * Permanently suppress future matches of the rule for a specific entity.
+   * `condition` is an optional informational note.
+   */
+  async suppressRule(
+    ruleId: string,
+    entityId: string,
+    opts?: { condition?: string },
+  ): Promise<Record<string, unknown>> {
+    const body: Record<string, unknown> = { entity_id: entityId };
+    if (opts?.condition !== undefined) body["condition"] = opts.condition;
+    return this.#post(`/rules/${ruleId}/suppress`, body);
   }
 
   /** Add an exception entry so specific matches are ignored. */
@@ -1325,6 +1363,45 @@ export class RelataClient {
   /** @internal */
   async #delete<T>(path: string, timeoutMs?: number): Promise<T> {
     return this.#send<T>("DELETE", path, undefined, timeoutMs);
+  }
+
+  /**
+   * @internal
+   * POST a raw (non-JSON) text body — e.g. Sigma YAML. No retry (the
+   * operation may not be idempotent server-side), mirroring
+   * `_typed-http.ts`'s `_sendRaw`.
+   */
+  async #postRaw<T>(
+    path: string,
+    body: string,
+    contentType: string,
+    timeoutMs?: number,
+  ): Promise<T> {
+    const url = `${this.#baseUrl}${path}`;
+    const effectiveTimeout = timeoutMs ?? this.#timeoutMs;
+    const controller = new AbortController();
+    const timer =
+      effectiveTimeout > 0
+        ? setTimeout(() => controller.abort(), effectiveTimeout)
+        : undefined;
+    try {
+      const headers = this.#buildHeaders(true);
+      headers["Content-Type"] = contentType;
+      const response = await this.#fetch(url, {
+        method: "POST",
+        headers,
+        signal: controller.signal,
+        body,
+      });
+      return await this.#parseResponse<T>(response, undefined);
+    } catch (err) {
+      if (this.#isAbortError(err)) {
+        throw new TimeoutError(effectiveTimeout);
+      }
+      throw err;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   /**

@@ -587,3 +587,39 @@ test("hawalaTrace: clamps maxHops to 10 and defaults purpose to analytics", asyn
   assert.equal(sent.purpose, "analytics");
   assert.equal(sent.sql, "HAWALA_TRACE('SEED-1', MAX_HOPS => 10)");
 });
+
+// ---------------------------------------------------------------------------
+// Detection rules — createRule/importSigma require purpose; suppressRule
+// sends entity_id (server contract, see crates/relata-cli/src/serve/rules.rs)
+// ---------------------------------------------------------------------------
+
+test("createRule: attaches purpose as a query param and requires one", async () => {
+  const { fetch, calls } = mockFetch({ body: { id: "r1" } });
+  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "audit", fetch });
+  await relata.createRule({ name: "r1" });
+  assert.ok(calls[0]?.url.includes("/rules?purpose=audit"));
+
+  const { fetch: fetch2 } = mockFetch({ body: {} });
+  const noPurpose = new RelataClient({ baseUrl: "http://x", fetch: fetch2 });
+  await assert.rejects(() => noPurpose.createRule({ name: "r1" }), PurposeError);
+});
+
+test("importSigma: sends raw YAML body with purpose query param", async () => {
+  const { fetch, calls } = mockFetch({ body: { rules_imported: 1 } });
+  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "audit", fetch });
+  const out = await relata.importSigma("title: x\n");
+  assert.equal(out["rules_imported"], 1);
+  assert.ok(calls[0]?.url.includes("/rules/sigma?purpose=audit"));
+  assert.equal(calls[0]?.headers["content-type"], "application/x-yaml");
+  assert.equal(calls[0]?.body, "title: x\n");
+});
+
+test("suppressRule: sends entity_id, not a bare pattern", async () => {
+  const { fetch, calls } = mockFetch({ body: { rule_id: "r1" } });
+  const relata = new RelataClient({ baseUrl: "http://x", fetch });
+  await relata.suppressRule("r1", "entity-42", { condition: "known FP" });
+  assert.deepEqual(JSON.parse(calls[0]?.body as string), {
+    entity_id: "entity-42",
+    condition: "known FP",
+  });
+});
