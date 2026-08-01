@@ -177,6 +177,7 @@ export type FlightTransport<T = unknown> = (
  */
 export class RelataClient {
   readonly #baseUrl: string;
+  readonly #adminBaseUrl: string | undefined;
   readonly #bearerToken: string | undefined;
   readonly #defaultPurpose: string | undefined;
   readonly #timeoutMs: number;
@@ -220,6 +221,7 @@ export class RelataClient {
       typeof options === "string" ? { baseUrl: options } : options;
 
     this.#baseUrl = opts.baseUrl.replace(/\/+$/, "");
+    this.#adminBaseUrl = opts.adminBaseUrl?.replace(/\/+$/, "");
     this.#bearerToken = opts.bearerToken;
     this.#defaultPurpose = opts.defaultPurpose;
     this.#timeoutMs = opts.timeoutMs ?? 0;
@@ -1314,6 +1316,16 @@ export class RelataClient {
   /** Base URL of the Relata server (trailing slash stripped). */
   get baseUrl(): string {
     return this.#baseUrl;
+  }
+
+  /**
+   * Base URL of the loopbound admin control-plane listener, if configured
+   * (`adminBaseUrl` constructor option, #2321/ADR-0261). `undefined` when
+   * unset — admin/platform-only typed-client methods then fall back to
+   * `baseUrl`, unchanged from before this option existed.
+   */
+  get adminBaseUrl(): string | undefined {
+    return this.#adminBaseUrl;
   }
 
   /** Bearer token passed to the constructor, if any. */

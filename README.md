@@ -359,6 +359,18 @@ const entries = await audit.entries({ purpose: "compliance", limit: 50 });
 | `tokens.ts` | `TokenClient` | Dedup / uniqueness tokens (test-and-set) |
 | `log.ts` | `LogClient` | Ordered integrity log (append / head / load leaves) |
 
+**Admin-listener reachability (`adminBaseUrl`, #2321):** on a hardened
+`server`/`cluster` deployment, `/admin/*` and `/platform/*` are mounted only
+on the loopbound admin control-plane listener (`RELATA_ADMIN_BIND`, default
+`127.0.0.1:9091` — ADR-0261), never the main data-plane `baseUrl`. Pass
+`adminBaseUrl` to `RelataClient` (inherited automatically by
+`BackupClient`/`TenantAdminClient.fromClient(...)`) or directly to a typed
+client's constructor options to reach those routes. Leave it unset (the
+default) on the free profile, where the admin listener isn't split from the
+data plane. A bare 404 from an admin/platform-only route with no error
+detail is rewritten into a hint pointing at this option instead of a
+confusing plain 404.
+
 ### Streaming — async iterables
 
 `StreamingClient` exposes every streaming surface as an `AsyncIterable<T>`:

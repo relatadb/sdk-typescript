@@ -24,10 +24,72 @@ import type { RelataClient } from "./client.ts";
 /** @internal */
 export interface TypedClientCtor {
   baseUrl: string;
+  /**
+   * Base URL of the loopbound admin control-plane listener (#2321,
+   * ADR-0261). `/admin/*`/`/platform/*` requests route here instead of
+   * `baseUrl` when set — see {@link TypedClientBase.clientToCtor} and
+   * `#resolveBaseUrl`. `undefined` preserves prior behaviour (every request
+   * goes to `baseUrl`).
+   */
+  adminBaseUrl?: string;
   bearerToken?: string;
   timeoutMs?: number;
   extraHeaders?: Record<string, string>;
   fetch?: typeof globalThis.fetch;
+}
+
+/**
+ * @internal
+ * #2321 (ADR-0261): `true` for a path mounted only on the loopbound admin
+ * control-plane listener (`RELATA_ADMIN_BIND`, default `127.0.0.1:9091`) —
+ * `/admin/*` and `/platform/*` — never the main data-plane listener. See
+ * `crates/relata-cli/src/serve/admin_listener.rs`.
+ */
+export function isAdminOnlyPath(path: string): boolean {
+  return path.startsWith("/admin/") || path.startsWith("/platform/");
+}
+
+/**
+ * @internal
+ * `true` when a non-2xx response body carries no human-readable error text
+ * at all — the shape the server's own RFC 7807 normalisation
+ * (`normalize_error_body`, `crates/relata-cli/src/serve.rs`) leaves behind
+ * for a request that matched no route on the listener that answered
+ * (`{"type":"about:blank","status":404,"title":"Not Found","detail":""}`),
+ * as opposed to a real business error, which always carries a non-empty
+ * `detail`/`error`/`message` by convention across this codebase. `isJson`
+ * reflects whether `body` was decoded as JSON; `body` is the already-decoded
+ * value (an object when `isJson`, otherwise raw text).
+ */
+export function responseDetailIsBlank(isJson: boolean, body: unknown): boolean {
+  if (isJson) {
+    if (typeof body !== "object" || body === null) return true;
+    const v = body as Record<string, unknown>;
+    const blank = (k: string): boolean => {
+      const val = v[k];
+      return !(typeof val === "string" && val.trim() !== "");
+    };
+    return blank("detail") && blank("error") && blank("message");
+  }
+  return typeof body !== "string" || body.trim() === "";
+}
+
+/**
+ * @internal
+ * Build the "you're probably pointed at the wrong port" hint for a bare 404
+ * against an admin/platform-only `path` (#2321).
+ */
+export function adminListenerHint(path: string): string {
+  return (
+    `${path} returned a bare 404 with no error detail. This route is served ` +
+    "only by Relata's loopbound admin control-plane listener " +
+    "(RELATA_ADMIN_BIND, default 127.0.0.1:9091 per ADR-0261) — it is never " +
+    "mounted on the main data-plane listener, so a bare 404 here almost " +
+    "always means this client's baseUrl points at the data-plane port " +
+    "instead. Pass adminBaseUrl to point admin-only calls at the admin " +
+    "listener, or verify RELATA_ADMIN_BIND. See " +
+    "docs/src/decisions/0261-zero-trust-authorization-model.md."
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +105,7 @@ export interface TypedClientCtor {
  */
 export class TypedClientBase {
   readonly #baseUrl: string;
+  readonly #adminBaseUrl: string | undefined;
   readonly #bearerToken: string | undefined;
   readonly #timeoutMs: number;
   readonly #extraHeaders: Record<string, string>;
@@ -50,6 +113,7 @@ export class TypedClientBase {
 
   constructor(opts: TypedClientCtor) {
     this.#baseUrl = opts.baseUrl.replace(/\/+$/, "");
+    this.#adminBaseUrl = opts.adminBaseUrl?.replace(/\/+$/, "");
     this.#bearerToken = opts.bearerToken;
     this.#timeoutMs = opts.timeoutMs ?? 0;
     this.#extraHeaders = opts.extraHeaders ?? {};
@@ -65,7 +129,21 @@ export class TypedClientBase {
       fetch: client.fetchImpl,
     };
     if (client.bearerToken !== undefined) ctor.bearerToken = client.bearerToken;
+    if (client.adminBaseUrl !== undefined) ctor.adminBaseUrl = client.adminBaseUrl;
     return ctor;
+  }
+
+  /**
+   * @internal
+   * Resolve the base URL a request to `path` should target: `adminBaseUrl`
+   * for `/admin/*`/`/platform/*` when configured (#2321), `baseUrl`
+   * otherwise — unchanged behaviour when `adminBaseUrl` is unset.
+   */
+  #resolveBaseUrl(path: string): string {
+    if (this.#adminBaseUrl !== undefined && isAdminOnlyPath(path)) {
+      return this.#adminBaseUrl;
+    }
+    return this.#baseUrl;
   }
 
   // -------------------------------------------------------------------------
@@ -113,7 +191,7 @@ export class TypedClientBase {
     body: string,
     contentType: string,
   ): Promise<T> {
-    const url = `${this.#baseUrl}${path}`;
+    const url = `${this.#resolveBaseUrl(path)}${path}`;
     const controller = new AbortController();
     const timer =
       this.#timeoutMs > 0
@@ -130,7 +208,7 @@ export class TypedClientBase {
         signal: controller.signal,
         body,
       });
-      return await this.#parse<T>(response);
+      return await this.#parse<T>(response, path);
     } catch (err) {
       if (err instanceof Error && this.#isAbortError(err)) {
         throw new TimeoutError(this.#timeoutMs);
@@ -158,7 +236,7 @@ export class TypedClientBase {
     path: string,
     body: Record<string, unknown>,
   ): Promise<Uint8Array> {
-    const url = `${this.#baseUrl}${path}`;
+    const url = `${this.#resolveBaseUrl(path)}${path}`;
     const controller = new AbortController();
     const timer =
       this.#timeoutMs > 0
@@ -222,7 +300,7 @@ export class TypedClientBase {
     path: string,
     body: Record<string, unknown> | undefined,
   ): Promise<T> {
-    const url = `${this.#baseUrl}${path}`;
+    const url = `${this.#resolveBaseUrl(path)}${path}`;
     const controller = new AbortController();
     const timer =
       this.#timeoutMs > 0
@@ -238,7 +316,7 @@ export class TypedClientBase {
       }
 
       const response = await this.#fetch(url, init);
-      return await this.#parse<T>(response);
+      return await this.#parse<T>(response, path);
     } catch (err) {
       if (err instanceof Error && this.#isAbortError(err)) {
         throw new TimeoutError(this.#timeoutMs);
@@ -256,8 +334,13 @@ export class TypedClientBase {
     }
   }
 
-  /** @internal */
-  async #parse<T>(response: Response): Promise<T> {
+  /**
+   * @internal
+   * `path` is the request path as sent (not derived from `response.url`,
+   * which is the empty string for a `Response` built without going through a
+   * real `fetch()` call — e.g. in tests).
+   */
+  async #parse<T>(response: Response, path: string): Promise<T> {
     const contentType = response.headers.get("content-type") ?? "";
     const isJson =
       contentType.includes("application/json") ||
@@ -271,11 +354,19 @@ export class TypedClientBase {
         typeof body === "object" && body !== null
           ? (body as Record<string, unknown>)
           : { error: typeof body === "string" ? body : "empty response" };
-      const serverMessage =
+      let serverMessage =
         (typeof err["detail"] === "string" && err["detail"]) ||
         (typeof err["error"] === "string" && err["error"]) ||
         (typeof err["message"] === "string" && err["message"]) ||
         `HTTP ${response.status}`;
+      // #2321 (ADR-0261): a bare 404 with no detail text against an
+      // admin/platform-only path almost always means this client is pointed
+      // at the data-plane listener rather than the loopbound admin listener
+      // those routes are exclusively mounted on — surface a hint instead of
+      // an uninformative bare 404.
+      if (response.status === 404 && isAdminOnlyPath(path) && responseDetailIsBlank(isJson, body)) {
+        serverMessage = adminListenerHint(path);
+      }
       throw new TypedHttpError(
         response.status,
         serverMessage,

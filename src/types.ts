@@ -62,6 +62,18 @@ export interface RelataClientOptions {
   baseUrl: string;
 
   /**
+   * Base URL of the loopbound admin control-plane listener
+   * (`RELATA_ADMIN_BIND`, default `127.0.0.1:9091`). Per ADR-0261,
+   * `/admin/*` and `/platform/*` routes are mounted **only** there on a
+   * hardened server/cluster deployment — set this so
+   * {@link BackupClient}/{@link TenantAdminClient}'s platform-tenant methods
+   * reach them (relatadb/RelataDB#2321). Leave unset (the default) when the
+   * admin listener isn't split from the data plane (e.g. local/free-profile
+   * dev) — every request then goes to `baseUrl`, unchanged.
+   */
+  adminBaseUrl?: string;
+
+  /**
    * Bearer token for the `Authorization` header.
    * Required when the server is started with `RELATA_BEARER_TOKEN` set.
    */
