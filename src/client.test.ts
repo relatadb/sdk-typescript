@@ -565,3 +565,25 @@ test("sameIdentity: decodes the `match` verdict and emits SAME_IDENTITY SQL (#22
   const r3 = new RelataClient({ baseUrl: "http://x", defaultPurpose: "analytics", fetch: f3 });
   assert.equal(await r3.sameIdentity("x", "y"), false);
 });
+
+// ---------------------------------------------------------------------------
+// #2249 — FinINT trace ops
+// ---------------------------------------------------------------------------
+
+test("wireReconstruction: builds WIRE_RECONSTRUCTION SQL with tolerance", async () => {
+  const { fetch, calls } = mockFetch({ body: { rows: [], query_id: "q1", elapsed_ms: 1 } });
+  const relata = new RelataClient({ baseUrl: "http://x", fetch });
+  await relata.wireReconstruction("ACC-007", { tolerancePct: 2.5, purpose: "finint" });
+  const sent = JSON.parse(calls[0]?.body as string);
+  assert.equal(sent.purpose, "finint");
+  assert.equal(sent.sql, "WIRE_RECONSTRUCTION('ACC-007', TOLERANCE_PCT => 2.5)");
+});
+
+test("hawalaTrace: clamps maxHops to 10 and defaults purpose to analytics", async () => {
+  const { fetch, calls } = mockFetch({ body: { rows: [], query_id: "q2", elapsed_ms: 1 } });
+  const relata = new RelataClient({ baseUrl: "http://x", fetch });
+  await relata.hawalaTrace("SEED-1", { maxHops: 99 });
+  const sent = JSON.parse(calls[0]?.body as string);
+  assert.equal(sent.purpose, "analytics");
+  assert.equal(sent.sql, "HAWALA_TRACE('SEED-1', MAX_HOPS => 10)");
+});
