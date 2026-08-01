@@ -6,7 +6,21 @@ import { defineConfig } from "tsup";
 // `allowImportingTsExtensions`, unlike a plain emit — the root cause of the
 // earlier TS5096 build break).
 export default defineConfig({
-    entry: ["src/index.ts", "src/cli.ts"],
+    // The three agent-framework adapters (#2312) are separate entry points —
+    // not re-exported from `src/index.ts` — so importing the core SDK never
+    // pulls in `@langchain/langgraph-checkpoint` (a hard, non-optional import
+    // inside `adapters/langgraph.ts`, since LangGraph's Pregel loop does
+    // `instanceof` checks on the checkpointer). `langchain`/`llamaindex`
+    // are peer-optional too, but `adapters/langchain.ts` and
+    // `adapters/llamaindex.ts` duck-type their target framework and never
+    // import it, so those two build clean with zero peers installed.
+    entry: [
+        "src/index.ts",
+        "src/cli.ts",
+        "src/adapters/langchain.ts",
+        "src/adapters/llamaindex.ts",
+        "src/adapters/langgraph.ts",
+    ],
     format: ["esm"],
     target: "es2022",
     dts: { compilerOptions: { emitDeclarationOnly: true } },

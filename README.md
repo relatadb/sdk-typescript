@@ -287,6 +287,36 @@ const summary = await m.summarise([id1, id2], { summaryContent: "both prefer dif
 The MCP envelope (`{"content": [{"type":"text","text":"<json>"}]}`) is unwrapped
 transparently.
 
+## Agent-framework adapters (#2312)
+
+Governed memory/checkpointing adapters for LangChain.js, LlamaIndex.TS, and langgraphjs,
+mirroring `sdks/python/relata_adapters` / `relata_langgraph`. Each is a **separate entry
+point** — not re-exported from the package root — so importing the core SDK never pulls
+in an agent-framework dependency:
+
+```typescript
+// LangChain.js BaseMemory shape — duck-typed, no `langchain` import required.
+import { RelataMemory } from "@zysec-ai/relata-sdk/adapters/langchain";
+const memory = new RelataMemory({ baseUrl: "http://localhost:9090", purpose: "agent" });
+
+// LlamaIndex.TS BaseMemoryBlock shape — duck-typed, no `llamaindex` import required.
+import { RelataMemory as RelataLlamaIndexMemory } from "@zysec-ai/relata-sdk/adapters/llamaindex";
+
+// langgraphjs BaseCheckpointSaver — a *real* subclass (LangGraph does `instanceof`
+// checks), so this one genuinely needs `@langchain/langgraph-checkpoint` + `@langchain/core`
+// installed (both are optional peer dependencies of this package):
+import { RelataCheckpointer } from "@zysec-ai/relata-sdk/adapters/langgraph";
+const checkpointer = new RelataCheckpointer({
+  endpoint: process.env.RELATA_ENDPOINT!,
+  token: process.env.RELATA_BEARER_TOKEN,
+});
+const app = workflow.compile({ checkpointer });
+```
+
+See each module's docstring for the full API (`src/adapters/langchain.ts`,
+`src/adapters/llamaindex.ts`, `src/adapters/langgraph.ts`) and `sdks/COVERAGE.md` §19 for
+the cross-SDK coverage matrix.
+
 ## `QueryBuilder` — fluent SQL
 
 Fluent builder returned by `relata.select(type)`.
