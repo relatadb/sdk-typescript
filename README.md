@@ -278,7 +278,7 @@ const decision = await m.forget(id1);   // governed retention-policy retract
 await m.associate(id1, id2, "contradicts", { confidence: 0.9 });
 const eps = await m.episodes({ sessionId: "sess-1" });
 const chain = await m.justify(id1);
-const resolved = await m.resolve(id1, { policy: "highest_confidence" });
+const resolved = await m.resolve(id1);
 const summary = await m.summarise([id1, id2], { summaryContent: "both prefer different modes" });
 ```
 
@@ -293,7 +293,7 @@ const summary = await m.summarise([id1, id2], { summaryContent: "both prefer dif
 | `.associate(src, tgt, relation, opts?)` | `POST /memory/associate` | Link two memories |
 | `.episodes(opts?)` | `GET /memory/episodes` | List episodes |
 | `.justify(memoryId)` | `GET /memory/justify/:id` | PROV-O assertion chain |
-| `.resolve(memoryId, opts?)` | `POST /memory/resolve/:id` | Resolve a contradiction |
+| `.resolve(memoryId)` | `GET /memory/resolve/:id` | Resolve a supersession chain to its canonical head |
 | `.summarise(sourceIds, opts?)` | `POST /memory/summarise` | Summary belief from sources |
 
 The MCP envelope (`{"content": [{"type":"text","text":"<json>"}]}`) is unwrapped

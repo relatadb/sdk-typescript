@@ -368,23 +368,15 @@ export class Memory {
   }
 
   /**
-   * Resolve a contradiction between `memoryId` and a newer belief.
+   * Resolve a memory's supersession chain to its canonical head.
    *
-   * Wraps `POST /memory/resolve/<id>`. The `policy` selects the resolver
-   * (`"latest_wins"` / `"highest_confidence"` / `"manual"`). Returns the
-   * resolution record.
+   * Wraps `GET /memory/resolve/<id>`. Follows the supersession chain from
+   * `memoryId` to the current canonical belief and returns it. (The route is
+   * GET-only server-side and does not read a `policy` field — #2675.)
    */
-  async resolve(
-    memoryId: string,
-    opts: { policy?: string } = {},
-  ): Promise<Record<string, unknown>> {
-    const payload: Record<string, unknown> = {
-      policy: opts.policy ?? "latest_wins",
-      purpose: this.#purpose,
-    };
-    return unwrapMcp(
-      await this.#post(`/memory/resolve/${enc(memoryId)}`, payload),
-    );
+  async resolve(memoryId: string): Promise<Record<string, unknown>> {
+    const path = `/memory/resolve/${enc(memoryId)}?purpose=${enc(this.#purpose)}`;
+    return unwrapMcp(await this.#get(path));
   }
 
   /**

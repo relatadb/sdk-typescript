@@ -211,7 +211,7 @@ test("Memory: episodes builds query string and returns rows", async () => {
 test("Memory: justify, resolve, summarise hit the right paths", async () => {
   const queue = [
     { body: mcpEnvelope({ chain: [] }) }, // justify
-    { body: mcpEnvelope({ policy: "latest_wins" }) }, // resolve
+    { body: mcpEnvelope({ resolved_id: "m1-head" }) }, // resolve
     { body: mcpEnvelope({ id: "sum-1" }) }, // summarise
   ];
   const { fetch, calls } = mockFetch(queue);
@@ -220,18 +220,21 @@ test("Memory: justify, resolve, summarise hit the right paths", async () => {
   const j = await m.justify("m1");
   assert.deepEqual(j["chain"], []);
 
-  const r = await m.resolve("m1", { policy: "highest_confidence" });
-  assert.equal(r["policy"], "latest_wins");
+  const r = await m.resolve("m1");
+  assert.equal(r["resolved_id"], "m1-head");
 
   const s = await m.summarise(["a", "b"], { summaryContent: "the summary" });
   assert.equal(s["id"], "sum-1");
 
   assert.ok(calls[0]?.url.startsWith("http://x/memory/justify/m1?"));
-  assert.equal(calls[1]?.url, "http://x/memory/resolve/m1");
+  // resolve() must be a GET with the purpose in the query string, not a POST
+  // with a JSON body — the server route is GET-only (#2675).
+  assert.equal(calls[1]?.method, "GET");
+  assert.ok(calls[1]?.url.startsWith("http://x/memory/resolve/m1?"));
+  assert.ok(calls[1]?.url.includes("purpose=p"));
+  assert.equal(calls[1]?.body, undefined);
   assert.equal(calls[2]?.url, "http://x/memory/summarise");
 
-  const resolveBody = JSON.parse(calls[1]?.body ?? "{}");
-  assert.equal(resolveBody["policy"], "highest_confidence");
   const summariseBody = JSON.parse(calls[2]?.body ?? "{}");
   assert.deepEqual(summariseBody["source_ids"], ["a", "b"]);
   assert.equal(summariseBody["summary_content"], "the summary");
