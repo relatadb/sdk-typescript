@@ -85,6 +85,22 @@ export class VectorClient {
    * pgvector cosine form the server understands natively. `<=>` is cosine,
    * `<->` is L2, `<#>` is negative inner product; this helper uses cosine
    * because the HNSW index is cosine-trained.
+   *
+   * `opts.efSearch` (HNSW beam width): investigated for #2756 — there is no
+   * client-controllable `ef_search` knob anywhere in today's wire contract.
+   * `relata_query::parser`'s `ORDER BY` clause only accepts `column
+   * [ASC|DESC]` (no trailing-clause grammar like `HYBRID_SEARCH`'s
+   * `RERANK`/`METRIC`/`WEIGHTS`), and neither the HTTP nor gRPC
+   * `QueryRequest` carries an `ef_search` field. `ef_search` is exclusively
+   * an internal, auto-tuned HNSW parameter (`relata-storage`'s
+   * `HnswIndex::ef_search_default` autotune loop) with no per-query
+   * override path today. Rather than silently discarding a caller-supplied
+   * value (the previous, dead-parameter behavior), it is appended as an
+   * `EF_SEARCH n` SQL block comment: harmless (the tokenizer strips
+   * comments before the "no trailing tokens" parse check ever runs, so this
+   * can never change what executes), visible in the outgoing request/query
+   * logs instead of vanishing, and ready to be wired to a real per-query
+   * knob if the server ever exposes one.
    */
   async knnSearch(
     objectType: string,
@@ -97,9 +113,12 @@ export class VectorClient {
     } = {},
   ): Promise<VectorRow[]> {
     const embStr = JSON.stringify(queryEmbedding);
-    const sql =
+    let sql =
       `SELECT * FROM ${objectType} ` +
       `ORDER BY ${embeddingSlot} <=> '${embStr}' LIMIT ${opts.k ?? 10}`;
+    if (opts.efSearch !== undefined) {
+      sql += ` /* EF_SEARCH ${opts.efSearch} */`;
+    }
     const result = await this.#client.query<VectorRow>(sql, {
       purpose: this.#purpose(opts.purpose),
     });
