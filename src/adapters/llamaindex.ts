@@ -93,6 +93,12 @@ export class RelataMemory {
    * Not supported for semantic memory — recall is relevance-ranked, not a
    * full scan. Use {@link get} with messages. Returns `[]` rather than a
    * misleading partial history.
+   *
+   * @remarks
+   * Server-limited stub (#2756): Relata's semantic memory has no
+   * list-all/full-scan route, so this **always returns `[]`**, regardless of
+   * how many memories exist. Do not treat an empty result as "no memories
+   * stored" — call {@link get} with a representative query instead.
    */
   async getAll(): Promise<Record<string, unknown>[]> {
     return [];

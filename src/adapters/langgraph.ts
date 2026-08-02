@@ -442,7 +442,15 @@ export class RelataCheckpointer extends BaseCheckpointSaver {
     await this.#a2a.saveCheckpoint(threadId, segment, { writes: list });
   }
 
-  /** Not supported — see the module docstring / {@link DELETE_THREAD_UNSUPPORTED}. */
+  /**
+   * Not supported — see the module docstring / {@link DELETE_THREAD_UNSUPPORTED}.
+   *
+   * @remarks
+   * Server-limited stub (#2756): this method **always throws**. The Relata
+   * `/a2a/checkpoints` door has no delete route (checkpoints FIFO-evict
+   * server-side instead). For governed erasure of the underlying
+   * audit-trail memory item, call `DELETE /memory/forget/:id` directly.
+   */
   override async deleteThread(_threadId: string): Promise<void> {
     throw new Error(DELETE_THREAD_UNSUPPORTED);
   }

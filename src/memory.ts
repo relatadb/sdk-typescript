@@ -467,9 +467,14 @@ export class Memory {
   // -------------------------------------------------------------------------
 
   /**
-   * Close the memory client. No-op on native `fetch` (there is no connection
-   * pool to close); exists for API symmetry with the Python SDK and with
-   * typed clients that do hold transport state.
+   * Close the memory client.
+   *
+   * @remarks
+   * Server-limited stub (#2756): this is a no-op. Native `fetch` has no
+   * connection pool to close, so there is nothing to release. The method
+   * exists for API symmetry with the Python SDK's `Memory.close()` (which
+   * does release an `httpx` client) and with typed clients here that hold
+   * real transport state.
    */
   async close(): Promise<void> {
     // Intentionally empty — native fetch has no pool to close.

@@ -14,9 +14,13 @@ export default defineConfig({
     // are peer-optional too, but `adapters/langchain.ts` and
     // `adapters/llamaindex.ts` duck-type their target framework and never
     // import it, so those two build clean with zero peers installed.
+    // `src/builder.ts` (#2756) is its own entry point too — reachable via the
+    // `@zysec-ai/relata-sdk/builder` subpath declared in `package.json`
+    // `exports`, without pulling the IR builder into the core barrel.
     entry: [
         "src/index.ts",
         "src/cli.ts",
+        "src/builder.ts",
         "src/adapters/langchain.ts",
         "src/adapters/llamaindex.ts",
         "src/adapters/langgraph.ts",

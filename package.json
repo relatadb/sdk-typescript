@@ -8,6 +8,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./builder": {
+      "types": "./dist/builder.d.ts",
+      "import": "./dist/builder.js"
+    },
     "./adapters/langchain": {
       "types": "./dist/adapters/langchain.d.ts",
       "import": "./dist/adapters/langchain.js"

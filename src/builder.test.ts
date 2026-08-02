@@ -112,3 +112,18 @@ test("lookup_identity and hybrid_search emit correct shapes", () => {
   assert.equal(hsMin.top_k, undefined);
   assert.equal(hsMin.alpha, undefined);
 });
+
+test("package.json exports the ./builder subpath (#2756 regression guard)", async () => {
+  // This module's JSDoc (and the README) advertise
+  // `import ... from "@zysec-ai/relata-sdk/builder"`. Guard against that
+  // subpath silently dropping out of `package.json` `exports` again — a
+  // published install would otherwise make this module unreachable even
+  // though the source ships it.
+  const { readFile } = await import("node:fs/promises");
+  const pkgUrl = new URL("../package.json", import.meta.url);
+  const pkg = JSON.parse(await readFile(pkgUrl, "utf8"));
+
+  assert.ok(pkg.exports["./builder"], "package.json exports must declare './builder'");
+  assert.equal(pkg.exports["./builder"].types, "./dist/builder.d.ts");
+  assert.equal(pkg.exports["./builder"].import, "./dist/builder.js");
+});

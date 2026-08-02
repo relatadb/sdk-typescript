@@ -642,6 +642,47 @@ or via the builder:
 
 See the [SQL reference](https://www.relatadb.dev/docs/reference/sql) for full syntax.
 
+## Typed query IR builder
+
+A standalone, dependency-free builder for the JSON query IR (`relata_query_ir: "v1"`),
+importable from its own subpath so it never bloats the core client bundle:
+
+```typescript
+import { query, pathsBetween, graph } from "@zysec-ai/relata-sdk/builder";
+
+const ir = query()
+  .purpose("analytics")
+  .from("Person")
+  .select("id", "name")
+  .where("age", ">", 30)
+  .limit(10)
+  .build();
+
+const paths = graph("investigation").from("alice@acme.com").to("bob@acme.com").maxHops(3).build();
+```
+
+Serialises to the same JSON documented in `docs/api/query-ir.md` and produced by the
+Rust `relata_sdk_rust::builder` module.
+
+## Connection pool (high availability)
+
+`ClientPool` mirrors the Rust SDK's `RelataClientPool`: round-robin load balancing
+across N HTTP endpoints with health-aware failover (a failed endpoint is skipped for a
+cooldown period, then retried). Covers the data-plane read surface only — `query`,
+`search`, `version`, `health`, `stats`. For schema/ingest/admin operations, use a single
+`RelataClient` pointed at a specific node.
+
+```typescript
+import { ClientPool } from "@zysec-ai/relata-sdk";
+
+const pool = new ClientPool(process.env.RELATA_TOKEN)
+  .withEndpoint("http://node-1:9090")
+  .withEndpoint("http://node-2:9090")
+  .withEndpoint("http://node-3:9090");
+
+const result = await pool.query("SELECT * FROM Person LIMIT 5", "analytics");
+```
+
 ## Environment variables
 
 | Variable | Default | Description |

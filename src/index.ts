@@ -177,6 +177,13 @@ export { LogClient } from "./log.ts";
 export type { LogLeaf } from "./log.ts";
 
 // ---------------------------------------------------------------------------
+// Connection pool — multi-endpoint round-robin + failover (#2756)
+// ---------------------------------------------------------------------------
+
+export { ClientPool } from "./pool.ts";
+export type { ClientPoolOptions } from "./pool.ts";
+
+// ---------------------------------------------------------------------------
 // Arrow Flight — first-party do_get transport (#2492)
 // ---------------------------------------------------------------------------
 
