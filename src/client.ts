@@ -66,6 +66,11 @@ import { type Logger, NoOpLogger, SafeLogger } from "./logger.ts";
 import { Namespace } from "./namespace.ts";
 import { QueryBuilder } from "./query.ts";
 import { createArrowFlightTransport } from "./flight.ts";
+import {
+  RETRYABLE_STATUS_CODES,
+  isIdempotentMethod,
+  DEFAULT_RETRY_BACKOFF_MS,
+} from "./_retry.ts";
 
 // ---------------------------------------------------------------------------
 // Transport config
@@ -73,44 +78,19 @@ import { createArrowFlightTransport } from "./flight.ts";
 
 /**
  * @internal
- * HTTP status codes that trigger an automatic retry when `maxRetries > 0`.
- * Matches the Python `_http._DEFAULT_RETRY_ON` set. Exported so
+ * Shared HTTP retry policy (retryable status codes, idempotency gate,
+ * default backoff) — defined in `_retry.ts` and re-exported here so
  * `TypedClientBase` (`_typed-http.ts`, #2731) can share the exact same
- * retryable set instead of re-diverging it.
+ * policy instead of re-diverging it, without `_typed-http.ts` needing a
+ * runtime import from this module (that edge used to close an ESM
+ * circular-import cycle through `namespace.ts`/`ingest.ts` — see
+ * `_retry.ts`'s module doc and #2879).
  */
-export const RETRYABLE_STATUS_CODES: ReadonlySet<number> = new Set([502, 503, 504]);
-
-/**
- * @internal
- * HTTP methods that are safe to retry without risk of double-execution.
- * Parity with the Rust SDK (`post()` never retries — see
- * `crates/relata-sdk-rust/src/http.rs`) and the Go SDK's `isIdempotent`
- * (`sdks/go/relata/client.go`). POST/PUT/PATCH/DELETE are NOT retried — a
- * gateway timeout after commit would otherwise double-execute irreversible
- * ops (erase_subject, fuse_identities, session_commit, #2489).
- */
-const IDEMPOTENT_METHODS: ReadonlySet<string> = new Set([
-  "GET",
-  "HEAD",
-  "OPTIONS",
-]);
-
-/**
- * @internal
- * `true` when the HTTP method is safe to retry (#2489). Exported so
- * `TypedClientBase` (#2731) shares this exact idempotency gate.
- */
-export function isIdempotentMethod(method: string): boolean {
-  return IDEMPOTENT_METHODS.has(method.toUpperCase());
-}
-
-/**
- * @internal
- * Default base backoff for the retry loop, in milliseconds. Exported so
- * `TypedClientBase` (#2731) shares the same default instead of a
- * re-diverged constant.
- */
-export const DEFAULT_RETRY_BACKOFF_MS = 500;
+export {
+  RETRYABLE_STATUS_CODES,
+  isIdempotentMethod,
+  DEFAULT_RETRY_BACKOFF_MS,
+};
 
 // ---------------------------------------------------------------------------
 // Multimedia operator + Arrow Flight builders (#2251, #2253)

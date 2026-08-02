@@ -28,8 +28,22 @@ import {
   DEFAULT_RETRY_BACKOFF_MS,
   isIdempotentMethod,
   RETRYABLE_STATUS_CODES,
-  type RelataClient,
-} from "./client.ts";
+} from "./_retry.ts";
+// `import type` only — erased at runtime (`--experimental-strip-types`), so
+// this does NOT create a runtime dependency edge back to `client.ts`. That
+// edge (importing the retry constants above as *values* from `client.ts`)
+// used to close an ESM circular-import cycle: `client.ts` → `namespace.ts`
+// → `ingest.ts` (`IngestClient extends TypedClientBase`) → `_typed-http.ts`
+// → back to `client.ts`. Depending on which module Node resolved first
+// along that chain, `TypedClientBase` could still be in its temporal dead
+// zone when `ingest.ts` evaluated `class IngestClient extends
+// TypedClientBase`, throwing `ReferenceError: Cannot access
+// 'TypedClientBase' before initialization` (#2879, reproduced by
+// `admin-listener-split.test.ts`, which imports `./_typed-http.ts` before
+// `./index.ts`). Moving the retry constants to the dependency-free
+// `_retry.ts` leaf module removes the runtime `_typed-http.ts` → `client.ts`
+// edge entirely, breaking the cycle.
+import type { RelataClient } from "./client.ts";
 
 // ---------------------------------------------------------------------------
 // Options shared by every typed client constructor
