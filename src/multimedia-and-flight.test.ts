@@ -150,10 +150,15 @@ test("deriveFlightEndpoint: explicit override wins", () => {
   );
 });
 
-test("queryFlight: throws RelataError when no transport supplied", async () => {
-  const relata = new RelataClient({ baseUrl: "http://localhost:9090" });
+test("queryFlight: uses the built-in transport by default (#2492 — rejects against a closed port)", async () => {
+  // No `transport` supplied: the SDK must now drive its built-in ArrowFlight
+  // Transport (#2492) rather than throw. Pointing the default transport at a
+  // closed port proves the wiring (queryFlight → built-in adapter → gRPC) and
+  // that transport-level failure still surfaces as a RelataError. The short
+  // client timeoutMs bounds the call.
+  const relata = new RelataClient({ baseUrl: "http://localhost:9090", timeoutMs: 400 });
   await assert.rejects(
-    () => relata.queryFlight("SELECT 1"),
+    () => relata.queryFlight("SELECT 1", { flightEndpoint: "grpc://127.0.0.1:1" }),
     (err: unknown) => err instanceof RelataError,
   );
 });

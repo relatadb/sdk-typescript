@@ -177,6 +177,14 @@ export { LogClient } from "./log.ts";
 export type { LogLeaf } from "./log.ts";
 
 // ---------------------------------------------------------------------------
+// Arrow Flight — first-party do_get transport (#2492)
+// ---------------------------------------------------------------------------
+
+export { ArrowFlightTransport, createArrowFlightTransport } from "./flight.ts";
+export type { ArrowFlightTransportOptions } from "./flight.ts";
+export type { FlightTransport } from "./client.ts";
+
+// ---------------------------------------------------------------------------
 // Logger — pluggable diagnostic sink (silent by default)
 // ---------------------------------------------------------------------------
 

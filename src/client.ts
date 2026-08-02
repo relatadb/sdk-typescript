@@ -65,6 +65,7 @@ import {
 import { type Logger, NoOpLogger, SafeLogger } from "./logger.ts";
 import { Namespace } from "./namespace.ts";
 import { QueryBuilder } from "./query.ts";
+import { createArrowFlightTransport } from "./flight.ts";
 
 // ---------------------------------------------------------------------------
 // Transport config
@@ -176,8 +177,11 @@ export function deriveFlightEndpoint(baseUrl: string, flightEndpoint?: string): 
  * PURPOSE comment already injected) as the ticket and `bearer` for the
  * `authorization` metadata, returning the decoded columnar result.
  *
- * The TS SDK does not bundle a JS Arrow Flight client (one requires native
- * gRPC + apache-arrow); supply an implementation built on your Flight stack.
+ * Optional since #2492: `queryFlight()` now uses the SDK's built-in first-party
+ * {@link createArrowFlightTransport} adapter by default, so most callers never
+ * need to supply a `transport`. Pass one only if you operate your own Arrow
+ * Flight stack (e.g. a grpc-web client for the browser, or a bespoke Arrow
+ * build) and want it driven instead of the built-in gRPC + apache-arrow path.
  */
 export type FlightTransport<T = unknown> = (
   endpoint: string,
@@ -1104,28 +1108,42 @@ export class RelataClient {
 
   /**
    * Execute a SQL query over Arrow Flight `do_get` and return the decoded
-   * columnar result — no JSON intermediate (#2253, #958).
+   * columnar result — no JSON intermediate (#2253, #958, #2492).
    *
    * The Flight door is enabled server-side with `RELATA_FLIGHT_ENABLE=true`
    * (default port 8815). The ticket is the raw UTF-8 SQL, optionally prefixed
    * with a leading `PURPOSE '<id>'` SQL comment which the server extracts as
    * the query purpose.
    *
-   * **The TS SDK does not bundle a JS Arrow Flight client** (one requires
-   * native gRPC + apache-arrow). Supply a `transport` adapter built on your
-   * Flight stack; the SDK handles ticket/PURPOSE assembly, endpoint
-   * derivation, and bearer wiring. If `transport` is omitted a `RelataError`
-   * is thrown with install guidance.
+   * **Works out of the box (#2492):** when no `transport` is supplied the SDK
+   * uses its built-in first-party {@link createArrowFlightTransport} adapter,
+   * which opens a real gRPC Flight `do_get` and decodes the stream into an
+   * `apache-arrow` `Table` — matching what the Python/Go/Rust SDKs do natively.
+   * The gRPC + Arrow runtime libraries (`@grpc/grpc-js`, `apache-arrow`) are
+   * **optional peer dependencies**: if they are not installed, the call throws
+   * a `RelataError` with install guidance. Supply a `transport` only if you
+   * operate your own Arrow Flight stack (e.g. a grpc-web client for the
+   * browser); the SDK still handles ticket/PURPOSE assembly, endpoint
+   * derivation, and bearer wiring.
    *
    * @param sql - SQL query string used verbatim as the Flight ticket.
    * @param opts - `flightEndpoint` override, `purpose` (injected as a
    *   `PURPOSE '...'` SQL comment), `bearerToken` override (defaults to the
-   *   client's token), and `transport` — the Flight `do_get` adapter.
+   *   client's token), and `transport` — an optional Flight `do_get` adapter
+   *   overriding the built-in one.
    *
-   * @typeParam T - Decoded result type (typically an `apache-arrow` `Table`).
+   * @typeParam T - Decoded result type (an `apache-arrow` `Table` when the
+   *   built-in transport is used; default `unknown`).
    *
    * @example
    * ```typescript
+   * // Zero-config (installs apache-arrow + @grpc/grpc-js as peers first):
+   * const table = await relata.queryFlight(
+   *   "SELECT * FROM Person LIMIT 1000",
+   *   { purpose: "analytics" },
+   * );
+   *
+   * // Caller-supplied adapter (unchanged from #2253):
    * const table = await relata.queryFlight(
    *   "SELECT * FROM Person LIMIT 1000",
    *   { purpose: "analytics", transport: myFlightAdapter },
@@ -1141,16 +1159,13 @@ export class RelataClient {
     const endpoint = deriveFlightEndpoint(this.#baseUrl, opts?.flightEndpoint);
     const ticketSql = buildFlightTicket(sql, opts?.purpose);
     const bearer = opts?.bearerToken !== undefined ? opts.bearerToken : this.#bearerToken;
-    if (!opts?.transport) {
-      throw new RelataError(
-        "queryFlight() requires a `transport` Flight adapter",
-        0,
-        "queryFlight() requires a `transport` Flight adapter — the TS SDK does " +
-          "not bundle a JS Arrow Flight client. Install apache-arrow + a gRPC " +
-          "Flight client and pass a `transport` that performs do_get.",
-      );
+    if (opts?.transport) {
+      return opts.transport(endpoint, ticketSql, bearer);
     }
-    return opts.transport(endpoint, ticketSql, bearer);
+    // #2492: built-in first-party Arrow Flight adapter — works out of the box
+    // once the optional apache-arrow + @grpc/grpc-js peers are installed.
+    const flight = createArrowFlightTransport<T>({ timeoutMs: this.#timeoutMs });
+    return flight.doGet(endpoint, ticketSql, bearer);
   }
 
   // -------------------------------------------------------------------------

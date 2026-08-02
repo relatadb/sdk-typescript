@@ -446,6 +446,34 @@ for await (const chunk of streaming.queryArrowRaw("SELECT * FROM Person", { purp
 SSE consumers reconnect with exponential backoff until you break out of the
 `for await` loop.
 
+### Arrow Flight — zero-copy columnar SQL (#2492)
+
+`queryFlight()` runs a SQL query over the server's Arrow Flight `do_get` door
+(`RELATA_FLIGHT_ENABLE=true`, default port 8815) and returns the decoded
+`apache-arrow` `Table` — no JSON intermediate, byte-for-byte the path the
+Python/Go/Rust SDKs walk natively.
+
+```typescript
+import type { Table } from "apache-arrow";
+
+// Works out of the box: the SDK drives its built-in first-party Flight
+// transport (gRPC do_get → FlightData → reassembled IPC → apache-arrow Table).
+const table = await relata.queryFlight<Table>(
+  "SELECT * FROM Person LIMIT 1000",
+  { purpose: "analytics" },
+);
+for (const row of table.toArray()) console.log(row);
+```
+
+The gRPC + Arrow runtime libraries — `@grpc/grpc-js` and `apache-arrow` — are
+**optional peer dependencies**: they are dynamically imported on first use, so
+importing the SDK never pulls them in, and apps that never call `queryFlight()`
+pay no cost. Install them with `npm install apache-arrow @grpc/grpc-js`; if they
+are absent when `queryFlight()` is called without a caller-supplied `transport`,
+a `RelataError` with install guidance is thrown. TLS is selected automatically
+for `grpcs://` / `tls://` endpoints (#2362). Browser / edge runtimes are
+gRPC-less — pass your own `transport` (e.g. built on grpc-web) there.
+
 ### S3 door — native fetch only
 
 The Python SDK ships `boto3` / `aiobotocore` / `httpx` flavours; this TypeScript port
