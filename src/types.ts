@@ -90,8 +90,10 @@ export interface RelataClientOptions {
   defaultPurpose?: string;
 
   /**
-   * Per-request timeout in milliseconds. `0` means no timeout (default).
-   * Applied via `AbortController`; works in Node 18+, Deno, Bun, and browser.
+   * Per-request timeout in milliseconds. Defaults to `30000` (30s), matching
+   * the Python and Go SDKs (#2494). `0` is an explicit opt-out meaning no
+   * timeout. Applied via `AbortController`; works in Node 18+, Deno, Bun, and
+   * browser.
    */
   timeoutMs?: number;
 

@@ -167,19 +167,19 @@ test("RelataClient: default logger is silent (no console writes on retry)", asyn
   console.log = () => { touched = true; };
   console.error = () => { touched = true; };
   try {
+    // GET /health is idempotent → eligible for retry on 503 (#2489).
     const { fetch } = mockFetch([
       { status: 503, body: { error: "boom" } },
       { status: 503, body: { error: "boom" } },
-      { status: 200, body: { data: [] } },
+      { status: 200, body: { status: "ok", profile: "free", node_id: "n1" } },
     ]);
     const client = createClient("http://x.example", {
-      defaultPurpose: "analytics",
       maxRetries: 2,
       retryBackoffMs: 1,
       fetch,
     });
-    const r = await client.query("SELECT 1");
-    assert.equal(r.rowCount, 0);
+    const r = await client.health();
+    assert.equal(r.status, "ok");
     assert.equal(touched, false, "default logger must not touch console");
   } finally {
     console.log = realLog;
@@ -196,15 +196,15 @@ test("RelataClient: retry loop emits warn per attempt then error on exhaustion",
   ]);
 
   const client = createClient("http://x.example", {
-    defaultPurpose: "analytics",
     maxRetries: 2,
     retryBackoffMs: 1,
     fetch,
     logger,
   });
 
+  // GET /health is idempotent → retried on 503 (#2489).
   await assert.rejects(
-    () => client.query("SELECT 1"),
+    () => client.health(),
     (err: unknown) => err instanceof ServerError,
   );
 
@@ -222,8 +222,8 @@ test("RelataClient: retry loop emits warn per attempt then error on exhaustion",
   assert.equal(first.context!["attempt"], 1);
   assert.equal(first.context!["maxAttempts"], 3);
   assert.equal(first.context!["backoffMs"], 1);
-  assert.equal(first.context!["method"], "POST");
-  assert.equal(first.context!["path"], "/query");
+  assert.equal(first.context!["method"], "GET");
+  assert.equal(first.context!["path"], "/health");
 });
 
 test("RelataClient: timeout emits warn with timeoutMs in context", async () => {
@@ -270,20 +270,19 @@ test("RelataClient: a throwing logger is silently swallowed (defensive contract)
   };
   const { fetch } = mockFetch([
     { status: 503, body: { error: "x" } },
-    { status: 200, body: { data: [] } },
+    { status: 200, body: { status: "ok", profile: "free", node_id: "n1" } },
   ]);
 
   const client = createClient("http://x.example", {
-    defaultPurpose: "analytics",
     maxRetries: 1,
     retryBackoffMs: 1,
     fetch,
     logger: throwingLogger,
   });
 
-  // The query must succeed despite the logger throwing.
-  const r = await client.query("SELECT 1");
-  assert.equal(r.rowCount, 0);
+  // GET /health is idempotent → retried on 503 (#2489).
+  const r = await client.health();
+  assert.equal(r.status, "ok");
 });
 
 test("SafeLogger: wraps an inner Logger and silently swallows throws", () => {

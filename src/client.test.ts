@@ -338,6 +338,45 @@ test("retry: does NOT retry on 401 (non-retryable)", async () => {
   assert.equal(calls.length, 1, "should NOT retry on 401");
 });
 
+test("retry (#2489): POST is NOT retried on 503 — irreversible-op guard", async () => {
+  // POST /query with a retryable 503 must surface immediately: a gateway
+  // timeout after commit risks double-execution of irreversible operations.
+  // Parity with the Rust SDK (`post()` never retries) and Go `isIdempotent`.
+  const { fetch, calls } = mockFetch([
+    { status: 503, body: { error: "shedding" } },
+  ]);
+  const relata = new RelataClient({
+    baseUrl: "http://x",
+    defaultPurpose: "analytics",
+    fetch,
+    maxRetries: 3,
+    retryBackoffMs: 1,
+  });
+  await assert.rejects(
+    () => relata.query("POST /query is non-idempotent"),
+    (err: unknown) => err instanceof ServerError,
+  );
+  assert.equal(calls.length, 1, "POST must NOT be retried on 503 (#2489)");
+  assert.equal(calls[0]?.method, "POST");
+});
+
+test("retry (#2489): GET is still retried on 503 (idempotent)", async () => {
+  const { fetch, calls } = mockFetch([
+    { status: 503, body: { error: "shedding" } },
+    { status: 200, body: { status: "ok", profile: "free", node_id: "n1" } },
+  ]);
+  const relata = new RelataClient({
+    baseUrl: "http://x",
+    fetch,
+    maxRetries: 3,
+    retryBackoffMs: 1,
+  });
+  const r = await relata.health();
+  assert.equal(r.status, "ok");
+  assert.equal(calls.length, 2, "GET should be retried once then succeed");
+  assert.equal(calls[0]?.method, "GET");
+});
+
 test("retry: retries on network errors (raw throw) then succeeds", async () => {
   let attempt = 0;
   const calls: unknown[] = [];

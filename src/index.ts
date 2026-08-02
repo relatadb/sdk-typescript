@@ -138,6 +138,12 @@ export { A2AClient } from "./a2a.ts";
 export { SearchClient, buildSearchPayload } from "./search.ts";
 export type { SearchQuery, SearchFilter, SearchRankBy } from "./search.ts";
 
+export { Namespace, validateNamespaceName } from "./namespace.ts";
+export type {
+  NamespaceQueryOptions,
+  NamespaceWriteOptions,
+} from "./namespace.ts";
+
 export { AuditClient } from "./audit.ts";
 
 export { IdentityClient } from "./identity.ts";

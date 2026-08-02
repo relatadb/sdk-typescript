@@ -63,6 +63,7 @@ import {
   TimeoutError,
 } from "./errors.ts";
 import { type Logger, NoOpLogger, SafeLogger } from "./logger.ts";
+import { Namespace } from "./namespace.ts";
 import { QueryBuilder } from "./query.ts";
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,26 @@ import { QueryBuilder } from "./query.ts";
  * Matches the Python `_http._DEFAULT_RETRY_ON` set.
  */
 const RETRYABLE_STATUS_CODES: ReadonlySet<number> = new Set([502, 503, 504]);
+
+/**
+ * @internal
+ * HTTP methods that are safe to retry without risk of double-execution.
+ * Parity with the Rust SDK (`post()` never retries — see
+ * `crates/relata-sdk-rust/src/http.rs`) and the Go SDK's `isIdempotent`
+ * (`sdks/go/relata/client.go`). POST/PUT/PATCH/DELETE are NOT retried — a
+ * gateway timeout after commit would otherwise double-execute irreversible
+ * ops (erase_subject, fuse_identities, session_commit, #2489).
+ */
+const IDEMPOTENT_METHODS: ReadonlySet<string> = new Set([
+  "GET",
+  "HEAD",
+  "OPTIONS",
+]);
+
+/** @internal True when the HTTP method is safe to retry (#2489). */
+function isIdempotentMethod(method: string): boolean {
+  return IDEMPOTENT_METHODS.has(method.toUpperCase());
+}
 
 /**
  * @internal
@@ -225,7 +246,7 @@ export class RelataClient {
     this.#adminBaseUrl = opts.adminBaseUrl?.replace(/\/+$/, "");
     this.#bearerToken = opts.bearerToken;
     this.#defaultPurpose = opts.defaultPurpose;
-    this.#timeoutMs = opts.timeoutMs ?? 0;
+    this.#timeoutMs = opts.timeoutMs ?? 30000;
     this.#fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
     this.#tenant = opts.tenant;
     this.#actingAs = opts.actingAs;
@@ -503,6 +524,23 @@ export class RelataClient {
   }
 
   // -------------------------------------------------------------------------
+  // Public API — Namespace handle (T9 flagship retrieval surface, #1991/#2491)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Bind a {@link Namespace} handle to `name` — the search-developer surface
+   * over a single object type (the retrieval-market word for which is
+   * "namespace" / "index" / "collection"). Mirrors the Python
+   * `client.namespace(name)` factory.
+   *
+   * The returned handle shares this client's transport, auth, tenant, and
+   * purpose context — one pool, reused across every namespace.
+   */
+  namespace(name: string): Namespace {
+    return new Namespace(this, name);
+  }
+
+  // -------------------------------------------------------------------------
   // Public API — types, ontology, rules, links, identity (#967)
   // -------------------------------------------------------------------------
 
@@ -542,6 +580,61 @@ export class RelataClient {
     if (opts.colType !== undefined) body["col_type"] = opts.colType;
     if (opts.optional !== undefined) body["optional"] = opts.optional;
     return this.#patch(`/types/${name}/schema`, body);
+  }
+
+  // -------------------------------------------------------------------------
+  // Schema-BRANCH CRUD + edge-type registry (#2497).
+  //
+  // Distinct from `schemaAlter` (online column evolution, #1307/#2476): this
+  // surface governs the git-branched ontology — branch off `main`, drop a
+  // stale experiment branch, and register/list edge (link) types within a
+  // branch. Mirrors the Rust flat client (`crates/relata-sdk-rust/src/http.rs`
+  // 2535–2567) and the Python client.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create a schema branch — `POST /schema/branches/:name` with a
+   * `{"from": <source>}` body (#2497). The new branch is a copy-on-write
+   * child of `fromBranch` (typically `"main"`).
+   */
+  async createSchemaBranch(
+    name: string,
+    fromBranch: string,
+  ): Promise<Record<string, unknown>> {
+    return this.#post(
+      `/schema/branches/${encodeURIComponent(name)}`,
+      { from: fromBranch },
+    );
+  }
+
+  /**
+   * Delete a schema branch — `DELETE /schema/branches/:name` (#2497).
+   * Admin token required server-side.
+   */
+  async deleteSchemaBranch(name: string): Promise<Record<string, unknown>> {
+    return this.#delete(`/schema/branches/${encodeURIComponent(name)}`);
+  }
+
+  /**
+   * List registered edge (link) types — `GET /types/edges` (#2497).
+   * Returns the registry of `(from_type, to_type, label)` triples the
+   * planner uses to resolve governed links.
+   */
+  async listEdgeTypes(): Promise<Record<string, unknown>> {
+    return this.#get("/types/edges");
+  }
+
+  /**
+   * Register an edge (link) type — `POST /types/edges` with a
+   * `{"from_type", "to_type", "label"}` body (#2497). Mirrors the Rust flat
+   * client's `register_edge_type`.
+   */
+  async registerEdgeType(
+    fromType: string,
+    toType: string,
+    label: string,
+  ): Promise<Record<string, unknown>> {
+    return this.#post("/types/edges", { from_type: fromType, to_type: toType, label });
   }
 
   /** SHACL schema migration — type specs, link types, property constraints. */
@@ -1509,10 +1602,15 @@ export class RelataClient {
    * @internal
    * Core request dispatcher: timeout, retry, X-Request-ID, error mapping.
    *
-   * Mirrors the Python `_http._send_with_retry` loop:
+   * Mirrors the Python `_http._send_with_retry` loop and the Rust/Go
+   * idempotency gate (#2489):
    * - Generate a per-attempt `X-Request-ID` (unless the caller pinned one in
    *   the static header bag).
-   * - Retry on `{502, 503, 504}` and on network errors, up to `maxRetries`.
+   * - Retry **idempotent** verbs (`GET`/`HEAD`/`OPTIONS`) on `{502, 503, 504}`
+   *   and on network errors, up to `maxRetries`. POST/PUT/PATCH/DELETE are
+   *   never retried — a gateway timeout after commit would double-execute
+   *   irreversible operations (parity with `crates/relata-sdk-rust/src/http.rs`
+   *   `post()` and `sdks/go/relata/client.go::isIdempotent`).
    * - Exponential backoff: `retryBackoffMs * 2^attempt`.
    */
   async #send<T>(
@@ -1571,13 +1669,14 @@ export class RelataClient {
           throw new TimeoutError(effectiveTimeout);
         }
         // Already-classified RelataError (any subclass) — retry only on the
-        // retryable set; otherwise rethrow as-is.
+        // retryable set AND only for idempotent verbs; otherwise rethrow as-is.
+        // POST/PUT/PATCH/DELETE are never retried (#2489): a 502/503/504 after
+        // commit risks double-execution of irreversible operations.
         if (err instanceof RelataError) {
           const status = err.statusCode;
-          if (
-            attempt + 1 < maxAttempts &&
-            RETRYABLE_STATUS_CODES.has(status)
-          ) {
+          const canRetryStatus =
+            isIdempotentMethod(method) && RETRYABLE_STATUS_CODES.has(status);
+          if (attempt + 1 < maxAttempts && canRetryStatus) {
             const backoffMs = this.#retryBackoffMs * 2 ** attempt;
             this.#logger.warn("retrying after retryable HTTP status", {
               method,
@@ -1591,7 +1690,7 @@ export class RelataClient {
             await this.#sleep(backoffMs);
             continue;
           }
-          if (RETRYABLE_STATUS_CODES.has(status)) {
+          if (canRetryStatus) {
             this.#logger.error("retries exhausted on retryable HTTP status", {
               method,
               path,
@@ -1602,14 +1701,15 @@ export class RelataClient {
           }
           throw err;
         }
-        // Raw network failure — wrap + retry.
+        // Raw network failure — wrap + retry, but only for idempotent verbs
+        // (same double-execution hazard as status-code retries, #2489).
         if (err instanceof Error) {
           const wrapped = new NetworkError(
             `Failed to reach Relata at ${url}: ${err.message}`,
             err,
           );
           lastError = wrapped;
-          if (attempt + 1 < maxAttempts) {
+          if (attempt + 1 < maxAttempts && isIdempotentMethod(method)) {
             const backoffMs = this.#retryBackoffMs * 2 ** attempt;
             this.#logger.warn("retrying after network error", {
               method,
