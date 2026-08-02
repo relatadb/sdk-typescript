@@ -30,7 +30,9 @@
  *   RELATA_TOKEN=secret relata audit
  */
 
-import { createClient } from "./index.ts";
+import { fileURLToPath } from "node:url";
+
+import { type RelataClient, createClient } from "./index.ts";
 import { QuotaError, RelataError } from "./errors.ts";
 
 // ---------------------------------------------------------------------------
@@ -52,12 +54,6 @@ function outJson(data: unknown, pretty: boolean): void {
 /** Diagnostics go to stderr so they never corrupt a stdout pipe. */
 function err(message: string): void {
   process.stderr.write(`${message}\n`);
-}
-
-/** Diagnostic + non-zero exit. Always exits the process. */
-function die(message: string, exitCode = 1): never {
-  err(message);
-  process.exit(exitCode);
 }
 
 /** Standard usage banner, written to stderr so `--help` works in pipes. */
@@ -95,7 +91,12 @@ Examples:
 // Arg parsing
 // ---------------------------------------------------------------------------
 
-interface ParsedArgs {
+/**
+ * Result of parsing `process.argv` (or an injected argv array in tests).
+ * Exported so the contract-test harness can exercise the parser directly
+ * without touching real `process.argv`/env or constructing a client.
+ */
+export interface ParsedCliArgs {
   command: string;
   sql: string | undefined;
   url: string;
@@ -105,7 +106,18 @@ interface ParsedArgs {
   rawJson: boolean;
 }
 
-function parseArgs(argv: string[]): ParsedArgs | null {
+/**
+ * Parse an argv array (Node's full `process.argv` shape — `[node, script,
+ * ...args]` — the first two entries are stripped).
+ *
+ * Returns `null` when the caller asked for help (`--help`/`-h`), passed no
+ * arguments, or passed an unrecognized flag; the (sole) caller is
+ * responsible for printing `usage()` and choosing an exit code in that case.
+ *
+ * Pure — reads only `argv` and (for the `RELATA_TOKEN`/`RELATA_PURPOSE`
+ * defaults) `process.env`; never touches the network or exits the process.
+ */
+export function parseArgs(argv: string[]): ParsedCliArgs | null {
   const args = argv.slice(2); // strip node + script path
 
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
@@ -157,35 +169,38 @@ function parseArgs(argv: string[]): ParsedArgs | null {
 }
 
 // ---------------------------------------------------------------------------
-// Main
+// Command dispatch
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
-  const parsed = parseArgs(process.argv);
-  if (!parsed) {
-    usage();
-    process.exit(1);
-  }
-
-  const { command, sql, url, token, purpose, timeoutMs, rawJson } = parsed;
-
-  const clientOpts: Parameters<typeof createClient>[1] = { timeoutMs };
-  if (token !== undefined) clientOpts.bearerToken = token;
-  if (purpose !== undefined) clientOpts.defaultPurpose = purpose;
-  const relata = createClient(url, clientOpts);
+/**
+ * Run one parsed CLI invocation against an already-constructed client and
+ * return the process exit code the caller should use (0 = success).
+ *
+ * Deliberately takes an injected `client` rather than constructing one from
+ * `parsed.url`/`token`/`purpose`/`timeoutMs` itself, and returns a code
+ * instead of calling `process.exit()` directly, so this function is safely
+ * importable and testable (mock `fetch` on the client) without exiting the
+ * host test process or touching a real server. `main()` below is the only
+ * caller that turns this return value into an actual `process.exit()`.
+ */
+export async function runCommand(
+  args: ParsedCliArgs,
+  client: RelataClient,
+): Promise<number> {
+  const { command, sql, rawJson } = args;
 
   try {
     switch (command) {
       case "health": {
-        outJson(await relata.health(), rawJson);
-        break;
+        outJson(await client.health(), rawJson);
+        return 0;
       }
       case "status": {
-        outJson(await relata.status(), rawJson);
-        break;
+        outJson(await client.status(), rawJson);
+        return 0;
       }
       case "audit": {
-        const r = await relata.auditCount();
+        const r = await client.auditCount();
         if (!rawJson) {
           out(`Entries    : ${r.entries}`);
           out(
@@ -196,21 +211,22 @@ async function main(): Promise<void> {
         }
         if (!r.chainValid) {
           err("Audit chain integrity failure — investigate immediately.");
-          process.exit(2);
+          return 2;
         }
-        break;
+        return 0;
       }
       case "nodes": {
-        outJson(await relata.clusterNodes(), rawJson);
-        break;
+        outJson(await client.clusterNodes(), rawJson);
+        return 0;
       }
       case "query": {
         if (!sql) {
-          die(
+          err(
             'Error: provide a SQL string after \'query\', e.g.:\n  relata query "SELECT * FROM Person LIMIT 5"',
           );
+          return 1;
         }
-        const r = await relata.query(sql);
+        const r = await client.query(sql);
         if (!rawJson) {
           out(`Query ID : ${r.queryId}`);
           out(`Elapsed  : ${r.elapsedMs}ms`);
@@ -220,12 +236,12 @@ async function main(): Promise<void> {
         } else {
           outJson(r, true);
         }
-        break;
+        return 0;
       }
       default:
         err(`Error: unknown command "${command}"`);
         usage();
-        process.exit(1);
+        return 1;
     }
   } catch (e: unknown) {
     if (e instanceof RelataError) {
@@ -235,17 +251,46 @@ async function main(): Promise<void> {
       if (e instanceof QuotaError && e.retryAfterSeconds !== undefined) {
         err(`  Retry-After: ${e.retryAfterSeconds}s`);
       }
-      process.exit(1);
+      return 1;
     }
     throw e;
   }
 }
 
-main().catch((e: unknown) => {
-  // Unknown fatal — print message + name, never the raw object, so logs stay
-  // greppable. Keep the stack on stderr for debugging.
-  const message = e instanceof Error ? e.message : String(e);
-  err(`Fatal: ${message}`);
-  if (e instanceof Error && e.stack) err(e.stack);
-  process.exit(1);
-});
+// ---------------------------------------------------------------------------
+// Main — real process wiring only (argv, env, exit codes). Kept intentionally
+// thin: all testable logic lives in `parseArgs`/`runCommand` above.
+// ---------------------------------------------------------------------------
+
+async function main(): Promise<void> {
+  const parsed = parseArgs(process.argv);
+  if (!parsed) {
+    usage();
+    process.exit(1);
+  }
+
+  const { url, token, purpose, timeoutMs } = parsed;
+
+  const clientOpts: Parameters<typeof createClient>[1] = { timeoutMs };
+  if (token !== undefined) clientOpts.bearerToken = token;
+  if (purpose !== undefined) clientOpts.defaultPurpose = purpose;
+  const relata = createClient(url, clientOpts);
+
+  const exitCode = await runCommand(parsed, relata);
+  if (exitCode !== 0) process.exit(exitCode);
+}
+
+// ESM equivalent of the classic `require.main === module` CJS guard: only
+// auto-run `main()` when this file is executed directly (e.g. as the `relata`
+// bin script), not when it's imported for its exported `parseArgs`/
+// `runCommand` surface (as the contract-test harness does).
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((e: unknown) => {
+    // Unknown fatal — print message + name, never the raw object, so logs
+    // stay greppable. Keep the stack on stderr for debugging.
+    const message = e instanceof Error ? e.message : String(e);
+    err(`Fatal: ${message}`);
+    if (e instanceof Error && e.stack) err(e.stack);
+    process.exit(1);
+  });
+}
