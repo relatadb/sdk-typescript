@@ -438,6 +438,11 @@ export class RelataClient {
   /**
    * Full-text search over a governed object type (`POST /search`).
    *
+   * By default this is BM25-only — it never touches the vector channel. Pass
+   * `metric` and/or `weights` to route through the server's real
+   * HYBRID_SEARCH fusion (BM25 + vector reciprocal-rank fusion) instead;
+   * either one alone is enough (#2672).
+   *
    * ```typescript
    * const results = await relata.search({
    *   query: "alice smith",
@@ -447,6 +452,14 @@ export class RelataClient {
    *   highlight: true,
    * });
    * console.log(results.hits[0]?.fields["name"]);
+   *
+   * // Real hybrid fusion (BM25 + vector RRF) — set metric/weights.
+   * const hybrid = await relata.search({
+   *   query: "alice smith",
+   *   type: "Person",
+   *   metric: "cosine",
+   *   weights: [0, 0.5, 0.5],
+   * });
    * ```
    */
   async search(params: { query: string; type: string } & SearchOptions): Promise<SearchResponse> {
@@ -460,6 +473,8 @@ export class RelataClient {
     if (params.filters && Object.keys(params.filters).length) body["filters"] = params.filters;
     if (params.matchingStrategy) body["matching_strategy"] = params.matchingStrategy;
     if (params.typoTolerance) body["typo_tolerance"] = params.typoTolerance;
+    if (params.metric) body["metric"] = params.metric;
+    if (params.weights) body["weights"] = params.weights;
 
     const wire = await this.#post<WireSearchResponse>("/search", body);
     return {

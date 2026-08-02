@@ -465,7 +465,14 @@ export interface TypoTolerance {
   disableOnAttributes?: string[];
 }
 
-/** Options for the `search()` client method (#670). */
+/**
+ * Options for the `search()` client method (#670).
+ *
+ * By default `search()` is BM25-only — it never touches the vector channel.
+ * Set `metric` and/or `weights` to route the request through the server's
+ * real HYBRID_SEARCH fusion (BM25 + vector reciprocal-rank fusion) instead;
+ * either one alone is enough to switch the request onto the hybrid path (#2672).
+ */
 export interface SearchOptions {
   /** Maximum number of hits to return (server default: 20). */
   limit?: number;
@@ -479,6 +486,18 @@ export interface SearchOptions {
   matchingStrategy?: MatchingStrategy;
   /** Per-query typo tolerance override (#967). */
   typoTolerance?: TypoTolerance;
+  /**
+   * Vector distance metric for the HYBRID_SEARCH channel (e.g. `"cosine"`,
+   * `"euclidean"`, `"dot"`). Setting this (or `weights`) is what actually
+   * triggers hybrid fusion instead of plain BM25 (#2672).
+   */
+  metric?: string;
+  /**
+   * Three-element `[graph, bm25, vector]` fusion weights for HYBRID_SEARCH.
+   * Setting this (or `metric`) is what actually triggers hybrid fusion
+   * instead of plain BM25 (#2672).
+   */
+  weights?: [number, number, number];
 }
 
 // ---------------------------------------------------------------------------

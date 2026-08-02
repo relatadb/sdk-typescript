@@ -580,6 +580,24 @@ test("search: maps wire shape to SearchResponse", async () => {
   assert.equal(sentBody.query, "alice smith");
   assert.equal(sentBody.type, "Person");
   assert.equal(sentBody.limit, 10);
+  assert.equal("metric" in sentBody, false);
+  assert.equal("weights" in sentBody, false);
+});
+
+test("search: passes metric/weights so the server routes through HYBRID_SEARCH (#2672)", async () => {
+  const { fetch, calls } = mockFetch({
+    body: { hits: [], total: 0, facets: {}, processing_time_ms: 1 },
+  });
+  const relata = new RelataClient({ baseUrl: "http://x", fetch });
+  await relata.search({
+    query: "alice smith",
+    type: "Person",
+    metric: "cosine",
+    weights: [0, 0.5, 0.5],
+  });
+  const sentBody = JSON.parse(calls[0]?.body as string);
+  assert.equal(sentBody.metric, "cosine");
+  assert.deepEqual(sentBody.weights, [0, 0.5, 0.5]);
 });
 
 test("resolveIdentity: omits MODE by default, supports canonical/fuse", async () => {
