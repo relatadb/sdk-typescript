@@ -288,23 +288,27 @@ export class GovernanceClient extends TypedClientBase {
   // -------------------------------------------------------------------------
 
   /**
-   * Request emergency HUMINT breakglass access (default 4h).
+   * Request emergency HUMINT breakglass access (fixed 4h window).
    * Wraps `POST /humint/breakglass/request`. Returns the request record
    * including `request_id` and `status`. Approval requires two distinct
    * officers ({@link approveBreakglass}).
+   *
+   * @param sourceId Masked source ID being unmasked (e.g. `"SRC-0042"`).
+   * @param purpose Declared query purpose; server defaults to
+   *   `"humint_unmask"` when omitted.
+   * @param justification Free-text justification for the emergency access,
+   *   captured for audit.
    */
   async requestBreakglass(
-    reason: string,
+    sourceId: string,
     opts: {
-      scope?: string;
-      durationSecs?: number;
+      purpose?: string;
+      justification?: string;
     } = {},
   ): Promise<Record<string, unknown>> {
-    const payload: Record<string, unknown> = {
-      reason,
-      duration_secs: opts.durationSecs ?? 4 * 60 * 60,
-    };
-    if (opts.scope !== undefined) payload["scope"] = opts.scope;
+    const payload: Record<string, unknown> = { source_id: sourceId };
+    if (opts.purpose !== undefined) payload["purpose"] = opts.purpose;
+    if (opts.justification !== undefined) payload["justification"] = opts.justification;
     return this._post("/humint/breakglass/request", payload);
   }
 

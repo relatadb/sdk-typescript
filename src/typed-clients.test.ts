@@ -152,11 +152,11 @@ test("GovernanceClient: listRules, createRule, importSigma, placeLegalHold, requ
     reason: "investigation",
   });
 
-  const bg = await gov.requestBreakglass("urgent", { durationSecs: 3600 });
+  const bg = await gov.requestBreakglass("SRC-0042", { justification: "urgent triage" });
   assert.equal(bg["request_id"], "bg1");
   assert.deepEqual(JSON.parse(calls[4]?.body ?? "{}"), {
-    reason: "urgent",
-    duration_secs: 3600,
+    source_id: "SRC-0042",
+    justification: "urgent triage",
   });
 
   const dsar = await gov.submitDsar("alice@x.com", "gdpr-art-15", { scope: "email" });
