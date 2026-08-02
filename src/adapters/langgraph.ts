@@ -73,7 +73,7 @@ import {
 
 import { A2AClient } from "../a2a.ts";
 import { RelataClient } from "../client.ts";
-import { TypedHttpError } from "../_typed-http.ts";
+import { RelataError } from "../errors.ts";
 
 // ---------------------------------------------------------------------------
 // Segment encoding — mirrors `relata_langgraph`'s `_checkpoint_segment` (#2229)
@@ -260,7 +260,12 @@ export class RelataCheckpointer extends BaseCheckpointSaver {
         ? (state as Record<string, unknown>)
         : undefined;
     } catch (err) {
-      if (err instanceof TypedHttpError && err.statusCode === 404) return undefined;
+      // NB: #2731 routed A2AClient's typed-error path through the same
+      // AuthError/ForbiddenError/NotFoundError/... hierarchy RelataClient
+      // uses, so a 404 here is a `NotFoundError` (not the generic
+      // `TypedHttpError` this used to always throw) — check the shared
+      // `RelataError.statusCode` so both classes keep working.
+      if (err instanceof RelataError && err.statusCode === 404) return undefined;
       throw err;
     }
   }

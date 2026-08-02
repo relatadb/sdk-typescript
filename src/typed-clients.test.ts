@@ -14,6 +14,7 @@ import { test } from "node:test";
 import {
   A2AClient,
   AuditClient,
+  AuthError,
   BackupClient,
   createClient,
   GovernanceClient,
@@ -21,9 +22,12 @@ import {
   IngestClient,
   LogClient,
   McpClient,
+  NotFoundError,
   RelataClient,
+  ServerError,
   SystemClient,
   TenantAdminClient,
+  TimeoutError,
   TokenClient,
   unwrapMcp,
 } from "./index.ts";
@@ -111,6 +115,133 @@ test("fromClient: typed clients inherit baseUrl, bearerToken, tenant, purpose", 
   assert.equal(calls[0]?.url, "http://srv:8080/rules");
   assert.equal(calls[0]?.headers["authorization"], "Bearer tok");
   assert.equal(calls[0]?.headers["x-relata-tenant-id"], "acme");
+});
+
+// ---------------------------------------------------------------------------
+// #2731 — typed clients inherit timeout/retry from RelataClient and throw
+// the shared typed error hierarchy instead of always collapsing to
+// TypedHttpError.
+// ---------------------------------------------------------------------------
+
+/**
+ * Mock fetch that honours the abort signal — resolves/rejects only when the
+ * caller aborts via the AbortController (mirrors the real fetch contract;
+ * a mock fetch that ignores `init.signal` would just hang forever instead of
+ * exercising the timeout path).
+ */
+function neverRespondingFetch(): typeof globalThis.fetch {
+  return ((_url: string | URL | Request, init?: RequestInit) => {
+    return new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (signal) {
+        if (signal.aborted) reject(new Error("aborted"));
+        else
+          signal.addEventListener("abort", () => {
+            const e = new Error("aborted");
+            e.name = "AbortError";
+            reject(e);
+          });
+      }
+    });
+  }) as unknown as typeof globalThis.fetch;
+}
+
+test("#2731: fromClient inherits the parent's timeoutMs — bounded, not unbounded", async () => {
+  // A fetch that never resolves would previously hang forever (typed client
+  // default was timeoutMs=0). With a short parent timeoutMs, the call must
+  // reject with TimeoutError instead of hanging.
+  const relata = new RelataClient({
+    baseUrl: "http://x",
+    fetch: neverRespondingFetch(),
+    timeoutMs: 20,
+  });
+  const gov = GovernanceClient.fromClient(relata);
+  await assert.rejects(
+    () => gov.listRules(),
+    (err: unknown) => err instanceof TimeoutError,
+  );
+});
+
+test("#2731: standalone typed client (not via fromClient) defaults to a bounded timeout, not 0", async () => {
+  // Explicit short timeoutMs on the typed client's own ctor (default is
+  // 30000, too slow for a unit test) — verifies the ctor no longer silently
+  // discards a configured timeout by defaulting internally to 0.
+  const gov = new GovernanceClient({
+    baseUrl: "http://x",
+    fetch: neverRespondingFetch(),
+    timeoutMs: 20,
+  });
+  await assert.rejects(
+    () => gov.listRules(),
+    (err: unknown) => err instanceof TimeoutError,
+  );
+});
+
+test("#2731: typed client retries idempotent GET on 503 then succeeds (fromClient inherits maxRetries)", async () => {
+  const { fetch, calls } = mockFetch([
+    { status: 503, body: { error: "shedding" } },
+    { status: 503, body: { error: "shedding" } },
+    { body: { rules: [{ id: "r1" }] } },
+  ]);
+  const relata = new RelataClient({
+    baseUrl: "http://x",
+    fetch,
+    maxRetries: 3,
+    retryBackoffMs: 1,
+  });
+  const gov = GovernanceClient.fromClient(relata);
+  const rules = await gov.listRules();
+  assert.equal(rules.length, 1);
+  assert.equal(calls.length, 3, "should have retried twice then succeeded");
+});
+
+test("#2731: typed client does NOT retry on 401 and throws AuthError, not TypedHttpError", async () => {
+  const { fetch, calls } = mockFetch([{ status: 401, body: { error: "invalid token" } }]);
+  const gov = new GovernanceClient({
+    baseUrl: "http://x",
+    fetch,
+    maxRetries: 3,
+    retryBackoffMs: 1,
+  });
+  await assert.rejects(
+    () => gov.listRules(),
+    (err: unknown) => err instanceof AuthError,
+  );
+  assert.equal(calls.length, 1, "should NOT retry on 401");
+});
+
+test("#2731: typed client 5xx throws ServerError (catchable by subclass, not generic status matching)", async () => {
+  const { fetch } = mockFetch([{ status: 500, body: { error: "boom" } }]);
+  const gov = new GovernanceClient({ baseUrl: "http://x", fetch });
+  await assert.rejects(
+    () => gov.listRules(),
+    (err: unknown) => err instanceof ServerError && err.statusCode === 500,
+  );
+});
+
+test("#2731: typed client 404 throws NotFoundError", async () => {
+  const { fetch } = mockFetch([{ status: 404, body: { error: "no such rule" } }]);
+  const gov = new GovernanceClient({ baseUrl: "http://x", fetch });
+  await assert.rejects(
+    () => gov.listRules(),
+    (err: unknown) => err instanceof NotFoundError,
+  );
+});
+
+test("#2731: non-idempotent POST is NOT retried on 503 (double-execution guard, parity with RelataClient)", async () => {
+  const { fetch, calls } = mockFetch([{ status: 503, body: { error: "shedding" } }]);
+  const gov = new GovernanceClient({
+    baseUrl: "http://x",
+    purpose: "compliance",
+    fetch,
+    maxRetries: 3,
+    retryBackoffMs: 1,
+  });
+  await assert.rejects(
+    () => gov.createRule({ name: "big-xfer" }),
+    (err: unknown) => err instanceof ServerError,
+  );
+  assert.equal(calls.length, 1, "POST must NOT be retried on 503");
 });
 
 // ---------------------------------------------------------------------------

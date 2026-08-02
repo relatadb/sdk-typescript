@@ -74,9 +74,11 @@ import { createArrowFlightTransport } from "./flight.ts";
 /**
  * @internal
  * HTTP status codes that trigger an automatic retry when `maxRetries > 0`.
- * Matches the Python `_http._DEFAULT_RETRY_ON` set.
+ * Matches the Python `_http._DEFAULT_RETRY_ON` set. Exported so
+ * `TypedClientBase` (`_typed-http.ts`, #2731) can share the exact same
+ * retryable set instead of re-diverging it.
  */
-const RETRYABLE_STATUS_CODES: ReadonlySet<number> = new Set([502, 503, 504]);
+export const RETRYABLE_STATUS_CODES: ReadonlySet<number> = new Set([502, 503, 504]);
 
 /**
  * @internal
@@ -93,16 +95,22 @@ const IDEMPOTENT_METHODS: ReadonlySet<string> = new Set([
   "OPTIONS",
 ]);
 
-/** @internal True when the HTTP method is safe to retry (#2489). */
-function isIdempotentMethod(method: string): boolean {
+/**
+ * @internal
+ * `true` when the HTTP method is safe to retry (#2489). Exported so
+ * `TypedClientBase` (#2731) shares this exact idempotency gate.
+ */
+export function isIdempotentMethod(method: string): boolean {
   return IDEMPOTENT_METHODS.has(method.toUpperCase());
 }
 
 /**
  * @internal
- * Default base backoff for the retry loop, in milliseconds.
+ * Default base backoff for the retry loop, in milliseconds. Exported so
+ * `TypedClientBase` (#2731) shares the same default instead of a
+ * re-diverged constant.
  */
-const DEFAULT_RETRY_BACKOFF_MS = 500;
+export const DEFAULT_RETRY_BACKOFF_MS = 500;
 
 // ---------------------------------------------------------------------------
 // Multimedia operator + Arrow Flight builders (#2251, #2253)
@@ -1503,6 +1511,32 @@ export class RelataClient {
   /** Bearer token passed to the constructor, if any. */
   get bearerToken(): string | undefined {
     return this.#bearerToken;
+  }
+
+  /**
+   * Configured request timeout in milliseconds (default 30000, #2494).
+   * Inherited by typed clients via `fromClient()` (#2731) so they no longer
+   * silently default to an unbounded `0`.
+   */
+  get timeoutMs(): number {
+    return this.#timeoutMs;
+  }
+
+  /**
+   * Configured retry ceiling for idempotent verbs on `{502,503,504}` and
+   * network errors (default 0 — no retry). Inherited by typed clients via
+   * `fromClient()` (#2731).
+   */
+  get maxRetries(): number {
+    return this.#maxRetries;
+  }
+
+  /**
+   * Base exponential backoff (ms) for the retry loop. Inherited by typed
+   * clients via `fromClient()` (#2731).
+   */
+  get retryBackoffMs(): number {
+    return this.#retryBackoffMs;
   }
 
   /** Default purpose declared on the client, if any. */

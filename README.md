@@ -404,9 +404,14 @@ Returned by `.pathsBetween(a, b, opts?)`. Same
 
 ## Typed v1.1 clients — `fromClient(client)`
 
-Each typed client inherits the parent client's auth, tenant, and header context, so
-governance stays consistent across the surface. TypeScript is async-native, so every
-method returns a `Promise` (no `Async*` classes).
+Each typed client inherits the parent client's auth, tenant, header, timeout, and retry
+context (`timeoutMs`/`maxRetries`/`retryBackoffMs`, #2731), so governance and resilience
+stay consistent across the surface — a call through `GovernanceClient`/`McpClient`/... fails
+within the same bounded timeout, retries idempotent verbs on `{502,503,504}`/network errors
+the same way, and throws the same typed error hierarchy (`AuthError`, `ForbiddenError`,
+`NotFoundError`, `ConflictError`, `ValidationError`, `RateLimitedError`, `ServerError`) as the
+untyped `RelataClient`. TypeScript is async-native, so every method returns a `Promise` (no
+`Async*` classes).
 
 ```typescript
 import { createClient, GovernanceClient, McpClient, AuditClient } from "@zysec-ai/relata-sdk";

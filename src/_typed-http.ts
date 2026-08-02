@@ -5,8 +5,11 @@
  * Each typed client (governance, mcp, a2a, audit, identity, objects, ingest,
  * vectors, system, tenants, backup, tokens, log) extends
  * {@link TypedClientBase} to inherit transport, auth, tenant header
- * propagation, X-Request-ID generation, and basic error mapping. Each method
- * on the subclasses is a thin wrapper that picks a path, a method, and a body
+ * propagation, X-Request-ID generation, a bounded request timeout, an
+ * idempotent-verb retry-with-backoff loop, and full RFC 7807 typed-error
+ * classification (#2731) — the same resilience contract `RelataClient`
+ * (`client.ts`) implements for the untyped surface. Each method on the
+ * subclasses is a thin wrapper that picks a path, a method, and a body
  * shape — copied verbatim from the Python reference.
  *
  * The base class mirrors the Python `_http.HttpTransport` semantics: per-
@@ -16,11 +19,17 @@
 
 import {
   assertNotRedirected,
+  mapHttpError,
   NetworkError,
   RelataError,
   TimeoutError,
 } from "./errors.ts";
-import type { RelataClient } from "./client.ts";
+import {
+  DEFAULT_RETRY_BACKOFF_MS,
+  isIdempotentMethod,
+  RETRYABLE_STATUS_CODES,
+  type RelataClient,
+} from "./client.ts";
 
 // ---------------------------------------------------------------------------
 // Options shared by every typed client constructor
@@ -38,7 +47,19 @@ export interface TypedClientCtor {
    */
   adminBaseUrl?: string;
   bearerToken?: string;
+  /**
+   * Request timeout in milliseconds. Default 30000 (parity with
+   * `RelataClient`, #2494/#2731).
+   */
   timeoutMs?: number;
+  /**
+   * Retry ceiling for idempotent verbs (`GET`/`HEAD`/`OPTIONS`) on
+   * `{502,503,504}` and network errors. Default `0` (no retry) — parity
+   * with `RelataClient`'s default (#2731).
+   */
+  maxRetries?: number;
+  /** Base exponential backoff (ms) for the retry loop. Default 500. */
+  retryBackoffMs?: number;
   extraHeaders?: Record<string, string>;
   fetch?: typeof globalThis.fetch;
 }
@@ -113,6 +134,8 @@ export class TypedClientBase {
   readonly #adminBaseUrl: string | undefined;
   readonly #bearerToken: string | undefined;
   readonly #timeoutMs: number;
+  readonly #maxRetries: number;
+  readonly #retryBackoffMs: number;
   readonly #extraHeaders: Record<string, string>;
   readonly #fetch: typeof globalThis.fetch;
 
@@ -120,18 +143,31 @@ export class TypedClientBase {
     this.#baseUrl = opts.baseUrl.replace(/\/+$/, "");
     this.#adminBaseUrl = opts.adminBaseUrl?.replace(/\/+$/, "");
     this.#bearerToken = opts.bearerToken;
-    this.#timeoutMs = opts.timeoutMs ?? 0;
+    // Default 30000ms (not 0/unbounded) — parity with RelataClient's own
+    // default (#2494) so a typed client constructed standalone (not via
+    // fromClient) doesn't inherit the old hang-forever footgun (#2731).
+    this.#timeoutMs = opts.timeoutMs ?? 30000;
+    this.#maxRetries = opts.maxRetries ?? 0;
+    this.#retryBackoffMs = opts.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
     this.#extraHeaders = opts.extraHeaders ?? {};
     this.#fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
-  /** @internal Build a fresh options bag from a parent RelataClient. */
+  /**
+   * @internal
+   * Build a fresh options bag from a parent RelataClient — inherits
+   * `timeoutMs`/`maxRetries`/`retryBackoffMs` (#2731) in addition to the
+   * existing baseUrl/auth/header/fetch context.
+   */
   static clientToCtor(client: RelataClient): TypedClientCtor {
     const ctor: TypedClientCtor = {
       baseUrl: client.baseUrl,
       extraHeaders: client.extraHeaders,
       // Propagate the parent's fetch override (testing / observability).
       fetch: client.fetchImpl,
+      timeoutMs: client.timeoutMs,
+      maxRetries: client.maxRetries,
+      retryBackoffMs: client.retryBackoffMs,
     };
     if (client.bearerToken !== undefined) ctor.bearerToken = client.bearerToken;
     if (client.adminBaseUrl !== undefined) ctor.adminBaseUrl = client.adminBaseUrl;
@@ -198,45 +234,23 @@ export class TypedClientBase {
     extraHeaders?: Record<string, string>,
   ): Promise<T> {
     const url = `${this.#resolveBaseUrl(path)}${path}`;
-    const controller = new AbortController();
-    const timer =
-      this.#timeoutMs > 0
-        ? setTimeout(() => controller.abort(), this.#timeoutMs)
-        : undefined;
-
-    try {
-      const headers = this.#buildHeaders();
-      headers["Content-Type"] = contentType;
-      if (extraHeaders) {
-        for (const [k, v] of Object.entries(extraHeaders)) {
-          if (v !== undefined && v !== "") headers[k] = v;
-        }
+    const headers = this.#buildHeaders();
+    headers["Content-Type"] = contentType;
+    if (extraHeaders) {
+      for (const [k, v] of Object.entries(extraHeaders)) {
+        if (v !== undefined && v !== "") headers[k] = v;
       }
-
-      const response = await this.#fetch(url, {
-        method,
-        headers,
-        signal: controller.signal,
-        body,
-        redirect: "manual",
-      });
-      assertNotRedirected(response, url);
-      return await this.#parse<T>(response, path);
-    } catch (err) {
-      if (err instanceof Error && this.#isAbortError(err)) {
-        throw new TimeoutError(this.#timeoutMs);
-      }
-      if (err instanceof RelataError) throw err;
-      if (err instanceof Error) {
-        throw new NetworkError(
-          `Failed to reach Relata at ${url}: ${err.message}`,
-          err,
-        );
-      }
-      throw err;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
     }
+    // POST/PUT are not idempotent, so #dispatch never retries this call
+    // (matches `RelataClient`'s `#postRaw`, #2489) — it still gets the
+    // shared timeout + network-error handling.
+    const response = await this.#dispatch(method, url, {
+      method,
+      headers,
+      body,
+      redirect: "manual",
+    });
+    return await this.#parse<T>(response, path);
   }
 
   /**
@@ -250,59 +264,25 @@ export class TypedClientBase {
     body: Record<string, unknown>,
   ): Promise<Uint8Array> {
     const url = `${this.#resolveBaseUrl(path)}${path}`;
-    const controller = new AbortController();
-    const timer =
-      this.#timeoutMs > 0
-        ? setTimeout(() => controller.abort(), this.#timeoutMs)
-        : undefined;
-
-    try {
-      const headers = this.#buildHeaders();
-      headers["Content-Type"] = "application/json";
-      const response = await this.#fetch(url, {
-        method: "POST",
-        headers,
-        signal: controller.signal,
-        body: JSON.stringify(body),
-        redirect: "manual",
-      });
-      assertNotRedirected(response, url);
-      if (!response.ok) {
-        let errBody: Record<string, unknown>;
-        try {
-          errBody = (await response.json()) as Record<string, unknown>;
-        } catch {
-          errBody = { error: `HTTP ${response.status}` };
-        }
-        const serverMessage =
-          (typeof errBody["detail"] === "string" && errBody["detail"]) ||
-          (typeof errBody["error"] === "string" && errBody["error"]) ||
-          (typeof errBody["message"] === "string" && errBody["message"]) ||
-          `HTTP ${response.status}`;
-        throw new TypedHttpError(
-          response.status,
-          serverMessage,
-          errBody,
-          response.headers.get("x-request-id") ?? undefined,
-        );
+    const headers = this.#buildHeaders();
+    headers["Content-Type"] = "application/json";
+    const response = await this.#dispatch("POST", url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      redirect: "manual",
+    });
+    if (!response.ok) {
+      let errBody: unknown;
+      try {
+        errBody = await response.json();
+      } catch {
+        errBody = { error: `HTTP ${response.status}` };
       }
-      const buf = await response.arrayBuffer();
-      return new Uint8Array(buf);
-    } catch (err) {
-      if (err instanceof RelataError) throw err;
-      if (err instanceof Error && this.#isAbortError(err)) {
-        throw new TimeoutError(this.#timeoutMs);
-      }
-      if (err instanceof Error) {
-        throw new NetworkError(
-          `Failed to reach Relata at ${url}: ${err.message}`,
-          err,
-        );
-      }
-      throw err;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
+      throw this.#classify(response.status, path, true, errBody, response.headers);
     }
+    const buf = await response.arrayBuffer();
+    return new Uint8Array(buf);
   }
 
   // -------------------------------------------------------------------------
@@ -316,43 +296,81 @@ export class TypedClientBase {
     body: Record<string, unknown> | undefined,
   ): Promise<T> {
     const url = `${this.#resolveBaseUrl(path)}${path}`;
-    const controller = new AbortController();
-    const timer =
-      this.#timeoutMs > 0
-        ? setTimeout(() => controller.abort(), this.#timeoutMs)
-        : undefined;
-
-    try {
-      const headers = this.#buildHeaders();
-      const init: RequestInit = {
-        method,
-        headers,
-        signal: controller.signal,
-        redirect: "manual",
-      };
-      if (body !== undefined) {
-        headers["Content-Type"] = "application/json";
-        (init as RequestInit & { body: string }).body = JSON.stringify(body);
-      }
-
-      const response = await this.#fetch(url, init);
-      assertNotRedirected(response, url);
-      return await this.#parse<T>(response, path);
-    } catch (err) {
-      if (err instanceof Error && this.#isAbortError(err)) {
-        throw new TimeoutError(this.#timeoutMs);
-      }
-      if (err instanceof RelataError) throw err;
-      if (err instanceof Error) {
-        throw new NetworkError(
-          `Failed to reach Relata at ${url}: ${err.message}`,
-          err,
-        );
-      }
-      throw err;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
+    const headers = this.#buildHeaders();
+    const init: RequestInit = { method, headers, redirect: "manual" };
+    if (body !== undefined) {
+      headers["Content-Type"] = "application/json";
+      (init as RequestInit & { body: string }).body = JSON.stringify(body);
     }
+    const response = await this.#dispatch(method, url, init);
+    return await this.#parse<T>(response, path);
+  }
+
+  /**
+   * @internal
+   * Core dispatcher shared by every verb helper: per-attempt timeout via
+   * `AbortController`, and an idempotent-verb (`GET`/`HEAD`/`OPTIONS`)
+   * retry-with-backoff loop on `{502,503,504}` and raw network errors — the
+   * exact policy `RelataClient`'s `#send` already implements (#2489),
+   * shared via the exported `isIdempotentMethod`/`RETRYABLE_STATUS_CODES`
+   * from `client.ts` rather than re-diverging a second copy (#2731).
+   *
+   * Returns the raw `Response` (2xx or a non-retried non-2xx) for the
+   * caller to decode/classify; only timeouts and exhausted network errors
+   * throw from here.
+   */
+  async #dispatch(method: string, url: string, init: RequestInit): Promise<Response> {
+    const maxAttempts = Math.max(1, this.#maxRetries + 1);
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const controller = new AbortController();
+      const timer =
+        this.#timeoutMs > 0
+          ? setTimeout(() => controller.abort(), this.#timeoutMs)
+          : undefined;
+
+      try {
+        const response = await this.#fetch(url, {
+          ...init,
+          signal: controller.signal,
+        });
+        assertNotRedirected(response, url);
+        const canRetryStatus =
+          !response.ok &&
+          isIdempotentMethod(method) &&
+          RETRYABLE_STATUS_CODES.has(response.status);
+        if (canRetryStatus && attempt + 1 < maxAttempts) {
+          await this.#sleep(this.#retryBackoffMs * 2 ** attempt);
+          continue;
+        }
+        return response;
+      } catch (err) {
+        if (err instanceof Error && this.#isAbortError(err)) {
+          // Timeout — never retry (the operation may have side effects).
+          throw new TimeoutError(this.#timeoutMs);
+        }
+        if (err instanceof RelataError) throw err;
+        if (err instanceof Error) {
+          const wrapped = new NetworkError(
+            `Failed to reach Relata at ${url}: ${err.message}`,
+            err,
+          );
+          lastError = wrapped;
+          if (isIdempotentMethod(method) && attempt + 1 < maxAttempts) {
+            await this.#sleep(this.#retryBackoffMs * 2 ** attempt);
+            continue;
+          }
+          throw wrapped;
+        }
+        throw err;
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+    }
+    // Defensive: the loop above always returns or throws on the final
+    // attempt. If we ever reach here, surface whatever we last saw.
+    throw lastError;
   }
 
   /**
@@ -371,31 +389,67 @@ export class TypedClientBase {
       : await response.text();
 
     if (!response.ok) {
-      const err =
-        typeof body === "object" && body !== null
-          ? (body as Record<string, unknown>)
-          : { error: typeof body === "string" ? body : "empty response" };
-      let serverMessage =
-        (typeof err["detail"] === "string" && err["detail"]) ||
-        (typeof err["error"] === "string" && err["error"]) ||
-        (typeof err["message"] === "string" && err["message"]) ||
-        `HTTP ${response.status}`;
-      // #2321 (ADR-0261): a bare 404 with no detail text against an
-      // admin/platform-only path almost always means this client is pointed
-      // at the data-plane listener rather than the loopbound admin listener
-      // those routes are exclusively mounted on — surface a hint instead of
-      // an uninformative bare 404.
-      if (response.status === 404 && isAdminOnlyPath(path) && responseDetailIsBlank(isJson, body)) {
-        serverMessage = adminListenerHint(path);
-      }
-      throw new TypedHttpError(
-        response.status,
-        serverMessage,
-        err,
-        response.headers.get("x-request-id") ?? undefined,
-      );
+      throw this.#classify(response.status, path, isJson, body, response.headers);
     }
     return (body ?? {}) as T;
+  }
+
+  /**
+   * @internal
+   * Classify a decoded non-2xx response body into the typed `RelataError`
+   * subclass `mapHttpError` (`errors.ts`) selects for `status` —
+   * `AuthError` (401), `ForbiddenError` (403), `NotFoundError` (404),
+   * `ConflictError` (409), `ValidationError` (422), `RateLimitedError`
+   * (429), `ServerError` (5xx) — instead of always collapsing to the
+   * generic `TypedHttpError` (#2731). Any status `mapHttpError` doesn't
+   * specialize falls back to the same generic `RelataError` shape the main
+   * `RelataClient` uses for that case.
+   */
+  #classify(
+    status: number,
+    path: string,
+    isJson: boolean,
+    body: unknown,
+    headers: Headers,
+  ): RelataError {
+    const err =
+      typeof body === "object" && body !== null
+        ? (body as Record<string, unknown>)
+        : { error: typeof body === "string" ? body : "empty response" };
+    let serverMessage =
+      (typeof err["detail"] === "string" && err["detail"]) ||
+      (typeof err["error"] === "string" && err["error"]) ||
+      (typeof err["message"] === "string" && err["message"]) ||
+      `HTTP ${status}`;
+    // #2321 (ADR-0261): a bare 404 with no detail text against an
+    // admin/platform-only path almost always means this client is pointed
+    // at the data-plane listener rather than the loopbound admin listener
+    // those routes are exclusively mounted on — surface a hint instead of
+    // an uninformative bare 404.
+    if (status === 404 && isAdminOnlyPath(path) && responseDetailIsBlank(isJson, body)) {
+      serverMessage = adminListenerHint(path);
+    }
+    const requestId = headers.get("x-request-id") ?? undefined;
+    const retryAfter = headers.get("Retry-After");
+    const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : undefined;
+    // #1321: surface the X-RateLimit-* quota headers on 429s, same as
+    // RelataClient's #parseResponse.
+    const parseRateLimit = (h: string): number | undefined => {
+      const v = headers.get(h);
+      const n = v ? parseInt(v, 10) : NaN;
+      return Number.isFinite(n) ? n : undefined;
+    };
+    return mapHttpError(status, serverMessage, {
+      queryId: typeof err["query_id"] === "string" ? err["query_id"] : undefined,
+      code: typeof err["code"] === "string" ? err["code"] : undefined,
+      typeUrl: typeof err["type"] === "string" ? err["type"] : undefined,
+      retryable: err["retryable"] === true,
+      requestId,
+      retryAfterSeconds,
+      rateLimitLimit: parseRateLimit("X-RateLimit-Limit"),
+      rateLimitRemaining: parseRateLimit("X-RateLimit-Remaining"),
+      rateLimitReset: parseRateLimit("X-RateLimit-Reset"),
+    });
   }
 
   /** @internal */
@@ -418,6 +472,12 @@ export class TypedClientBase {
   #isAbortError(err: Error): boolean {
     return err.name === "AbortError" || err.message.includes("aborted");
   }
+
+  /** @internal Promise-based sleep for the retry backoff (#2731). */
+  async #sleep(ms: number): Promise<void> {
+    if (ms <= 0) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, ms));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -426,9 +486,19 @@ export class TypedClientBase {
 
 /**
  * @internal
- * Typed error thrown by typed clients on non-2xx responses. Mirrors the
- * Python `_classify_error` output: carries the decoded body so callers can
- * inspect RFC 7807 `code`, `type`, `retryable`, `request_id` fields.
+ * Carries the decoded error body so callers can inspect RFC 7807 `code`,
+ * `type`, `retryable`, `request_id` fields — mirrors the Python
+ * `_classify_error` output shape.
+ *
+ * As of #2731, typed-client requests no longer throw this class for
+ * classifiable statuses: `TypedClientBase.#classify` routes every non-2xx
+ * response through `mapHttpError()` (`errors.ts`), so 401/403/404/409/422/
+ * 429/5xx responses now throw `AuthError`/`ForbiddenError`/`NotFoundError`/
+ * `ConflictError`/`ValidationError`/`RateLimitedError`/`ServerError`
+ * respectively — the same typed hierarchy `RelataClient` throws — instead of
+ * always collapsing to this generic class. `TypedHttpError` is retained here
+ * as part of this module's exported surface for any external caller still
+ * constructing or referencing it directly.
  */
 export class TypedHttpError extends RelataError {
   readonly body: Record<string, unknown>;

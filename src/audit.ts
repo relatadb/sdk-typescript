@@ -122,7 +122,11 @@ export class AuditClient extends TypedClientBase {
   }
 }
 
-// Note: the audit client routes everything through the typed-client base;
-// the SDK-wide error classes (`NetworkError`, `TimeoutError`,
-// `TypedHttpError`) are exported from the index barrel for callers who want
-// to catch them around `exportPdf`.
+// Note: the audit client routes everything through the typed-client base,
+// which now (#2731) inherits the parent RelataClient's timeout/retry
+// behaviour and classifies non-2xx responses via mapHttpError() — so a
+// failed `exportPdf` throws the same typed hierarchy (`AuthError`,
+// `NotFoundError`, `ServerError`, ...) as the rest of the SDK, not a generic
+// `TypedHttpError`. `NetworkError`/`TimeoutError` and the typed error
+// classes are exported from the index barrel for callers who want to catch
+// them around `exportPdf`.

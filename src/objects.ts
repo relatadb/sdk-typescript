@@ -129,7 +129,10 @@ export class ObjectClient extends TypedClientBase {
     try {
       return await this._get<Record<string, unknown>>(path);
     } catch (err) {
-      // Re-export TypedHttpError from _typed-http so we can check status.
+      // Duck-typed rather than `instanceof NotFoundError` so this keeps
+      // working regardless of which `RelataError` subclass a 404 maps to
+      // (`_typed-http.ts`'s `#classify`, #2731) — every subclass carries
+      // `statusCode`.
       if (
         err !== null &&
         typeof err === "object" &&
