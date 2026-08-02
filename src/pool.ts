@@ -32,6 +32,7 @@ import { RelataClient } from "./client.ts";
 import type {
   HealthResponse,
   QueryResult,
+  RelataClientOptions,
   SearchOptions,
   SearchResponse,
   Stats,
@@ -92,7 +93,17 @@ export class ClientPool {
 
   /** Add an endpoint with an explicit bearer token and optional tenant. */
   withEndpointConfigured(url: string, bearerToken?: string, tenant?: string): this {
-    const client = new RelataClient({ baseUrl: url, bearerToken, tenant, fetch: this.#fetch });
+    // Built up field-by-field (rather than `{ baseUrl: url, bearerToken, tenant,
+    // fetch: this.#fetch }`) because `RelataClientOptions`'s `bearerToken`/
+    // `tenant`/`fetch` are optional (`field?: T`), and this SDK's
+    // `exactOptionalPropertyTypes: true` rejects assigning an explicit
+    // `undefined` to those keys — omit the key entirely instead. Same idiom
+    // as `cli.ts`'s `clientOpts` construction.
+    const opts: RelataClientOptions = { baseUrl: url };
+    if (bearerToken !== undefined) opts.bearerToken = bearerToken;
+    if (tenant !== undefined) opts.tenant = tenant;
+    if (this.#fetch !== undefined) opts.fetch = this.#fetch;
+    const client = new RelataClient(opts);
     this.#endpoints.push({ client, url, healthy: true, failedAt: null });
     return this;
   }
