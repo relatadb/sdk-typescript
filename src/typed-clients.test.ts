@@ -1007,6 +1007,32 @@ test("VectorClient: knnSearch emits pgvector cosine SQL via the parent query pat
   assert.equal(body["purpose"], "analytics");
 });
 
+test("VectorClient: hybridSearch emits the HYBRID_SEARCH statement form + tuning clauses", async () => {
+  const { fetch, calls } = mockFetch({
+    body: { data: [{ id: "d1" }], query_id: "q1", elapsed_ms: 3 },
+  });
+  const relata = new RelataClient({
+    baseUrl: "http://x",
+    defaultPurpose: "research",
+    fetch,
+  });
+  const vectors = new (await import("./vectors.ts")).VectorClient(relata);
+  await vectors.hybridSearch("Document", {
+    queryText: "o'reilly",
+    k: 5,
+    rerank: true,
+    metric: "cosine",
+    weights: [0.3, 0.5, 0.2],
+  });
+  const body = JSON.parse(calls[0]?.body ?? "{}");
+  assert.equal(
+    body["sql"],
+    "HYBRID_SEARCH FROM Document QUERY 'o''reilly' LIMIT 5 " +
+      "RERANK METRIC cosine WEIGHTS 0.3 0.5 0.2",
+  );
+  assert.equal(body["purpose"], "research");
+});
+
 // ---------------------------------------------------------------------------
 // S3Client
 // ---------------------------------------------------------------------------
