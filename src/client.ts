@@ -526,6 +526,24 @@ export class RelataClient {
     return this.#get(`/types/${name}`);
   }
 
+  /**
+   * Online schema evolution — `PATCH /types/:name/schema` (#1307). `action` is
+   * "add" | "drop" | "rename" | "retype"; `column` is the target column;
+   * `newColumn` / `colType` / `optional` apply to the relevant actions.
+   */
+  async schemaAlter(
+    name: string,
+    action: string,
+    column: string,
+    opts: { newColumn?: string; colType?: string; optional?: boolean } = {},
+  ): Promise<Record<string, unknown>> {
+    const body: Record<string, unknown> = { action, column };
+    if (opts.newColumn !== undefined) body["new_column"] = opts.newColumn;
+    if (opts.colType !== undefined) body["col_type"] = opts.colType;
+    if (opts.optional !== undefined) body["optional"] = opts.optional;
+    return this.#patch(`/types/${name}/schema`, body);
+  }
+
   /** SHACL schema migration — type specs, link types, property constraints. */
   async ontologyMigrate(schema: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.#post("/ontology/migrate", schema);
@@ -774,6 +792,36 @@ export class RelataClient {
   async graphDijkstra(objectType: string, fromId: string, toId: string, purpose?: string): Promise<Record<string, unknown>> {
     const sql = `GRAPH_DIJKSTRA('${objectType}', FROM => '${fromId}', TO => '${toId}')`;
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+  }
+
+  /**
+   * Shortest path via the governed `GET /graph/shortest-path` door (#2344).
+   * Unlike `graphDijkstra` (a SQL operator), this exposes the HTTP door's
+   * `maxHops` ceiling.
+   */
+  async graphShortestPath(
+    fromId: string,
+    toId: string,
+    opts: { maxHops?: number } = {},
+  ): Promise<Record<string, unknown>> {
+    const p = new URLSearchParams({ from: fromId, to: toId });
+    if (opts.maxHops !== undefined) p.set("max_hops", String(opts.maxHops));
+    return this.#get(`/graph/shortest-path?${p.toString()}`);
+  }
+
+  /**
+   * Breadth-first traversal via the governed `GET /graph/traverse` door.
+   * `direction` is "out" | "in" | "both" (server default out).
+   */
+  async graphTraverse(
+    fromId: string,
+    opts: { direction?: string; maxDepth?: number; limit?: number } = {},
+  ): Promise<Record<string, unknown>> {
+    const p = new URLSearchParams({ from: fromId });
+    if (opts.direction !== undefined) p.set("direction", opts.direction);
+    if (opts.maxDepth !== undefined) p.set("max_depth", String(opts.maxDepth));
+    if (opts.limit !== undefined) p.set("limit", String(opts.limit));
+    return this.#get(`/graph/traverse?${p.toString()}`);
   }
 
   async graphPageRank(objectType: string, opts?: { damping?: number; maxIter?: number; purpose?: string }): Promise<Record<string, unknown>> {
@@ -1389,6 +1437,15 @@ export class RelataClient {
   }
 
   /** @internal */
+  async #patch<T>(
+    path: string,
+    body: Record<string, unknown>,
+    timeoutMs?: number,
+  ): Promise<T> {
+    return this.#send<T>("PATCH", path, body, timeoutMs);
+  }
+
+  /** @internal */
   async #delete<T>(path: string, timeoutMs?: number): Promise<T> {
     return this.#send<T>("DELETE", path, undefined, timeoutMs);
   }
@@ -1459,7 +1516,7 @@ export class RelataClient {
    * - Exponential backoff: `retryBackoffMs * 2^attempt`.
    */
   async #send<T>(
-    method: "GET" | "POST" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     body: Record<string, unknown> | undefined,
     timeoutMs: number | undefined,
@@ -1492,7 +1549,7 @@ export class RelataClient {
           signal,
           redirect: "manual",
         };
-        if (method === "POST") {
+        if (method !== "GET" && method !== "DELETE") {
           (init as RequestInit & { body: string }).body = JSON.stringify(body);
         }
         const response = await this.#fetch(url, init);
