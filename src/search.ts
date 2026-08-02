@@ -50,6 +50,13 @@ export interface SearchQuery {
   includeAttributes?: string[];
   /** `"strong"` (default) | `"eventual"`. */
   consistency?: "strong" | "eventual";
+  /**
+   * Side-output ranking signals per hit, `{ label: expr }` — e.g.
+   * `{ bm25_score: "BM25()", snippet: "HIGHLIGHT(bio)" }` — compiled to a
+   * trailing `COMPUTE` clause (#1985 T3, #2465). Purely additive: never
+   * affects which rows match or their order.
+   */
+  computeAttributes?: Record<string, string>;
   /** Optional purpose override. */
   purpose?: string;
 }
@@ -63,6 +70,7 @@ export function buildSearchPayload(q: SearchQuery): Record<string, unknown> {
   if (q.filters) body["filters"] = normaliseFilters(q.filters);
   if (q.includeAttributes) body["include_attributes"] = q.includeAttributes;
   if (q.consistency) body["consistency"] = q.consistency;
+  if (q.computeAttributes) body["compute_attributes"] = q.computeAttributes;
   if (q.purpose) body["purpose"] = q.purpose;
   return body;
 }
