@@ -94,40 +94,105 @@ export class IngestClient extends TypedClientBase {
     return effPurpose === undefined ? base : `${base}${qs({ purpose: effPurpose })}`;
   }
 
+  /** @internal X-Detect-Packs header for a per-call SmartIngest override (#2258). */
+  #detectHeader(detectPacks: string | undefined): Record<string, string> | undefined {
+    return detectPacks && detectPacks !== ""
+      ? { "X-Detect-Packs": detectPacks }
+      : undefined;
+  }
+
   /**
    * Bulk-ingest `rows` as NDJSON.
    * Wraps `POST /ingest?object_type=<Type>` with an
    * `Content-Type: application/x-ndjson` body.
+   *
+   * Per-call controls (opts):
+   * - `detectPacks` — SmartIngest detector-pack override (#2258 SI-3), sent as
+   *   the `X-Detect-Packs` header. `"none"` disables SmartIngest for this call;
+   *   a comma-separated list (e.g. `"network,financial"`) selects packs.
+   *   Requires the `IngestDetectOverride` ACL grant server-side.
+   * - `onConflict` — when set (`"upsert" | "skip" | "error"`), routes the call
+   *   to `POST /ingest/bulk` so conflict resolution + `tenantId` take effect.
+   * - `tenantId` — tenant scope (only honoured on the `/ingest/bulk` door).
    */
   async bulk(
     objectType: string,
     rows: RelataRow[],
-    opts: { purpose?: string } = {},
+    opts: {
+      purpose?: string;
+      detectPacks?: string;
+      onConflict?: "upsert" | "skip" | "error";
+      tenantId?: string;
+    } = {},
   ): Promise<Record<string, unknown>> {
+    if (opts.onConflict !== undefined) {
+      // Route to /ingest/bulk so on_conflict + tenant_id take effect.
+      const objects = rows.map((r) => ({ _type: objectType, ...r }));
+      const body: Record<string, unknown> = {
+        objects,
+        on_conflict: opts.onConflict,
+      };
+      const purpose = opts.purpose ?? this.#purpose;
+      if (purpose !== undefined) body["purpose"] = purpose;
+      if (opts.tenantId !== undefined) body["tenant_id"] = opts.tenantId;
+      return this._sendRaw(
+        "POST",
+        "/ingest/bulk",
+        JSON.stringify(body),
+        "application/json",
+        this.#detectHeader(opts.detectPacks),
+      );
+    }
     const body = rows.map((r) => JSON.stringify(r)).join("\n");
     return this._sendRaw(
       "POST",
       this.paramsPath(objectType, opts.purpose),
       body,
       "application/x-ndjson",
+      this.#detectHeader(opts.detectPacks),
     );
   }
 
   /**
    * Bulk-ingest a CSV string. The server parses it server-side.
-   * Wraps `POST /ingest?object_type=<Type>` with a `text/csv` body.
+   * Wraps `POST /ingest?object_type=<Type>` with a `text/csv` body. Honours
+   * `detectPacks` via the `X-Detect-Packs` header (#2258 SI-3).
    */
   async bulkCsv(
     objectType: string,
     csvText: string,
-    opts: { purpose?: string } = {},
+    opts: { purpose?: string; detectPacks?: string } = {},
   ): Promise<Record<string, unknown>> {
     return this._sendRaw(
       "POST",
       this.paramsPath(objectType, opts.purpose),
       csvText,
       "text/csv",
+      this.#detectHeader(opts.detectPacks),
     );
+  }
+
+  /**
+   * Schemaless ingest — auto-create the type on first write with inferred
+   * fields (T6, #1988). Wraps `POST /ingest/auto`. The response carries
+   * `type_created` and `inferred_schema`. Optional `schema` overrides
+   * field-type inference, `tenantId` scopes the write.
+   */
+  async ingestAuto(
+    objectType: string,
+    rows: RelataRow[],
+    opts: {
+      schema?: Record<string, string>;
+      tenantId?: string;
+      purpose?: string;
+    } = {},
+  ): Promise<Record<string, unknown>> {
+    const body: Record<string, unknown> = { object_type: objectType, rows };
+    const purpose = opts.purpose ?? this.#purpose;
+    if (purpose !== undefined) body["purpose"] = purpose;
+    if (opts.schema) body["schema"] = opts.schema;
+    if (opts.tenantId !== undefined) body["tenant_id"] = opts.tenantId;
+    return this._post("/ingest/auto", body);
   }
 
   /**

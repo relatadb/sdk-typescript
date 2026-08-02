@@ -195,6 +195,7 @@ export class TypedClientBase {
     path: string,
     body: string,
     contentType: string,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
     const url = `${this.#resolveBaseUrl(path)}${path}`;
     const controller = new AbortController();
@@ -206,6 +207,11 @@ export class TypedClientBase {
     try {
       const headers = this.#buildHeaders();
       headers["Content-Type"] = contentType;
+      if (extraHeaders) {
+        for (const [k, v] of Object.entries(extraHeaders)) {
+          if (v !== undefined && v !== "") headers[k] = v;
+        }
+      }
 
       const response = await this.#fetch(url, {
         method,
