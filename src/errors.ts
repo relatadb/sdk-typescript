@@ -35,8 +35,16 @@
  * - `serverMessage` — raw error string from the server's JSON envelope
  * - `queryId` — server-assigned query identifier, if the error occurred after
  *   the query was accepted and assigned an ID
- * - `code` — RFC 7807 dotted problem code (e.g. `"RELATA.QUERY.PURPOSE_REQUIRED"`),
- *   or `undefined` when the server emits the legacy `{"error": "..."}` shape
+ * - `code` — the server's RFC 7807 `application/problem+json` `code` extension
+ *   field, or `undefined` when the server emits the legacy `{"error": "..."}`
+ *   shape. Two vocabularies exist in real responses (#2555): most HTTP errors
+ *   (auth/ACL/ingest/admin/...) use kebab-case, e.g. `"access-denied"`,
+ *   `"parse-error"` (catalogue: `docs/api/error-codes.md`); `/query`'s
+ *   planner/execution errors use the `QueryError`-derived `REL_*` form, e.g.
+ *   `"REL_PARSE"`, `"REL_ACL"` (catalogue: `docs/src/end-users/error-codes.md`).
+ *   Match on the literal string rather than assuming either form — do not
+ *   rely on dotted-form codes like `"RELATA.QUERY.PURPOSE_REQUIRED"`, which
+ *   were never implemented server-side.
  * - `typeUrl` — RFC 7807 `type` URL linking to the error docs
  * - `retryable` — `true` when the server says the request can be retried
  * - `requestId` — the `X-Request-ID` from the response, when available
@@ -48,7 +56,11 @@ export class RelataError extends Error {
   readonly serverMessage: string;
   /** Server-assigned query ID, present when the error occurred mid-execution. */
   readonly queryId: string | undefined;
-  /** RFC 7807 dotted problem code, when the server emits `application/problem+json`. */
+  /**
+   * The server's RFC 7807 `code` extension field, when the server emits
+   * `application/problem+json`. Kebab-case for most HTTP errors, `REL_*` for
+   * `QueryError`-derived `/query*` errors — see the class docstring.
+   */
   readonly code: string | undefined;
   /** RFC 7807 `type` URL linking to the error docs. */
   readonly typeUrl: string | undefined;

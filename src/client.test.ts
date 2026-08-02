@@ -411,7 +411,7 @@ test("RFC 7807: NotFoundError (404) carries code + requestId", async () => {
     body: {
       type: "https://relata.dev/errors/not-found",
       title: "Not Found",
-      code: "RELATA.QUERY.OBJECT_NOT_FOUND",
+      code: "not-found",
       detail: "Object 'person-xyz' does not exist",
       retryable: false,
       request_id: "req-9",
@@ -428,7 +428,7 @@ test("RFC 7807: NotFoundError (404) carries code + requestId", async () => {
     (err: unknown) => {
       assert.ok(err instanceof NotFoundError);
       const e = err as NotFoundError;
-      assert.equal(e.code, "RELATA.QUERY.OBJECT_NOT_FOUND");
+      assert.equal(e.code, "not-found");
       assert.equal(e.typeUrl, "https://relata.dev/errors/not-found");
       assert.equal(e.retryable, false);
       assert.equal(e.requestId, "req-9");
@@ -442,7 +442,7 @@ test("RFC 7807: ConflictError (409) + ValidationError (422) classification", asy
   // 409
   const f1 = mockFetch({
     status: 409,
-    body: { detail: "version conflict", code: "RELATA.VERSION_CONFLICT" },
+    body: { detail: "version conflict", code: "conflict" },
   });
   const r1 = new RelataClient({ baseUrl: "http://x", defaultPurpose: "p", fetch: f1.fetch });
   await assert.rejects(
@@ -452,7 +452,7 @@ test("RFC 7807: ConflictError (409) + ValidationError (422) classification", asy
   // 422
   const f2 = mockFetch({
     status: 422,
-    body: { detail: "field required", code: "RELATA.VALIDATION" },
+    body: { detail: "field required", code: "invalid-document" },
   });
   const r2 = new RelataClient({ baseUrl: "http://x", defaultPurpose: "p", fetch: f2.fetch });
   await assert.rejects(
@@ -464,7 +464,7 @@ test("RFC 7807: ConflictError (409) + ValidationError (422) classification", asy
 test("RFC 7807: RateLimitedError (429) surfaces retryAfter from header", async () => {
   const { fetch } = mockFetch({
     status: 429,
-    body: { detail: "quota exhausted", code: "RELATA.QUOTA" },
+    body: { detail: "quota exhausted", code: "REL_QUOTA" },
     headers: { "retry-after": "30" },
   });
   const relata = new RelataClient({
@@ -490,7 +490,7 @@ test("RFC 7807: 400 with 'purpose' in detail surfaces PurposeError", async () =>
     status: 400,
     body: {
       detail: "purpose is required",
-      code: "RELATA.QUERY.PURPOSE_REQUIRED",
+      code: "REL_PURPOSE",
     },
   });
   const relata = new RelataClient({

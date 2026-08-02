@@ -288,7 +288,14 @@ export interface WireClusterNodesResponse {
 /** @internal Wire error envelope returned by the server. */
 export interface WireErrorResponse {
   error?: string;
-  /** RFC 7807 dotted problem code, e.g. `"RELATA.QUERY.PURPOSE_REQUIRED"`. */
+  /**
+   * RFC 7807 `code` extension field. Kebab-case for most HTTP errors (e.g.
+   * `"access-denied"`); the `QueryError`-derived `REL_*` form (e.g.
+   * `"REL_PARSE"`) for `/query*` planner/execution errors — see
+   * `RelataError` in `errors.ts` for the full vocabulary split (#2555). Not
+   * the dotted `"RELATA.QUERY.PURPOSE_REQUIRED"` form, which was never
+   * implemented server-side.
+   */
   code?: string;
   /** RFC 7807 `type` URL linking to the error docs. */
   type?: string;
