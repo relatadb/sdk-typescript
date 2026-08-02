@@ -480,7 +480,17 @@ export class RelataClient {
     if (params.facets?.length) body["facets"] = params.facets;
     if (params.filters && Object.keys(params.filters).length) body["filters"] = params.filters;
     if (params.matchingStrategy) body["matching_strategy"] = params.matchingStrategy;
-    if (params.typoTolerance) body["typo_tolerance"] = params.typoTolerance;
+    if (params.typoTolerance) {
+      const tt = params.typoTolerance;
+      const wireTt: Record<string, unknown> = {};
+      if (tt.enabled !== undefined) wireTt["enabled"] = tt.enabled;
+      if (tt.minWordSize !== undefined) wireTt["min_word_size"] = tt.minWordSize;
+      if (tt.disableOnWords !== undefined) wireTt["disable_on_words"] = tt.disableOnWords;
+      if (tt.disableOnAttributes !== undefined) {
+        wireTt["disable_on_attributes"] = tt.disableOnAttributes;
+      }
+      body["typo_tolerance"] = wireTt;
+    }
     if (params.metric) body["metric"] = params.metric;
     if (params.weights) body["weights"] = params.weights;
 
