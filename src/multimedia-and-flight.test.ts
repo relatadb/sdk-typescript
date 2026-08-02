@@ -1,5 +1,5 @@
 /**
- * Tests for the multimedia ops (#2251) + Arrow Flight client (#2253).
+ * Tests for the multimedia ops (#2251, #2840) + Arrow Flight client (#2253).
  *
  * Uses Node's built-in `node:test` runner with an injected `fetch` mock for
  * the SQL-door multimedia ops (no live server), and pure unit tests for the
@@ -15,6 +15,7 @@ import {
   buildFaceSearchSql,
   buildFlightTicket,
   buildMatchPdqSql,
+  buildSimilarImageSql,
   deriveFlightEndpoint,
 } from "./client.ts";
 
@@ -79,6 +80,27 @@ test("multimedia builders escape single quotes (#76)", () => {
   );
 });
 
+test("buildSimilarImageSql: default threshold, no INDEX clause when omitted", () => {
+  assert.equal(
+    buildSimilarImageSql("media-42"),
+    "SELECT * FROM SIMILAR_IMAGE('media-42', THRESHOLD => 0.9)",
+  );
+});
+
+test("buildSimilarImageSql: explicit threshold + INDEX scope", () => {
+  assert.equal(
+    buildSimilarImageSql("media-42", { threshold: 0.6, index: "ncmec" }),
+    "SELECT * FROM SIMILAR_IMAGE('media-42', THRESHOLD => 0.6, INDEX => 'ncmec')",
+  );
+});
+
+test("buildSimilarImageSql: escapes single quotes in mediaRef and index", () => {
+  assert.equal(
+    buildSimilarImageSql("o'reilly", { threshold: 0.5, index: "o'index" }),
+    "SELECT * FROM SIMILAR_IMAGE('o''reilly', THRESHOLD => 0.5, INDEX => 'o''index')",
+  );
+});
+
 // ---------------------------------------------------------------------------
 // #2251 — HTTP dispatch through /query
 // ---------------------------------------------------------------------------
@@ -114,6 +136,42 @@ test("matchPdq: posts MATCH_PDQ operator + honours purpose override", async () =
   const body = JSON.parse(calls[0]!.body!);
   assert.equal(body.sql, "SELECT * FROM MATCH_PDQ('ffff', 'ncmec', THRESHOLD => 0.95)");
   assert.equal(body.purpose, "investigation");
+});
+
+test("similarImage: posts SIMILAR_IMAGE operator + honours threshold/index/purpose", async () => {
+  const { fetch, calls } = mockFetch({
+    body: { data: [{ entity_id: "e-7", score: 0.99 }], query_id: "q3", elapsed_ms: 1 },
+  });
+  const relata = new RelataClient({
+    baseUrl: "http://localhost:9090",
+    defaultPurpose: "analytics",
+    fetch,
+  });
+  const result = await relata.similarImage("media-42", {
+    threshold: 0.6,
+    index: "ncmec",
+    purpose: "investigation",
+  });
+  const body = JSON.parse(calls[0]!.body!);
+  assert.equal(
+    body.sql,
+    "SELECT * FROM SIMILAR_IMAGE('media-42', THRESHOLD => 0.6, INDEX => 'ncmec')",
+  );
+  assert.equal(body.purpose, "investigation");
+  assert.equal(result.rows[0]!["score"], 0.99);
+});
+
+test("similarImage: defaults THRESHOLD => 0.9, no INDEX, falls back to client default purpose", async () => {
+  const { fetch, calls } = mockFetch({ body: { data: [] } });
+  const relata = new RelataClient({
+    baseUrl: "http://localhost:9090",
+    defaultPurpose: "analytics",
+    fetch,
+  });
+  await relata.similarImage("media-42");
+  const body = JSON.parse(calls[0]!.body!);
+  assert.equal(body.sql, "SELECT * FROM SIMILAR_IMAGE('media-42', THRESHOLD => 0.9)");
+  assert.equal(body.purpose, "analytics");
 });
 
 // ---------------------------------------------------------------------------

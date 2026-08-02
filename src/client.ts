@@ -152,6 +152,25 @@ export function buildMatchPdqSql(
 }
 
 /**
+ * Build a `SELECT * FROM SIMILAR_IMAGE(...)` ticket (#2840, PR #2859). Mirrors
+ * the server operator in `relata_query::parser`: `SIMILAR_IMAGE('<media_ref>',
+ * THRESHOLD => f, INDEX => '<index>')` (default THRESHOLD=0.9; `INDEX` is
+ * omitted from the SQL entirely when not supplied, matching the parser's
+ * `Option<String>` for the corpus/index scope).
+ * @internal
+ */
+export function buildSimilarImageSql(
+  mediaRef: string,
+  opts: { threshold?: number; index?: string } = {},
+): string {
+  const threshold = opts.threshold ?? 0.9;
+  let sql = `SELECT * FROM SIMILAR_IMAGE(${sqlLiteral(mediaRef)}, THRESHOLD => ${threshold}`;
+  if (opts.index !== undefined) sql += `, INDEX => ${sqlLiteral(opts.index)}`;
+  sql += ")";
+  return sql;
+}
+
+/**
  * Assemble an Arrow Flight `do_get` ticket from SQL + optional PURPOSE (#2253).
  *
  * The Flight door (`crates/relata-cli/src/flight_server.rs::do_get`) reads the
@@ -1134,6 +1153,34 @@ export class RelataClient {
     opts?: { threshold?: number; purpose?: string },
   ): Promise<QueryResult<T>> {
     const sql = buildMatchPdqSql(corpusId, queryHash, opts?.threshold);
+    const queryOpts: { purpose?: string } = {};
+    if (opts?.purpose !== undefined) queryOpts.purpose = opts.purpose;
+    return this.query<T>(sql, queryOpts);
+  }
+
+  /**
+   * Near-duplicate/similar-image search against a media reference (#2840,
+   * PR #2859).
+   *
+   * Executes `SELECT * FROM SIMILAR_IMAGE(...)` through the governed
+   * `/query` door.
+   *
+   * @param mediaRef - Reference media identifier to find near-duplicates of.
+   * @param opts - `threshold` (minimum similarity 0–1, default 0.9), `index`
+   *   (optional corpus/index scope; omitted from the SQL entirely when not
+   *   supplied), `purpose` override.
+   *
+   * @example
+   * ```typescript
+   * const r = await relata.similarImage("media-42",
+   *   { threshold: 0.6, index: "ncmec", purpose: "investigation" });
+   * ```
+   */
+  async similarImage<T = Record<string, unknown>>(
+    mediaRef: string,
+    opts?: { threshold?: number; index?: string; purpose?: string },
+  ): Promise<QueryResult<T>> {
+    const sql = buildSimilarImageSql(mediaRef, opts ?? {});
     const queryOpts: { purpose?: string } = {};
     if (opts?.purpose !== undefined) queryOpts.purpose = opts.purpose;
     return this.query<T>(sql, queryOpts);
