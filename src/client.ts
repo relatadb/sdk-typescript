@@ -919,7 +919,7 @@ export class RelataClient {
   // ── Graph algorithm operators (#967) ─────────────────────────────────────
 
   async graphDijkstra(objectType: string, fromId: string, toId: string, purpose?: string): Promise<Record<string, unknown>> {
-    const sql = `GRAPH_DIJKSTRA('${objectType}', FROM => '${fromId}', TO => '${toId}')`;
+    const sql = `GRAPH_DIJKSTRA(${sqlLiteral(objectType)}, FROM => ${sqlLiteral(fromId)}, TO => ${sqlLiteral(toId)})`;
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
@@ -954,7 +954,7 @@ export class RelataClient {
   }
 
   async graphPageRank(objectType: string, opts?: { damping?: number; maxIter?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts = [`GRAPH_PAGERANK('${objectType}'`];
+    const parts = [`GRAPH_PAGERANK(${sqlLiteral(objectType)}`];
     if (opts?.damping !== undefined) parts.push(`, DAMPING => ${opts.damping}`);
     if (opts?.maxIter !== undefined) parts.push(`, MAX_ITER => ${opts.maxIter}`);
     parts.push(")");
@@ -962,41 +962,41 @@ export class RelataClient {
   }
 
   async graphSCC(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_SCC('${objectType}')` });
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_SCC(${sqlLiteral(objectType)})` });
   }
 
   async graphCycles(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_CYCLES('${objectType}')` });
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_CYCLES(${sqlLiteral(objectType)})` });
   }
 
   async graphCommunity(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_COMMUNITY('${objectType}')` });
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_COMMUNITY(${sqlLiteral(objectType)})` });
   }
 
   async graphNodeSimilarity(objectType: string, node: string, purpose?: string): Promise<Record<string, unknown>> {
-    const sql = `GRAPH_NODE_SIMILARITY('${objectType}', NODE => '${node}')`;
+    const sql = `GRAPH_NODE_SIMILARITY(${sqlLiteral(objectType)}, NODE => ${sqlLiteral(node)})`;
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
   async graphLinkPredict(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_LINK_PREDICT('${objectType}')` });
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_LINK_PREDICT(${sqlLiteral(objectType)})` });
   }
 
   async graphTriangleCount(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `TRIANGLE_COUNT('${objectType}')` });
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `TRIANGLE_COUNT(${sqlLiteral(objectType)})` });
   }
 
   // ── Intelligence operators (#967) ────────────────────────────────────────
 
   async beneficialOwnershipChain(party: string, opts?: { maxDepth?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts = [`BENEFICIAL_OWNERSHIP_CHAIN('${party}'`];
+    const parts = [`BENEFICIAL_OWNERSHIP_CHAIN(${sqlLiteral(party)}`];
     if (opts?.maxDepth !== undefined) parts.push(`, MAX_DEPTH => ${opts.maxDepth}`);
     parts.push(")");
     return this.#post("/query", { purpose: opts?.purpose ?? "compliance", sql: parts.join("") });
   }
 
   async sanctionsScreen(party: string, opts?: { threshold?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts = [`SANCTIONS_SCREEN('${party}'`];
+    const parts = [`SANCTIONS_SCREEN(${sqlLiteral(party)}`];
     if (opts?.threshold !== undefined) parts.push(`, THRESHOLD => ${opts.threshold}`);
     parts.push(")");
     return this.#post("/query", { purpose: opts?.purpose ?? "compliance", sql: parts.join("") });
@@ -1020,11 +1020,11 @@ export class RelataClient {
   }
 
   async cryptoTrace(entity: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRYPTO_TRACE('${entity}')` });
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRYPTO_TRACE(${sqlLiteral(entity)})` });
   }
 
   async wireReconstruction(account: string, opts?: { tolerancePct?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts = [`WIRE_RECONSTRUCTION('${account}'`];
+    const parts = [`WIRE_RECONSTRUCTION(${sqlLiteral(account)}`];
     if (opts?.tolerancePct !== undefined) parts.push(`, TOLERANCE_PCT => ${opts.tolerancePct}`);
     parts.push(")");
     return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
@@ -1032,20 +1032,20 @@ export class RelataClient {
 
   async hawalaTrace(seed: string, opts?: { maxHops?: number; purpose?: string }): Promise<Record<string, unknown>> {
     const maxHops = opts?.maxHops === undefined ? 5 : Math.min(10, Math.max(1, Math.trunc(opts.maxHops)));
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: `HAWALA_TRACE('${seed}', MAX_HOPS => ${maxHops})` });
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: `HAWALA_TRACE(${sqlLiteral(seed)}, MAX_HOPS => ${maxHops})` });
   }
 
   async dnsTunnelDetect(entity: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "security", sql: `DNS_TUNNEL_DETECT('${entity}')` });
+    return this.#post("/query", { purpose: purpose ?? "security", sql: `DNS_TUNNEL_DETECT(${sqlLiteral(entity)})` });
   }
 
   async crimePatternCluster(area: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRIME_PATTERN_CLUSTER('${area}')` });
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRIME_PATTERN_CLUSTER(${sqlLiteral(area)})` });
   }
 
   async geofence(fence: string, opts?: { targetType?: string; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts = [`GEOFENCE('${fence}'`];
-    if (opts?.targetType !== undefined) parts.push(`, TARGET_TYPE => '${opts.targetType}'`);
+    const parts = [`GEOFENCE(${sqlLiteral(fence)}`];
+    if (opts?.targetType !== undefined) parts.push(`, TARGET_TYPE => ${sqlLiteral(opts.targetType)}`);
     parts.push(")");
     return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
   }
