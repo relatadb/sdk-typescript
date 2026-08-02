@@ -16,6 +16,41 @@ import { PurposeError } from "./errors.ts";
 /** Row shape returned by vector-search helpers. */
 export type VectorRow = Record<string, unknown>;
 
+/**
+ * Build a `HYBRID_SEARCH FROM <type> QUERY '<text>' LIMIT <n>` ticket — the
+ * **statement** grammar `relata_query::parser` actually accepts (with optional
+ * `RERANK` / `METRIC <m>` / `WEIGHTS <g> <b> <v>`). The previous
+ * `SELECT * FROM HYBRID_SEARCH(from => …, query_text => …)` TVF shape was
+ * never accepted by the server (named args aren't a real grammar).
+ *
+ * Caller-supplied query embeddings are not supported by the `/query` SQL
+ * surface (no vector-literal grammar); the server embeds `queryText`
+ * server-side. Exported for unit testing parity with Python/Go.
+ */
+export function buildHybridSearchSql(
+  objectType: string,
+  queryText: string,
+  opts: {
+    k?: number;
+    rerank?: boolean;
+    metric?: string;
+    weights?: [number, number, number];
+  } = {},
+): string {
+  const k = opts.k ?? 10;
+  const escaped = queryText.replace(/'/g, "''");
+  let sql = `HYBRID_SEARCH FROM ${objectType} QUERY '${escaped}' LIMIT ${k}`;
+  if (opts.rerank) sql += " RERANK";
+  if (opts.metric) sql += ` METRIC ${opts.metric}`;
+  if (opts.weights !== undefined) {
+    if (opts.weights.length !== 3) {
+      throw new Error("weights must be a 3-tuple [graph, bm25, vector]");
+    }
+    sql += ` WEIGHTS ${opts.weights[0]} ${opts.weights[1]} ${opts.weights[2]}`;
+  }
+  return sql;
+}
+
 /** Typed vector client — backs onto `RelataClient.query`. */
 export class VectorClient {
   readonly #client: RelataClient;
@@ -74,38 +109,33 @@ export class VectorClient {
   /**
    * Hybrid BM25 + vector search via the `HYBRID_SEARCH` operator.
    *
-   * Caller must supply at least one of `queryText` (BM25 leg) or
-   * `queryEmbedding` (vector leg, requires `embeddingSlot`). When both are
-   * supplied the server fuses via reciprocal rank fusion (ADR-175).
+   * Executes `HYBRID_SEARCH FROM <type> QUERY '<text>' LIMIT <k>` through the
+   * governed `/query` door so PURPOSE / ACL / cell-masking / tenant isolation
+   * apply identically to a hand-written query. The server embeds `queryText`
+   * server-side; caller-supplied embeddings are **not** accepted by the
+   * `/query` SQL surface (no vector-literal grammar — use `embed()` for
+   * text→vector instead).
+   *
+   * @param objectType - Type to search.
+   * @param opts.queryText - BM25 + vector query text (required).
+   * @param opts.k - Max results (server default 10).
+   * @param opts.purpose - Purpose override.
+   * @param opts.rerank - Re-score top-K via the sidecar cross-encoder (#611).
+   * @param opts.metric - Distance metric for the vector channel (#1330).
+   * @param opts.weights - Per-query fusion weights `[graph, bm25, vector]` (#1338).
    */
   async hybridSearch(
     objectType: string,
     opts: {
-      queryText?: string;
-      queryEmbedding?: number[];
-      embeddingSlot?: string;
+      queryText: string;
       k?: number;
       purpose?: string;
-    } = {},
+      rerank?: boolean;
+      metric?: string;
+      weights?: [number, number, number];
+    },
   ): Promise<VectorRow[]> {
-    if (opts.queryText === undefined && opts.queryEmbedding === undefined) {
-      throw new Error(
-        "hybridSearch requires queryText or queryEmbedding",
-      );
-    }
-    const args: string[] = [
-      `from => '${objectType}'`,
-      `limit => ${opts.k ?? 10}`,
-    ];
-    if (opts.queryText !== undefined) {
-      args.push(`query_text => '${opts.queryText.replace(/'/g, "''")}'`);
-    }
-    if (opts.queryEmbedding !== undefined && opts.embeddingSlot !== undefined) {
-      const embStr = JSON.stringify(opts.queryEmbedding).replace(/'/g, "''");
-      args.push(`query_embedding => '${embStr}'`);
-      args.push(`embedding_slot => '${opts.embeddingSlot}'`);
-    }
-    const sql = `SELECT * FROM HYBRID_SEARCH(${args.join(", ")})`;
+    const sql = buildHybridSearchSql(objectType, opts.queryText, opts);
     const result = await this.#client.query<VectorRow>(sql, {
       purpose: this.#purpose(opts.purpose),
     });
