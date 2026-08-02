@@ -187,4 +187,79 @@ export class VectorClient {
       { texts, ...(opts.model !== undefined ? { model: opts.model } : {}) },
     );
   }
+
+  // ── #2444 (ADR-0276): per-modality data-plane media embed routes ─────────
+
+  /** @internal Shared POST for the four per-modality media-embed routes. */
+  async #embedMedia(
+    modality: "image" | "face" | "audio" | "video",
+    bytesB64: string,
+    opts: { model?: string } = {},
+  ): Promise<{ embedding: number[]; model: string; dim: number }> {
+    return this.#client.request<{ embedding: number[]; model: string; dim: number }>(
+      "POST",
+      `/embed/${modality}`,
+      { bytes_b64: bytesB64, ...(opts.model !== undefined ? { model: opts.model } : {}) },
+    );
+  }
+
+  /**
+   * Embed a single image via `POST /embed/image` (#2444, ADR-0276).
+   *
+   * Uses the server's configured embedder's sidecar (`RELATA_ACCEL_ENDPOINT`,
+   * ADR-177); the request rejects with a 503 when the active embedder does
+   * not support media (the built-in CPU lexical default does not).
+   *
+   * @param bytesB64 - Base64-encoded image bytes.
+   * @param opts - Optional model hint passed through to the server.
+   * @returns `{ embedding: number[], model: string, dim: number }`
+   */
+  async embedImage(
+    bytesB64: string,
+    opts: { model?: string } = {},
+  ): Promise<{ embedding: number[]; model: string; dim: number }> {
+    return this.#embedMedia("image", bytesB64, opts);
+  }
+
+  /**
+   * Embed a single face crop via `POST /embed/face` (#2444, ADR-0276).
+   *
+   * @param bytesB64 - Base64-encoded face-crop bytes.
+   * @param opts - Optional model hint.
+   * @returns `{ embedding: number[], model: string, dim: number }`
+   */
+  async embedFace(
+    bytesB64: string,
+    opts: { model?: string } = {},
+  ): Promise<{ embedding: number[]; model: string; dim: number }> {
+    return this.#embedMedia("face", bytesB64, opts);
+  }
+
+  /**
+   * Embed a single audio clip via `POST /embed/audio` (#2444, ADR-0276).
+   *
+   * @param bytesB64 - Base64-encoded audio bytes.
+   * @param opts - Optional model hint.
+   * @returns `{ embedding: number[], model: string, dim: number }`
+   */
+  async embedAudio(
+    bytesB64: string,
+    opts: { model?: string } = {},
+  ): Promise<{ embedding: number[]; model: string; dim: number }> {
+    return this.#embedMedia("audio", bytesB64, opts);
+  }
+
+  /**
+   * Embed a single video clip/keyframe via `POST /embed/video` (#2444, ADR-0276).
+   *
+   * @param bytesB64 - Base64-encoded video bytes.
+   * @param opts - Optional model hint.
+   * @returns `{ embedding: number[], model: string, dim: number }`
+   */
+  async embedVideo(
+    bytesB64: string,
+    opts: { model?: string } = {},
+  ): Promise<{ embedding: number[]; model: string; dim: number }> {
+    return this.#embedMedia("video", bytesB64, opts);
+  }
 }
