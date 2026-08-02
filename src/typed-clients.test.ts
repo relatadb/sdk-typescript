@@ -144,12 +144,13 @@ test("GovernanceClient: listRules, createRule, importSigma, placeLegalHold, requ
   assert.equal(calls[2]?.headers["content-type"], "application/x-yaml");
   assert.equal(calls[2]?.body, "title: x");
 
-  const hold = await gov.placeLegalHold("c1", "Person", { reason: "investigation" });
+  const hold = await gov.placeLegalHold("c1", "Person", { field: "env", value: "prod" });
   assert.equal(hold["case_id"], "c1");
   assert.deepEqual(JSON.parse(calls[3]?.body ?? "{}"), {
     case_id: "c1",
     object_type: "Person",
-    reason: "investigation",
+    field: "env",
+    value: "prod",
   });
 
   const bg = await gov.requestBreakglass("SRC-0042", { justification: "urgent triage" });

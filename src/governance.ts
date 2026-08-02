@@ -218,28 +218,32 @@ export class GovernanceClient extends TypedClientBase {
   }
 
   /**
-   * Place a legal hold on `objectType` (optionally on a specific row).
-   * Wraps `POST /retention/holds`.
+   * Place a legal hold on `objectType` (optionally scoped to rows where
+   * `field` equals `value`). Wraps `POST /retention/holds`.
    *
    * @param caseId   Caller-supplied case identifier (becomes the hold id).
    * @param objectType Type to hold.
-   * @param objectId Optional specific row id; omit for type-wide hold.
-   * @param reason   Optional human-friendly reason.
+   * @param field    Optional column name to scope the hold to; pass both
+   *                 `field` and `value` together, or omit both for a
+   *                 type-wide hold. The server only reads
+   *                 `case_id`/`object_type`/`field`/`value` — any other key
+   *                 is silently ignored (#2465).
+   * @param value    Column value to match when `field` is set.
    */
   async placeLegalHold(
     caseId: string,
     objectType: string,
     opts: {
-      objectId?: string;
-      reason?: string;
+      field?: string;
+      value?: string;
     } = {},
   ): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = {
       case_id: caseId,
       object_type: objectType,
     };
-    if (opts.objectId !== undefined) payload["object_id"] = opts.objectId;
-    if (opts.reason !== undefined) payload["reason"] = opts.reason;
+    if (opts.field !== undefined) payload["field"] = opts.field;
+    if (opts.value !== undefined) payload["value"] = opts.value;
     return this._post("/retention/holds", payload);
   }
 
