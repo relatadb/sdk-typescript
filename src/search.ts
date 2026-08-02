@@ -19,9 +19,15 @@ import { RelataClient } from "./client.ts";
 import { type TypedClientCtor, TypedClientBase } from "./_typed-http.ts";
 import type { QueryResult } from "./types.ts";
 
-/** `rank_by` directive. BM25/text full-text, or vector HYBRID_SEARCH. */
+/**
+ * `rank_by` directive. BM25/text full-text, BM25F per-field weighting
+ * (`["field_weight", {field: weight, ...}, text]` — compiles to
+ * `MATCH(*, ...)` + `RANK BY FIELD_WEIGHT(...)`, #2676), or vector
+ * HYBRID_SEARCH.
+ */
 export type SearchRankBy =
   | ["bm25" | "text", string, string]
+  | ["field_weight", Record<string, number>, string]
   | ["vector", "ann", string];
 
 /** A single filter clause (`op` defaults to `"eq"`). */
