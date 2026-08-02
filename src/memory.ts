@@ -55,6 +55,35 @@ export interface MemoryOptions {
   fetch?: typeof globalThis.fetch;
 }
 
+/**
+ * Options for {@link Memory.search} / {@link Memory.searchDetailed}.
+ *
+ * The five `min*`/`recency*`/`budget*`/`stability*`/`cancel*` fields are the
+ * ADR-145 retrieval-quality operators (REST/MCP params on `recall`):
+ * `minConfidence` (CONFIDENCE), `recencyHalfLifeSecs` (RECENCY),
+ * `budgetTokens` (BUDGET), `stabilityDays` (FORGETTING_CURVE), and
+ * `cancelThreshold` (CANCEL_WHEN). Each is omitted from the request when
+ * left `undefined`, so the server applies its own default.
+ */
+export interface MemoryRecallOptions {
+  /** Result count cap. Defaults to 5. */
+  topK?: number;
+  /** Overrides the client's default session id for this call. */
+  sessionId?: string;
+  /** Bi-temporal recall as-of timestamp. */
+  asOf?: string;
+  /** CONFIDENCE(f): filter results to `confidence >= f`. */
+  minConfidence?: number;
+  /** RECENCY(λ): exponential score decay half-life, in seconds. */
+  recencyHalfLifeSecs?: number;
+  /** BUDGET(t): stop emitting results once cumulative token cost exceeds `t`. */
+  budgetTokens?: number;
+  /** FORGETTING_CURVE(d): Ebbinghaus stability parameter, in days. */
+  stabilityDays?: number;
+  /** CANCEL_WHEN(threshold): short-circuit the scan once a hit exceeds this score. */
+  cancelThreshold?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -251,12 +280,32 @@ export class Memory {
    */
   async search(
     query: string,
-    opts: {
-      topK?: number;
-      sessionId?: string;
-      asOf?: string;
-    } = {},
+    opts: MemoryRecallOptions = {},
   ): Promise<Record<string, unknown>[]> {
+    const result = await this.#recall(query, opts);
+    const rows = result["rows"];
+    return Array.isArray(rows) ? rows as Record<string, unknown>[] : [];
+  }
+
+  /**
+   * Like {@link search} but returns the full recall envelope.
+   *
+   * Includes `rows` plus the read-only `recall_cost_tokens` (BUDGET's
+   * running token total) and `cancelled` (CANCEL_WHEN short-circuit flag)
+   * fields, so callers can observe the effect of the ADR-145 knobs, not
+   * just set them.
+   */
+  async searchDetailed(
+    query: string,
+    opts: MemoryRecallOptions = {},
+  ): Promise<Record<string, unknown>> {
+    return this.#recall(query, opts);
+  }
+
+  async #recall(
+    query: string,
+    opts: MemoryRecallOptions,
+  ): Promise<Record<string, unknown>> {
     const params = new URLSearchParams();
     params.set("q", query);
     params.set("purpose", this.#purpose);
@@ -264,9 +313,22 @@ export class Memory {
     const sid = opts.sessionId ?? this.#sessionId;
     if (sid) params.set("session_id", sid);
     if (opts.asOf) params.set("as_of", opts.asOf);
-    const result = unwrapMcp(await this.#get(`/memory/recall?${params}`));
-    const rows = result["rows"];
-    return Array.isArray(rows) ? rows as Record<string, unknown>[] : [];
+    if (opts.minConfidence !== undefined) {
+      params.set("min_confidence", String(opts.minConfidence));
+    }
+    if (opts.recencyHalfLifeSecs !== undefined) {
+      params.set("recency_half_life_secs", String(opts.recencyHalfLifeSecs));
+    }
+    if (opts.budgetTokens !== undefined) {
+      params.set("budget_tokens", String(opts.budgetTokens));
+    }
+    if (opts.stabilityDays !== undefined) {
+      params.set("stability_days", String(opts.stabilityDays));
+    }
+    if (opts.cancelThreshold !== undefined) {
+      params.set("cancel_threshold", String(opts.cancelThreshold));
+    }
+    return unwrapMcp(await this.#get(`/memory/recall?${params}`));
   }
 
   /**

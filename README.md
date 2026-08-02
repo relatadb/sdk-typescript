@@ -298,6 +298,15 @@ const id2 = await m.add("Bob likes light mode", { memoryClass: "episodic", confi
 const ids = await m.addBatch(["first", "second", { content: "third", confidence: 0.5 }]);
 
 const hits = await m.search("ui preferences", { topK: 5, asOf: "2025-01-01" });
+
+// ADR-145 retrieval-quality operators (#2674): bound recall by token budget
+// and confidence so one call can't blow an agent's context window.
+const detailed = await m.searchDetailed("ui preferences", {
+  minConfidence: 0.5,
+  budgetTokens: 200,
+});
+console.log(detailed["recall_cost_tokens"], detailed["cancelled"]);
+
 const mem  = await m.get(id1);          // Record<string, unknown> | null
 const newId = await m.update(id1, "Alice prefers dark mode (revised)");
 const decision = await m.forget(id1);   // governed retention-policy retract
@@ -315,6 +324,7 @@ const summary = await m.summarise([id1, id2], { summaryContent: "both prefer dif
 | `.add(content, opts?)` | `POST /memory/remember` | Store a memory; returns its id |
 | `.addBatch(items, opts?)` | `POST /memory/remember/batch` | Bulk store; returns index-aligned ids |
 | `.search(query, opts?)` | `GET /memory/recall` | Recall ranked by confidence × recency × relevance |
+| `.searchDetailed(query, opts?)` | `GET /memory/recall` | Like `.search` but returns the full envelope, incl. read-only `recall_cost_tokens`/`cancelled`. `opts` also takes the ADR-145 knobs: `minConfidence`, `recencyHalfLifeSecs`, `budgetTokens`, `stabilityDays`, `cancelThreshold` |
 | `.get(memoryId)` | `GET /memory/recognize/:id` | Fetch one memory or `null` |
 | `.update(memoryId, content)` | `POST /memory/consolidate` | Governed supersede; returns new id |
 | `.forget(memoryId)` | `DELETE /memory/forget/:id` | Governed retention-policy retract |

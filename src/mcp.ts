@@ -348,17 +348,42 @@ export class McpClient extends TypedClientBase {
     });
   }
 
-  /** `recall` MCP tool. */
+  /**
+   * `recall` MCP tool.
+   *
+   * The five `min*`/`recency*`/`budget*`/`stability*`/`cancel*` options are
+   * the ADR-145 retrieval-quality operators (`min_confidence` = CONFIDENCE,
+   * `recency_half_life_secs` = RECENCY, `budget_tokens` = BUDGET,
+   * `stability_days` = FORGETTING_CURVE, `cancel_threshold` = CANCEL_WHEN).
+   * Each is omitted from the tool call when left `undefined`, so the server
+   * applies its own default. The returned envelope carries the read-only
+   * `recall_cost_tokens`/`cancelled` fields once unwrapped (see `unwrapMcp`).
+   */
   async recall(
     query: string,
     purpose: string,
-    opts: { topK?: number } = {},
+    opts: {
+      topK?: number;
+      minConfidence?: number;
+      recencyHalfLifeSecs?: number;
+      budgetTokens?: number;
+      stabilityDays?: number;
+      cancelThreshold?: number;
+    } = {},
   ): Promise<Record<string, unknown>> {
-    return this.callTool("recall", {
+    const args: Record<string, unknown> = {
       query,
       purpose,
       top_k: opts.topK ?? 5,
-    });
+    };
+    if (opts.minConfidence !== undefined) args["min_confidence"] = opts.minConfidence;
+    if (opts.recencyHalfLifeSecs !== undefined) {
+      args["recency_half_life_secs"] = opts.recencyHalfLifeSecs;
+    }
+    if (opts.budgetTokens !== undefined) args["budget_tokens"] = opts.budgetTokens;
+    if (opts.stabilityDays !== undefined) args["stability_days"] = opts.stabilityDays;
+    if (opts.cancelThreshold !== undefined) args["cancel_threshold"] = opts.cancelThreshold;
+    return this.callTool("recall", args);
   }
 
   // -------------------------------------------------------------------------

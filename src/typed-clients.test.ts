@@ -269,6 +269,40 @@ test("McpClient #2322: rememberBatch sends items", async () => {
   assert.equal(seen.arguments["purpose"], "analytics");
 });
 
+test("McpClient #2674: recall sends ADR-145 retrieval-quality params", async () => {
+  // CONFIDENCE/RECENCY/BUDGET/FORGETTING_CURVE/CANCEL_WHEN must be reachable
+  // from the low-level MCP `recall` wrapper, not just the typed Memory client.
+  const seen = await callAndCapture((mcp) =>
+    mcp.recall("hello", "x", {
+      minConfidence: 0.5,
+      recencyHalfLifeSecs: 1800,
+      budgetTokens: 256,
+      stabilityDays: 14,
+      cancelThreshold: 0.99,
+    }),
+  );
+  assert.equal(seen.name, "recall");
+  assert.equal(seen.arguments["min_confidence"], 0.5);
+  assert.equal(seen.arguments["recency_half_life_secs"], 1800);
+  assert.equal(seen.arguments["budget_tokens"], 256);
+  assert.equal(seen.arguments["stability_days"], 14);
+  assert.equal(seen.arguments["cancel_threshold"], 0.99);
+});
+
+test("McpClient #2674: recall omits ADR-145 params when unset", async () => {
+  const seen = await callAndCapture((mcp) => mcp.recall("hello", "x"));
+  assert.equal(seen.name, "recall");
+  for (const key of [
+    "min_confidence",
+    "recency_half_life_secs",
+    "budget_tokens",
+    "stability_days",
+    "cancel_threshold",
+  ]) {
+    assert.equal(key in seen.arguments, false, `unexpected ${key}`);
+  }
+});
+
 test("McpClient #2322: recognize sends id", async () => {
   const seen = await callAndCapture((mcp) => mcp.recognize("mem-1"));
   assert.equal(seen.name, "recognize");

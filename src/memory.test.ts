@@ -141,6 +141,60 @@ test("Memory: search builds query string + unwraps rows", async () => {
   assert.ok(url.includes("session_id=sess-1"));
 });
 
+test("Memory: search sends ADR-145 retrieval-quality params", async () => {
+  // #2674: CONFIDENCE/RECENCY/BUDGET/FORGETTING_CURVE/CANCEL_WHEN must be
+  // reachable as query params on GET /memory/recall.
+  const { fetch, calls } = mockFetch({
+    body: mcpEnvelope({ rows: [] }),
+  });
+  const m = new Memory("http://x", { purpose: "p", fetch });
+  await m.search("hello", {
+    minConfidence: 0.6,
+    recencyHalfLifeSecs: 3600,
+    budgetTokens: 500,
+    stabilityDays: 7,
+    cancelThreshold: 0.95,
+  });
+  const url = calls[0]?.url ?? "";
+  assert.ok(url.includes("min_confidence=0.6"));
+  assert.ok(url.includes("recency_half_life_secs=3600"));
+  assert.ok(url.includes("budget_tokens=500"));
+  assert.ok(url.includes("stability_days=7"));
+  assert.ok(url.includes("cancel_threshold=0.95"));
+});
+
+test("Memory: search omits ADR-145 params when unset", async () => {
+  const { fetch, calls } = mockFetch({ body: mcpEnvelope({ rows: [] }) });
+  const m = new Memory("http://x", { purpose: "p", fetch });
+  await m.search("hello");
+  const url = calls[0]?.url ?? "";
+  for (const key of [
+    "min_confidence",
+    "recency_half_life_secs",
+    "budget_tokens",
+    "stability_days",
+    "cancel_threshold",
+  ]) {
+    assert.ok(!url.includes(key), `unexpected ${key} in ${url}`);
+  }
+});
+
+test("Memory: searchDetailed surfaces recall_cost_tokens and cancelled", async () => {
+  // #2674: the read-only BUDGET/CANCEL_WHEN response fields must be
+  // observable, not just settable.
+  const { fetch } = mockFetch({
+    body: mcpEnvelope({
+      rows: [{ id: "a" }],
+      recall_cost_tokens: 42,
+      cancelled: true,
+    }),
+  });
+  const m = new Memory("http://x", { purpose: "p", fetch });
+  const result = await m.searchDetailed("hello", { budgetTokens: 50, cancelThreshold: 0.9 });
+  assert.equal(result["recall_cost_tokens"], 42);
+  assert.equal(result["cancelled"], true);
+});
+
 test("Memory: get returns null when memory field is absent", async () => {
   const { fetch } = mockFetch({ body: mcpEnvelope({ other: "x" }) });
   const m = new Memory("http://x", { purpose: "p", fetch });

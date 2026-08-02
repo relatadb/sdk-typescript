@@ -29,10 +29,18 @@ async function main(): Promise<void> {
   out(`stored: ${id1}, ${id2}, ${id3}`);
 
   step("2. search — hybrid recall");
-  const hits = (await mem.search("UI preferences", 3)) as Hit[];
+  const hits = (await mem.search("UI preferences", { topK: 3 })) as Hit[];
   for (const [i, h] of hits.entries()) {
     out(`  ${i + 1}. [${(h.score ?? 0).toFixed(3)}] ${h.text}`);
   }
+
+  step("2b. searchDetailed — ADR-145 BUDGET + CONFIDENCE, with the read-only cost/cancelled fields");
+  const detailed = await mem.searchDetailed("UI preferences", {
+    topK: 3,
+    minConfidence: 0.5,
+    budgetTokens: 200,
+  });
+  out(`recall_cost_tokens=${detailed["recall_cost_tokens"]} cancelled=${detailed["cancelled"]}`);
 
   step("3. get — fetch a specific memory by id");
   const one = (await mem.get(id1)) as Hit | null;
