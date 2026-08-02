@@ -79,6 +79,34 @@ Supported: `MATCH` / `OPTIONAL MATCH`, `WHERE`, `RETURN`, `UNION` / `UNION ALL`
 writes route through the governed write door. See the
 [SQL reference](https://www.relatadb.dev/docs/reference/sql).
 
+## Hybrid search — `VectorClient.hybridSearch()`
+
+`VectorClient` wraps the server's `HYBRID_SEARCH` operator (ADR-175): supply
+`queryText` (BM25 leg), `queryEmbedding` + `embeddingSlot` (vector leg), or
+both — when both are present the server fuses the two rankings via
+reciprocal rank fusion. This is Relata's genuine edge over a plain vector DB
+or a plain full-text engine.
+
+```typescript
+import { createClient, VectorClient } from "@zysec-ai/relata-sdk";
+
+const relata = createClient("http://localhost:9090", { defaultPurpose: "rag" });
+const vectors = VectorClient.fromClient(relata);
+
+const { embedding } = await vectors.embed("graph retrieval");
+
+const hits = await vectors.hybridSearch("Document", {
+  queryText: "graph retrieval",
+  queryEmbedding: embedding,
+  embeddingSlot: "_emb_text",
+  k: 10,
+});
+for (const row of hits) console.log(row["title"], row["_score"]);
+```
+
+See `examples/hybrid-search.ts` for a full runnable walkthrough (embed →
+ingest → BM25-only vs. vector-only vs. fused search).
+
 ## Agent memory in three lines
 
 `Memory` is a Mem0-style surface over the governed `/memory/*` verbs — purpose + ACL
@@ -617,6 +645,7 @@ See [`examples/`](./examples/) for runnable workflows:
 | `basic-query.ts` | Health check, raw SQL, typed query, fluent builder |
 | `analytics.ts` | Full analytics workflow (identity, cases, financials, graph) |
 | `face-search.ts` | `MATCH_FACE` operator with co-occurrence detection |
+| `hybrid-search.ts` | `VectorClient.hybridSearch()` — embed, ingest, BM25-only vs. vector-only vs. fused (RRF) search |
 | `graph-traversal.ts` | `PATHS_BETWEEN`, `NETWORK_EXPAND`, `MATCH`, Pregel BFS |
 | `audit.ts` | Audit chain verification, anomaly detection, compliance report |
 
