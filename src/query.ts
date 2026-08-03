@@ -19,6 +19,7 @@
 
 import type { RelataClient } from "./client.ts";
 import type { QueryResult } from "./types.ts";
+import { escapeSqlString, validateIdentifier } from "./_sql.ts";
 
 // ---------------------------------------------------------------------------
 // Sort direction
@@ -298,6 +299,7 @@ export class QueryBuilder {
    * ```
    */
   toSQL(): string {
+    validateIdentifier(this.#fromType, "object_type");
     const parts: string[] = [];
 
     // SELECT
@@ -306,9 +308,9 @@ export class QueryBuilder {
     // FROM
     parts.push(`FROM ${this.#fromType}`);
 
-    // AS OF
+    // AS OF — the timestamp is escaped into a contained literal (#3211).
     if (this.#asOfTimestamp) {
-      parts.push(`AS OF '${this.#asOfTimestamp}'`);
+      parts.push(`AS OF '${escapeSqlString(this.#asOfTimestamp)}'`);
     }
 
     // WITH PROVENANCE
@@ -430,14 +432,15 @@ export class PathsQueryBuilder {
   toSQL(): string {
     const parts: string[] = [];
 
+    // #3211: the node ids are escaped into contained literals.
     parts.push(`SELECT * FROM PATHS_BETWEEN(`);
-    parts.push(`  '${this.#sourceId}',`);
-    parts.push(`  '${this.#targetId}',`);
+    parts.push(`  '${escapeSqlString(this.#sourceId)}',`);
+    parts.push(`  '${escapeSqlString(this.#targetId)}',`);
     parts.push(`  max_hops => ${this.#maxHops}`);
     parts.push(`)`);
 
     if (this.#asOfTimestamp) {
-      parts.push(`AS OF '${this.#asOfTimestamp}'`);
+      parts.push(`AS OF '${escapeSqlString(this.#asOfTimestamp)}'`);
     }
     if (this.#provenance) {
       parts.push("WITH PROVENANCE");

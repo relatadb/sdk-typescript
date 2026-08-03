@@ -153,9 +153,9 @@ export class Namespace {
     objectId: string,
     opts: { purpose?: string } = {},
   ): Promise<T | null> {
-    const escaped = String(objectId).replace(/'/g, "''");
-    const sql = `SELECT * FROM ${this.name} WHERE id = '${escaped}' LIMIT 1`;
-    const result = await this.#client.query<T>(sql, opts.purpose !== undefined ? { purpose: opts.purpose } : undefined);
+    // #3211: the id is bound as a server-side $1 parameter, never interpolated.
+    const sql = `SELECT * FROM ${this.name} WHERE id = $1 LIMIT 1`;
+    const result = await this.#client.queryWithParams<T>(sql, [String(objectId)], opts.purpose !== undefined ? { purpose: opts.purpose } : undefined);
     return result.rows.length > 0 ? (result.rows[0] ?? null) : null;
   }
 

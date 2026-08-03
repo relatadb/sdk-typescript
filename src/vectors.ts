@@ -11,6 +11,7 @@
  */
 
 import { RelataClient } from "./client.ts";
+import { validateIdentifier, validateMetric, escapeSqlString } from "./_sql.ts";
 import { PurposeError } from "./errors.ts";
 
 /** Row shape returned by vector-search helpers. */
@@ -37,8 +38,12 @@ export function buildHybridSearchSql(
     weights?: [number, number, number];
   } = {},
 ): string {
+  validateIdentifier(objectType, "object_type");
+  if (opts.metric !== undefined) {
+    validateMetric(opts.metric);
+  }
   const k = opts.k ?? 10;
-  const escaped = queryText.replace(/'/g, "''");
+  const escaped = escapeSqlString(queryText);
   let sql = `HYBRID_SEARCH FROM ${objectType} QUERY '${escaped}' LIMIT ${k}`;
   if (opts.rerank) sql += " RERANK";
   if (opts.metric) sql += ` METRIC ${opts.metric}`;
@@ -112,7 +117,9 @@ export class VectorClient {
       purpose?: string;
     } = {},
   ): Promise<VectorRow[]> {
-    const embStr = JSON.stringify(queryEmbedding);
+    validateIdentifier(objectType, "object_type");
+    validateIdentifier(embeddingSlot, "embedding_slot");
+    const embStr = escapeSqlString(JSON.stringify(queryEmbedding));
     let sql =
       `SELECT * FROM ${objectType} ` +
       `ORDER BY ${embeddingSlot} <=> '${embStr}' LIMIT ${opts.k ?? 10}`;
@@ -173,11 +180,11 @@ export class VectorClient {
       purpose?: string;
     } = {},
   ): Promise<VectorRow[]> {
-    const escaped = referenceId.replace(/'/g, "''");
+    validateIdentifier(objectType, "object_type");
     const sql =
       `SELECT * FROM SIMILAR TO ${objectType} ` +
-      `WHERE id = '${escaped}' LIMIT ${opts.k ?? 10}`;
-    const result = await this.#client.query<VectorRow>(sql, {
+      `WHERE id = $1 LIMIT ${opts.k ?? 10}`;
+    const result = await this.#client.queryWithParams<VectorRow>(sql, [referenceId], {
       purpose: this.#purpose(opts.purpose),
     });
     return result.rows;

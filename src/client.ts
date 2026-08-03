@@ -96,10 +96,10 @@ export {
 // Multimedia operator + Arrow Flight builders (#2251, #2253)
 // ---------------------------------------------------------------------------
 
-/** @internal Quote a string as a SQL literal, doubling internal quotes. */
-function sqlLiteral(s: string): string {
-  return `'${s.replace(/'/g, "''")}'`;
-}
+// #3211: shared SQL-building guards live in `_sql.ts` so every SQL-building
+// module shares one identifier allowlist, one metric allowlist, and one
+// string-literal escaper without a runtime circular import.
+import { escapeSqlString, sqlLiteral } from "./_sql.ts";
 
 /**
  * Build a `SELECT * FROM FACE_SEARCH(...)` ticket (#2251). Mirrors the server
@@ -796,7 +796,7 @@ export class RelataClient {
     purpose?: string,
     mode?: "canonical" | "cluster" | "fuse",
   ): Promise<Record<string, unknown>> {
-    const escaped = value.replace(/'/g, "''");
+    const escaped = escapeSqlString(value);
     const sql =
       mode === undefined
         ? `RESOLVE_IDENTITY('${escaped}')`
@@ -806,14 +806,14 @@ export class RelataClient {
 
   /** Detect identities in free text via SmartIngest. */
   async detectIdentities(text: string, purpose?: string): Promise<Record<string, unknown>> {
-    const sql = `DETECT_IDENTITIES('${text.replace(/'/g, "''")}')`;
+    const sql = `DETECT_IDENTITIES('${escapeSqlString(text)}')`;
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
   /** GDPR Art. 17 erasure — irreversible crypto-shred of a subject's data. */
   async eraseSubject(subject: string, reason?: string): Promise<Record<string, unknown>> {
-    const s = subject.replace(/'/g, "''");
-    const r = (reason ?? "gdpr-art17-request").replace(/'/g, "''");
+    const s = escapeSqlString(subject);
+    const r = escapeSqlString(reason ?? "gdpr-art17-request");
     const sql = `ERASE SUBJECT '${s}' REASON '${r}' CERTIFY`;
     return this.#post("/query", { purpose: "gdpr-erasure", sql });
   }
@@ -880,7 +880,7 @@ export class RelataClient {
 
   /** Resolve an identity to its full cluster of linked identifiers. */
   async identityCluster(value: string, purpose?: string): Promise<Record<string, unknown>> {
-    const sql = `RESOLVE_IDENTITY('${value.replace(/'/g, "''")}', MODE => 'cluster')`;
+    const sql = `RESOLVE_IDENTITY('${escapeSqlString(value)}', MODE => 'cluster')`;
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
@@ -890,8 +890,8 @@ export class RelataClient {
    * verdict as a boolean (#2246).
    */
   async sameIdentity(a: string, b: string, purpose?: string): Promise<boolean> {
-    const ca = a.replace(/'/g, "''");
-    const cb = b.replace(/'/g, "''");
+    const ca = escapeSqlString(a);
+    const cb = escapeSqlString(b);
     const sql = `SAME_IDENTITY('${ca}', '${cb}')`;
     const wire = await this.#post<{ data?: Array<Record<string, unknown>> }>(
       "/query",
@@ -902,16 +902,16 @@ export class RelataClient {
 
   /** Ontological merge of two identities (#967). */
   async fuseIdentities(idA: string, idB: string, purpose?: string): Promise<Record<string, unknown>> {
-    const a = idA.replace(/'/g, "''");
-    const b = idB.replace(/'/g, "''");
+    const a = escapeSqlString(idA);
+    const b = escapeSqlString(idB);
     const sql = `FUSE_IDENTITIES('${a}', '${b}')`;
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
   /** Ontological unmerge — inverse of fuseIdentities (#967). */
   async splitIdentities(idA: string, idB: string, purpose?: string): Promise<Record<string, unknown>> {
-    const a = idA.replace(/'/g, "''");
-    const b = idB.replace(/'/g, "''");
+    const a = escapeSqlString(idA);
+    const b = escapeSqlString(idB);
     const sql = `SPLIT_IDENTITIES('${a}', '${b}')`;
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }

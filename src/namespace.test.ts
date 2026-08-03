@@ -129,7 +129,7 @@ test("Namespace.write: schemaless upsert POSTs to /ingest/auto with object_type"
   assert.equal(calls[0]?.url, "http://x/ingest/auto");
 });
 
-test("Namespace.get: issues SELECT * FROM <Name> WHERE id = '...' LIMIT 1", async () => {
+test("Namespace.get: issues SELECT * FROM <Name> WHERE id = $1 LIMIT 1 with bound param", async () => {
   const { fetch, calls } = mockFetch({
     body: { data: [{ id: "d1", title: "Knowledge graphs 101" }], query_id: "q", elapsed_ms: 1 },
   });
@@ -138,15 +138,20 @@ test("Namespace.get: issues SELECT * FROM <Name> WHERE id = '...' LIMIT 1", asyn
   const row = await docs.get<{ id: string }>("d1");
   assert.equal(row?.id, "d1");
   const sent = JSON.parse(calls[0]?.body ?? "{}");
+  // #3211: the id is bound as a server-side $1 parameter, never interpolated.
   assert.equal(
     sent.sql,
-    "SELECT * FROM Document WHERE id = 'd1' LIMIT 1",
+    "SELECT * FROM Document WHERE id = $1 LIMIT 1",
   );
-  // Single-quote escaping.
-  const { fetch: f2 } = mockFetch({ body: { data: [] } });
+  assert.deepEqual(sent.params, ["d1"]);
+  // A quote-laden id is passed as a bound parameter, not escaped into the SQL.
+  const { fetch: f2, calls: calls2 } = mockFetch({ body: { data: [] } });
   const r2 = new RelataClient({ baseUrl: "http://x", defaultPurpose: "rag", fetch: f2 });
   const miss = await r2.namespace("Document").get("o'malley");
   assert.equal(miss, null);
+  const sent2 = JSON.parse(calls2[0]?.body ?? "{}");
+  assert.equal(sent2.sql, "SELECT * FROM Document WHERE id = $1 LIMIT 1");
+  assert.deepEqual(sent2.params, ["o'malley"]);
 });
 
 test("Namespace.get: returns null when no rows", async () => {

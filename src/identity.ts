@@ -8,6 +8,7 @@
  */
 
 import { RelataClient } from "./client.ts";
+import { escapeSqlString } from "./_sql.ts";
 import { type TypedClientCtor, TypedClientBase, qs } from "./_typed-http.ts";
 
 /** Identity + lookup client. */
@@ -135,8 +136,8 @@ export class IdentityClient extends TypedClientBase {
   ): Promise<Record<string, unknown>> {
     const certifyKw = (opts.certify ?? true) ? " CERTIFY" : "";
     const sql =
-      `ERASE SUBJECT '${subjectIdentity.replace(/'/g, "''")}' ` +
-      `REASON '${reason.replace(/'/g, "''")}'${certifyKw}`;
+      `ERASE SUBJECT '${escapeSqlString(subjectIdentity)}' ` +
+      `REASON '${escapeSqlString(reason)}'${certifyKw}`;
     return this._post("/query", { purpose: opts.purpose, sql });
   }
 }

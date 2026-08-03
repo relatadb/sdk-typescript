@@ -1192,7 +1192,7 @@ test("VectorClient: hybridSearch emits the HYBRID_SEARCH statement form + tuning
   const body = JSON.parse(calls[0]?.body ?? "{}");
   assert.equal(
     body["sql"],
-    "HYBRID_SEARCH FROM Document QUERY 'o''reilly' LIMIT 5 " +
+    String.raw`HYBRID_SEARCH FROM Document QUERY 'o\'reilly' LIMIT 5 ` +
       "RERANK METRIC cosine WEIGHTS 0.3 0.5 0.2",
   );
   assert.equal(body["purpose"], "research");

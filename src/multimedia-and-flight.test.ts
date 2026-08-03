@@ -69,14 +69,14 @@ test("buildMatchPdqSql: shape with default threshold", () => {
   );
 });
 
-test("multimedia builders escape single quotes (#76)", () => {
+test("multimedia builders escape single quotes (#76, #3211)", () => {
   assert.equal(
     buildFaceSearchSql("o'reilly", [0.1], { k: 1, threshold: 0.5 }),
-    "SELECT * FROM FACE_SEARCH('0.1', 'o''reilly', K => 1, THRESHOLD => 0.5)",
+    String.raw`SELECT * FROM FACE_SEARCH('0.1', 'o\'reilly', K => 1, THRESHOLD => 0.5)`,
   );
   assert.equal(
     buildMatchPdqSql("o'reilly", "ff", 0.5),
-    "SELECT * FROM MATCH_PDQ('ff', 'o''reilly', THRESHOLD => 0.5)",
+    String.raw`SELECT * FROM MATCH_PDQ('ff', 'o\'reilly', THRESHOLD => 0.5)`,
   );
 });
 
@@ -97,7 +97,7 @@ test("buildSimilarImageSql: explicit threshold + INDEX scope", () => {
 test("buildSimilarImageSql: escapes single quotes in mediaRef and index", () => {
   assert.equal(
     buildSimilarImageSql("o'reilly", { threshold: 0.5, index: "o'index" }),
-    "SELECT * FROM SIMILAR_IMAGE('o''reilly', THRESHOLD => 0.5, INDEX => 'o''index')",
+    String.raw`SELECT * FROM SIMILAR_IMAGE('o\'reilly', THRESHOLD => 0.5, INDEX => 'o\'index')`,
   );
 });
 
