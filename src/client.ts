@@ -102,6 +102,16 @@ export {
 import { escapeSqlString, sqlLiteral } from "./_sql.ts";
 
 /**
+ * Percent-encode `s` for safe interpolation into a single URL path segment
+ * (#3212). `encodeURIComponent` escapes `/`, `?`, `#`, and `&`, so `../`, `?`,
+ * `#`, `&` payloads can neither traverse the path nor smuggle a query
+ * parameter. Centralised so every `{id}` path site uses one encoder.
+ */
+export function pathSegment(s: string): string {
+  return encodeURIComponent(s);
+}
+
+/**
  * Build a `SELECT * FROM FACE_SEARCH(...)` ticket (#2251). Mirrors the server
  * operator in `relata_query::parser`: `FACE_SEARCH('<csv floats>', '<gallery>',
  * K => n, THRESHOLD => f)` (defaults K=10, THRESHOLD=0.7).
@@ -592,12 +602,12 @@ export class RelataClient {
 
   /** Deregister a custom type. Admin token required. */
   async deregisterType(name: string): Promise<Record<string, unknown>> {
-    return this.#delete(`/types/${name}`);
+    return this.#delete(`/types/${pathSegment(name)}`);
   }
 
   /** Get type detail (properties, owner, row count). */
   async typeDetail(name: string): Promise<Record<string, unknown>> {
-    return this.#get(`/types/${name}`);
+    return this.#get(`/types/${pathSegment(name)}`);
   }
 
   /**
@@ -615,7 +625,7 @@ export class RelataClient {
     if (opts.newColumn !== undefined) body["new_column"] = opts.newColumn;
     if (opts.colType !== undefined) body["col_type"] = opts.colType;
     if (opts.optional !== undefined) body["optional"] = opts.optional;
-    return this.#patch(`/types/${name}/schema`, body);
+    return this.#patch(`/types/${pathSegment(name)}/schema`, body);
   }
 
   // -------------------------------------------------------------------------
@@ -729,7 +739,7 @@ export class RelataClient {
 
   /** Disable (logically delete) a rule. */
   async disableRule(ruleId: string): Promise<Record<string, unknown>> {
-    return this.#delete(`/rules/${ruleId}`);
+    return this.#delete(`/rules/${pathSegment(ruleId)}`);
   }
 
   /**
@@ -756,7 +766,7 @@ export class RelataClient {
 
   /** Snooze a rule for ``durationSecs``. */
   async snoozeRule(ruleId: string, durationSecs: number): Promise<Record<string, unknown>> {
-    return this.#post(`/rules/${ruleId}/snooze`, { duration_secs: durationSecs });
+    return this.#post(`/rules/${pathSegment(ruleId)}/snooze`, { duration_secs: durationSecs });
   }
 
   /**
@@ -770,17 +780,17 @@ export class RelataClient {
   ): Promise<Record<string, unknown>> {
     const body: Record<string, unknown> = { entity_id: entityId };
     if (opts?.condition !== undefined) body["condition"] = opts.condition;
-    return this.#post(`/rules/${ruleId}/suppress`, body);
+    return this.#post(`/rules/${pathSegment(ruleId)}/suppress`, body);
   }
 
   /** Add an exception entry so specific matches are ignored. */
   async addRuleException(ruleId: string, exception: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.#post(`/rules/${ruleId}/exceptions`, exception);
+    return this.#post(`/rules/${pathSegment(ruleId)}/exceptions`, exception);
   }
 
   /** Retrieve tuning state (snoozes, suppressions, exceptions). */
   async getRuleTuning(ruleId: string): Promise<Record<string, unknown>> {
-    return this.#get(`/rules/${ruleId}/tuning`);
+    return this.#get(`/rules/${pathSegment(ruleId)}/tuning`);
   }
 
   /**
@@ -820,10 +830,18 @@ export class RelataClient {
 
   // ── SPARQL, sessions & cluster (#967 Tier 2d) ────────────────────────────
 
-  /** Bulk export all rows of a type (#967 Tier 5c). */
+  /**
+   * Bulk export all rows of a type (#967 Tier 5c). The type and format are
+   * routed through URLSearchParams so a caller-supplied '&', '?', or '#'
+   * cannot smuggle extra query params (#3212).
+   */
   async exportData(objectType: string, format?: string): Promise<Record<string, unknown>> {
-    const fmt = format ?? "json";
-    return this.#get(`/export?type=${objectType}&format=${fmt}&purpose=export`);
+    const params = new URLSearchParams({
+      type: objectType,
+      format: format ?? "json",
+      purpose: "export",
+    });
+    return this.#get(`/export?${params.toString()}`);
   }
 
   /** Register a webhook for push notifications (#967 Tier 5b). */
@@ -838,7 +856,7 @@ export class RelataClient {
 
   /** Delete a webhook. */
   async deleteWebhook(id: string): Promise<Record<string, unknown>> {
-    return this.#delete(`/webhooks/${id}`);
+    return this.#delete(`/webhooks/${pathSegment(id)}`);
   }
 
   /** Execute a SPARQL query. */
@@ -858,22 +876,22 @@ export class RelataClient {
 
   /** Drain a node for maintenance. */
   async clusterDrain(nodeId: string): Promise<Record<string, unknown>> {
-    return this.#post(`/cluster/drain/${nodeId}`, {});
+    return this.#post(`/cluster/drain/${pathSegment(nodeId)}`, {});
   }
 
   /** View uncommitted session changes. */
   async sessionDiff(sessionId: string): Promise<Record<string, unknown>> {
-    return this.#get(`/session/${sessionId}/diff`);
+    return this.#get(`/session/${pathSegment(sessionId)}/diff`);
   }
 
   /** Commit a session's draft writes. */
   async sessionCommit(sessionId: string): Promise<Record<string, unknown>> {
-    return this.#post(`/session/${sessionId}/commit`, {});
+    return this.#post(`/session/${pathSegment(sessionId)}/commit`, {});
   }
 
   /** Discard uncommitted session changes. */
   async sessionDiscard(sessionId: string): Promise<Record<string, unknown>> {
-    return this.#delete(`/session/${sessionId}/draft`);
+    return this.#delete(`/session/${pathSegment(sessionId)}/draft`);
   }
 
   // ── Entity merge, dedup & identity (#967) ────────────────────────────────
