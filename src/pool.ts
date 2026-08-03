@@ -87,7 +87,7 @@ export class ClientPool {
    * token passed to the constructor.
    */
   withEndpoint(url: string): this {
-    const token = this.#endpoints[0]?.client.bearerToken ?? this.#defaultBearerToken;
+    const token = this.#endpoints[0]?.client.internalBearerToken ?? this.#defaultBearerToken;
     return this.withEndpointConfigured(url, token);
   }
 

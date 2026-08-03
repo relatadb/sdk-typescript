@@ -183,7 +183,7 @@ export class TypedClientBase {
       maxRetries: client.maxRetries,
       retryBackoffMs: client.retryBackoffMs,
     };
-    if (client.bearerToken !== undefined) ctor.bearerToken = client.bearerToken;
+    if (client.internalBearerToken !== undefined) ctor.bearerToken = client.internalBearerToken;
     if (client.adminBaseUrl !== undefined) ctor.adminBaseUrl = client.adminBaseUrl;
     return ctor;
   }

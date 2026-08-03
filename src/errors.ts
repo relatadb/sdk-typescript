@@ -464,6 +464,46 @@ export class TimeoutError extends NetworkError {
 }
 
 // ---------------------------------------------------------------------------
+// Client-side guards (#3214)
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown when a response body exceeds the client's `maxResponseBytes` cap, so
+ * a malicious or buggy server cannot exhaust memory by streaming an unbounded
+ * body (#3214). Streaming surfaces are not capped.
+ */
+export class ResponseTooLargeError extends RelataError {
+  /** The configured cap that was exceeded, in bytes. */
+  readonly maxResponseBytes: number;
+
+  constructor(maxResponseBytes: number) {
+    super(
+      `Response body exceeds the maxResponseBytes cap of ${maxResponseBytes} bytes. ` +
+        `Increase RelataClientOptions.maxResponseBytes or use a streaming surface.`,
+      0,
+      `response body exceeds ${maxResponseBytes} bytes`,
+    );
+    this.name = "ResponseTooLargeError";
+    this.maxResponseBytes = maxResponseBytes;
+  }
+}
+
+/**
+ * Thrown for every request issued after `close()` — the bearer token has been
+ * zeroized and the client is unusable (#3214).
+ */
+export class ClientClosedError extends RelataError {
+  constructor() {
+    super(
+      "Client is closed (credentials zeroized). Create a new client to make requests.",
+      0,
+      "client is closed",
+    );
+    this.name = "ClientClosedError";
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Redirect guard (#2364)
 // ---------------------------------------------------------------------------
 

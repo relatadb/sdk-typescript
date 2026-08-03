@@ -146,6 +146,14 @@ export interface RelataClientOptions {
   retryBackoffMs?: number;
 
   /**
+   * Cap on how much of a (non-streaming) response body the client will buffer,
+   * in bytes (#3214). A larger body rejects with {@link ResponseTooLargeError}
+   * instead of being read into memory, so a malicious or buggy server cannot
+   * exhaust memory. Defaults to 64 MiB. Streaming surfaces are not capped.
+   */
+  maxResponseBytes?: number;
+
+  /**
    * Pluggable logger for SDK-side diagnostics (retry attempts, deprecation
    * warnings, …). The library is **silent by default** — supplying a
    * `Logger` (e.g. `new ConsoleLogger("my-app")`) is the only way the SDK

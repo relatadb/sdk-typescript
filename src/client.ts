@@ -56,10 +56,12 @@ import {
 } from "./types.ts";
 import {
   assertNotRedirected,
+  ClientClosedError,
   mapHttpError,
   NetworkError,
   PurposeError,
   RelataError,
+  ResponseTooLargeError,
   TimeoutError,
 } from "./errors.ts";
 import { type Logger, NoOpLogger, SafeLogger } from "./logger.ts";
@@ -110,6 +112,13 @@ import { escapeSqlString, sqlLiteral } from "./_sql.ts";
 export function pathSegment(s: string): string {
   return encodeURIComponent(s);
 }
+
+/**
+ * Default response-body cap (#3214): 64 MiB. A (non-streaming) response larger
+ * than this rejects with {@link ResponseTooLargeError} instead of being
+ * buffered into memory.
+ */
+export const DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
 /**
  * Build a `SELECT * FROM FACE_SEARCH(...)` ticket (#2251). Mirrors the server
@@ -227,7 +236,11 @@ export type FlightTransport<T = unknown> = (
 export class RelataClient {
   readonly #baseUrl: string;
   readonly #adminBaseUrl: string | undefined;
-  readonly #bearerToken: string | undefined;
+  /**
+   * #3214: mutable (not `readonly`) so {@link close} can zeroize it; never
+   * exposed via a public accessor.
+   */
+  #bearerToken: string | undefined;
   readonly #defaultPurpose: string | undefined;
   readonly #timeoutMs: number;
   readonly #fetch: typeof globalThis.fetch;
@@ -237,6 +250,10 @@ export class RelataClient {
   readonly #maxRetries: number;
   readonly #retryBackoffMs: number;
   readonly #logger: Logger;
+  /** Response-body cap in bytes (#3214). */
+  readonly #maxResponseBytes: number;
+  /** Set by {@link close}; further requests fail closed (#3214). */
+  #destroyed = false;
   /**
    * Caller-pinned static header bag. Each per-request header bag is built by
    * cloning this and overlaying the per-attempt `X-Request-ID`.
@@ -280,6 +297,10 @@ export class RelataClient {
     this.#delegatedBy = opts.delegatedBy;
     this.#maxRetries = opts.maxRetries ?? 0;
     this.#retryBackoffMs = opts.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
+    this.#maxResponseBytes =
+      opts.maxResponseBytes !== undefined && opts.maxResponseBytes > 0
+        ? opts.maxResponseBytes
+        : DEFAULT_MAX_RESPONSE_BYTES;
     // Wrap the caller-supplied logger (or the silent default) in SafeLogger
     // so a buggy custom logger can never take down an SDK-mediated request.
     this.#logger = new SafeLogger(opts.logger ?? new NoOpLogger());
@@ -1591,9 +1612,32 @@ export class RelataClient {
     return this.#adminBaseUrl;
   }
 
-  /** Bearer token passed to the constructor, if any. */
-  get bearerToken(): string | undefined {
+  /**
+   * @internal Bearer token, for the SDK's own sub-clients (S3, streaming,
+   * pool) to inherit auth. NOT part of the stable public API — the documented
+   * `bearerToken` getter was removed in #3214 so the credential is not
+   * reachable via a public accessor. Do not depend on this; it may change or
+   * disappear without notice.
+   */
+  get internalBearerToken(): string | undefined {
     return this.#bearerToken;
+  }
+
+  /** Configured response-body cap in bytes (#3214). */
+  get maxResponseBytes(): number {
+    return this.#maxResponseBytes;
+  }
+
+  /**
+   * Zeroize the bearer token and mark the client closed (#3214). Every
+   * subsequent request fails closed with {@link ClientClosedError}. Call this
+   * when the client is no longer needed so the credential does not linger in
+   * memory. Safe to call more than once; not safe to call concurrently with
+   * in-flight requests.
+   */
+  close(): void {
+    this.#bearerToken = undefined;
+    this.#destroyed = true;
   }
 
   /**
@@ -1702,6 +1746,9 @@ export class RelataClient {
     contentType: string,
     timeoutMs?: number,
   ): Promise<T> {
+    if (this.#destroyed) {
+      throw new ClientClosedError();
+    }
     const url = `${this.#baseUrl}${path}`;
     const effectiveTimeout = timeoutMs ?? this.#timeoutMs;
     const controller = new AbortController();
@@ -1766,6 +1813,9 @@ export class RelataClient {
     body: Record<string, unknown> | undefined,
     timeoutMs: number | undefined,
   ): Promise<T> {
+    if (this.#destroyed) {
+      throw new ClientClosedError();
+    }
     const url = `${this.#baseUrl}${path}`;
     const effectiveTimeout = timeoutMs ?? this.#timeoutMs;
     // Does the caller's static header bag already pin X-Request-ID? If so,
@@ -1897,19 +1947,22 @@ export class RelataClient {
     response: Response,
     purpose: string | undefined,
   ): Promise<T> {
+    // Read the body subject to the response cap (#3214) so an oversized body
+    // rejects with ResponseTooLargeError instead of exhausting memory.
+    const bytes = await this.#readCappedBody(response);
+    const text = new TextDecoder().decode(bytes);
+    const contentType = response.headers.get("content-type") ?? "";
+
     // Attempt to parse the body as JSON regardless of status so we can surface
     // the server's error message when present.
     let body: unknown;
-    const contentType = response.headers.get("content-type") ?? "";
-
     if (
       contentType.includes("application/json") ||
       contentType.includes("application/problem+json")
     ) {
-      body = await response.json();
+      body = text ? JSON.parse(text) : {};
     } else {
       // Non-JSON bodies (e.g., plain text errors from reverse proxies)
-      const text = await response.text();
       body = text ? { error: text } : {};
     }
 
@@ -1982,6 +2035,44 @@ export class RelataClient {
   #isAbortError(err: unknown): boolean {
     if (!(err instanceof Error)) return false;
     return err.name === "AbortError" || err.message.includes("aborted");
+  }
+
+  /**
+   * @internal Read a response body up to the response cap (#3214). A body
+   * larger than `#maxResponseBytes` rejects with {@link ResponseTooLargeError}
+   * instead of being buffered into memory.
+   */
+  async #readCappedBody(response: Response): Promise<Uint8Array> {
+    const cap = this.#maxResponseBytes;
+    const body = response.body ?? new ReadableStream<Uint8Array>();
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value === undefined) continue;
+        total += value.byteLength;
+        if (total > cap) {
+          throw new ResponseTooLargeError(cap);
+        }
+        chunks.push(value);
+      }
+    } finally {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore cancel errors
+      }
+    }
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) {
+      out.set(c, off);
+      off += c.byteLength;
+    }
+    return out;
   }
 
   /** @internal Promise-based sleep for the retry backoff. */

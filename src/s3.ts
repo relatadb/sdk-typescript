@@ -21,8 +21,8 @@
  * Multipart parts are in-memory only today (lost on restart — open #37).
  */
 
-import { RelataClient } from "./client.ts";
-import { assertNotRedirected } from "./errors.ts";
+import { RelataClient, DEFAULT_MAX_RESPONSE_BYTES } from "./client.ts";
+import { assertNotRedirected, ResponseTooLargeError } from "./errors.ts";
 
 // ---------------------------------------------------------------------------
 // S3Client
@@ -45,6 +45,12 @@ export interface S3ClientOptions {
   headers?: Record<string, string>;
   /** Optional region tag (the door is region-agnostic; defaults to `us-east-1`). */
   region?: string;
+  /**
+   * Cap on buffered response bodies in bytes (#3214). Defaults to 64 MiB. A
+   * larger buffered body rejects with `ResponseTooLargeError`; use
+   * `getObjectStream` for large objects.
+   */
+  maxResponseBytes?: number;
   /** Override `fetch` (testing / observability). Defaults to `globalThis.fetch`. */
   fetch?: typeof globalThis.fetch;
 }
@@ -81,13 +87,15 @@ export interface S3HttpResponse {
  */
 export class S3Client {
   readonly #endpointUrl: string;
-  readonly #bearerToken: string | undefined;
+  /** #3214: mutable so {@link close} can zeroize it; never publicly exposed. */
+  #bearerToken: string | undefined;
   readonly #tenant: string | undefined;
   readonly #actingAs: string | undefined;
   readonly #delegatedBy: string | undefined;
   readonly #headers: Record<string, string>;
   readonly #region: string;
   readonly #fetch: typeof globalThis.fetch;
+  readonly #maxResponseBytes: number;
 
   /**
    * Construct an S3 door client. Most callers should use
@@ -102,6 +110,10 @@ export class S3Client {
     this.#headers = opts.headers !== undefined ? { ...opts.headers } : {};
     this.#region = opts.region ?? "us-east-1";
     this.#fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
+    this.#maxResponseBytes =
+      opts.maxResponseBytes !== undefined && opts.maxResponseBytes > 0
+        ? opts.maxResponseBytes
+        : DEFAULT_MAX_RESPONSE_BYTES;
   }
 
   /**
@@ -110,7 +122,7 @@ export class S3Client {
    */
   static fromClient(client: RelataClient): S3Client {
     const opts: S3ClientOptions = { fetch: client.fetchImpl };
-    if (client.bearerToken !== undefined) opts.bearerToken = client.bearerToken;
+    if (client.internalBearerToken !== undefined) opts.bearerToken = client.internalBearerToken;
     if (client.tenant !== undefined) opts.tenant = client.tenant;
     if (client.actingAs !== undefined) opts.actingAs = client.actingAs;
     if (client.delegatedBy !== undefined) opts.delegatedBy = client.delegatedBy;
@@ -120,6 +132,14 @@ export class S3Client {
   /** Door endpoint URL (trailing slash stripped). */
   get endpointUrl(): string {
     return this.#endpointUrl;
+  }
+
+  /**
+   * Zeroize the bearer token (#3214). Safe to call more than once; the client
+   * is unusable for authenticated calls afterwards.
+   */
+  close(): void {
+    this.#bearerToken = undefined;
   }
 
   /** Region tag (the door is region-agnostic). */
@@ -188,7 +208,7 @@ export class S3Client {
 
     const response = await this.#fetch(url, init);
     assertNotRedirected(response, url);
-    const buf = await response.arrayBuffer();
+    const body = await this.#readCappedBody(response);
     const respHeaders: Record<string, string> = {};
     response.headers.forEach((v, k) => {
       respHeaders[k.toLowerCase()] = v;
@@ -196,8 +216,46 @@ export class S3Client {
     return {
       status: response.status,
       headers: respHeaders,
-      body: new Uint8Array(buf),
+      body,
     };
+  }
+
+  /**
+   * @internal Read a response body up to the response cap (#3214). A body
+   * larger than the cap rejects with `ResponseTooLargeError` instead of being
+   * buffered into memory.
+   */
+  async #readCappedBody(response: Response): Promise<Uint8Array> {
+    const cap = this.#maxResponseBytes;
+    const body = response.body ?? new ReadableStream<Uint8Array>();
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value === undefined) continue;
+        total += value.byteLength;
+        if (total > cap) {
+          throw new ResponseTooLargeError(cap);
+        }
+        chunks.push(value);
+      }
+    } finally {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore cancel errors
+      }
+    }
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) {
+      out.set(c, off);
+      off += c.byteLength;
+    }
+    return out;
   }
 
   // -------------------------------------------------------------------------
@@ -236,9 +294,53 @@ export class S3Client {
 
   /**
    * `GET /<bucket>/<key>` — download an object. Body is on `.body` (bytes).
+   * The body is buffered subject to the response cap (#3214); use
+   * {@link getObjectStream} for large objects.
    */
   async getObject(bucket: string, key: string): Promise<S3HttpResponse> {
     return this.http("GET", `/${bucket}/${key}`);
+  }
+
+  /**
+   * `GET /<bucket>/<key>` — download an object as a stream (#3214). Memory is
+   * O(chunk), not O(object size), so multi-gigabyte objects are not buffered
+   * whole. The caller consumes `body` (a `ReadableStream<Uint8Array>`).
+   */
+  async getObjectStream(
+    bucket: string,
+    key: string,
+  ): Promise<{ status: number; headers: Record<string, string>; body: ReadableStream<Uint8Array> }> {
+    const normalisedPath = `/${bucket}/${key}`;
+    const url = `${this.#endpointUrl}${normalisedPath}`;
+    const headers: Record<string, string> = {};
+    if (this.#bearerToken !== undefined) {
+      headers["Authorization"] = `Bearer ${this.#bearerToken}`;
+    }
+    if (this.#tenant !== undefined) {
+      headers["X-Relata-Tenant-Id"] = this.#tenant;
+    }
+    if (this.#actingAs !== undefined) {
+      headers["X-Acting-As"] = this.#actingAs;
+    }
+    if (this.#delegatedBy !== undefined) {
+      headers["X-Delegated-By"] = this.#delegatedBy;
+    }
+    for (const [k, v] of Object.entries(this.#headers)) headers[k] = v;
+    const hasRequestId = Object.keys(headers).some((k) => k.toLowerCase() === "x-request-id");
+    if (!hasRequestId && typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      headers["X-Request-ID"] = crypto.randomUUID();
+    }
+    const response = await this.#fetch(url, { method: "GET", headers, redirect: "manual" });
+    assertNotRedirected(response, url);
+    const respHeaders: Record<string, string> = {};
+    response.headers.forEach((v, k) => {
+      respHeaders[k.toLowerCase()] = v;
+    });
+    return {
+      status: response.status,
+      headers: respHeaders,
+      body: response.body ?? new ReadableStream<Uint8Array>(),
+    };
   }
 
   /**

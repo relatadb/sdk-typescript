@@ -45,8 +45,8 @@ export class StreamingClient {
       Accept: "application/json",
       ...this.#client.extraHeaders,
     };
-    if (this.#client.bearerToken !== undefined) {
-      headers["Authorization"] = `Bearer ${this.#client.bearerToken}`;
+    if (this.#client.internalBearerToken !== undefined) {
+      headers["Authorization"] = `Bearer ${this.#client.internalBearerToken}`;
     }
     if (extra !== undefined) {
       for (const [k, v] of Object.entries(extra)) headers[k] = v;
