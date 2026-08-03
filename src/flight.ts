@@ -490,11 +490,16 @@ export class ArrowFlightTransport<T = unknown> {
   /**
    * Perform the Arrow Flight `do_get` RPC and return the decoded columnar
    * result. Implements {@link FlightTransport}.
+   *
+   * `headers` (#3213) carries the tenant / acting-as / delegated-by /
+   * request-id scope as gRPC metadata so the Flight door resolves the caller's
+   * tenant instead of falling back to the default tenant.
    */
   async doGet(
     endpoint: string,
     ticketSql: string,
     bearer: string | undefined,
+    headers?: Record<string, string>,
   ): Promise<T> {
     const { arrow, grpc } = await this.#moduleLoader();
     const target = stripFlightScheme(endpoint);
@@ -521,6 +526,9 @@ export class ArrowFlightTransport<T = unknown> {
     const client = new ClientCtor(target, creds);
     const metadata = new grpc.Metadata();
     if (bearer) metadata.set("authorization", `Bearer ${bearer}`);
+    if (headers !== undefined) {
+      for (const [k, v] of Object.entries(headers)) metadata.set(k.toLowerCase(), v);
+    }
     const ticket = encodeTicket(ticketSql);
     try {
       const frames = await this.#collectDoGet(client, ticket, metadata);

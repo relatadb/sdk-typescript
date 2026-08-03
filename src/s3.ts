@@ -34,6 +34,15 @@ export interface S3ClientOptions {
   bearerToken?: string;
   /** Optional tenant sent as `X-Relata-Tenant-Id`. */
   tenant?: string;
+  /** Optional `X-Acting-As` delegation principal (#3213). */
+  actingAs?: string;
+  /** Optional `X-Delegated-By` delegation root (#3213). */
+  delegatedBy?: string;
+  /**
+   * Optional caller header bag overlaid on every request; a pinned
+   * `X-Request-ID` wins over the auto-generated per-request one (#3213).
+   */
+  headers?: Record<string, string>;
   /** Optional region tag (the door is region-agnostic; defaults to `us-east-1`). */
   region?: string;
   /** Override `fetch` (testing / observability). Defaults to `globalThis.fetch`. */
@@ -74,6 +83,9 @@ export class S3Client {
   readonly #endpointUrl: string;
   readonly #bearerToken: string | undefined;
   readonly #tenant: string | undefined;
+  readonly #actingAs: string | undefined;
+  readonly #delegatedBy: string | undefined;
+  readonly #headers: Record<string, string>;
   readonly #region: string;
   readonly #fetch: typeof globalThis.fetch;
 
@@ -85,15 +97,23 @@ export class S3Client {
     this.#endpointUrl = endpointUrl.replace(/\/+$/, "");
     this.#bearerToken = opts.bearerToken;
     this.#tenant = opts.tenant;
+    this.#actingAs = opts.actingAs;
+    this.#delegatedBy = opts.delegatedBy;
+    this.#headers = opts.headers !== undefined ? { ...opts.headers } : {};
     this.#region = opts.region ?? "us-east-1";
     this.#fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
-  /** Inherit the parent client's endpoint, bearer token, and tenant. */
+  /**
+   * Inherit the parent client's endpoint, bearer token, tenant, delegation
+   * scope (#3213), and fetch override.
+   */
   static fromClient(client: RelataClient): S3Client {
-    const opts: S3ClientOptions = {};
+    const opts: S3ClientOptions = { fetch: client.fetchImpl };
     if (client.bearerToken !== undefined) opts.bearerToken = client.bearerToken;
     if (client.tenant !== undefined) opts.tenant = client.tenant;
+    if (client.actingAs !== undefined) opts.actingAs = client.actingAs;
+    if (client.delegatedBy !== undefined) opts.delegatedBy = client.delegatedBy;
     return new S3Client(client.baseUrl, opts);
   }
 
@@ -139,8 +159,21 @@ export class S3Client {
     if (this.#tenant !== undefined) {
       headers["X-Relata-Tenant-Id"] = this.#tenant;
     }
+    if (this.#actingAs !== undefined) {
+      headers["X-Acting-As"] = this.#actingAs;
+    }
+    if (this.#delegatedBy !== undefined) {
+      headers["X-Delegated-By"] = this.#delegatedBy;
+    }
+    // Caller-supplied headers win over the SDK defaults (including a pinned
+    // X-Request-ID, which we then do not override) (#3213).
+    for (const [k, v] of Object.entries(this.#headers)) headers[k] = v;
     if (opts.headers !== undefined) {
       for (const [k, v] of Object.entries(opts.headers)) headers[k] = v;
+    }
+    const hasRequestId = Object.keys(headers).some((k) => k.toLowerCase() === "x-request-id");
+    if (!hasRequestId && typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      headers["X-Request-ID"] = crypto.randomUUID();
     }
 
     const init: RequestInit = { method, headers, redirect: "manual" };

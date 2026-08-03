@@ -194,6 +194,11 @@ export function deriveFlightEndpoint(baseUrl: string, flightEndpoint?: string): 
  * PURPOSE comment already injected) as the ticket and `bearer` for the
  * `authorization` metadata, returning the decoded columnar result.
  *
+ * `headers` (#3213) carries the tenant / acting-as / delegated-by / request-id
+ * scope as gRPC metadata so the Flight door resolves the caller's tenant
+ * instead of falling back to the default tenant. Transports that pre-date this
+ * parameter simply ignore it (a 3-arg function is assignable to this type).
+ *
  * Optional since #2492: `queryFlight()` now uses the SDK's built-in first-party
  * {@link createArrowFlightTransport} adapter by default, so most callers never
  * need to supply a `transport`. Pass one only if you operate your own Arrow
@@ -204,6 +209,7 @@ export type FlightTransport<T = unknown> = (
   endpoint: string,
   ticketSql: string,
   bearer: string | undefined,
+  headers?: Record<string, string>,
 ) => Promise<T>;
 
 // ---------------------------------------------------------------------------
@@ -1237,13 +1243,35 @@ export class RelataClient {
     const endpoint = deriveFlightEndpoint(this.#baseUrl, opts?.flightEndpoint);
     const ticketSql = buildFlightTicket(sql, opts?.purpose);
     const bearer = opts?.bearerToken !== undefined ? opts.bearerToken : this.#bearerToken;
+    const headers = this.#flightHeaders();
     if (opts?.transport) {
-      return opts.transport(endpoint, ticketSql, bearer);
+      return opts.transport(endpoint, ticketSql, bearer, headers);
     }
     // #2492: built-in first-party Arrow Flight adapter — works out of the box
     // once the optional apache-arrow + @grpc/grpc-js peers are installed.
     const flight = createArrowFlightTransport<T>({ timeoutMs: this.#timeoutMs });
-    return flight.doGet(endpoint, ticketSql, bearer);
+    return flight.doGet(endpoint, ticketSql, bearer, headers);
+  }
+
+  /**
+   * @internal Build the tenant / delegation / correlation headers a Flight
+   * do_get carries as gRPC metadata (#3213). A fresh X-Request-ID is generated
+   * per call unless the caller pinned one in the static header bag.
+   */
+  #flightHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {};
+    if (this.#tenant !== undefined) headers["x-relata-tenant-id"] = this.#tenant;
+    if (this.#actingAs !== undefined) headers["x-acting-as"] = this.#actingAs;
+    if (this.#delegatedBy !== undefined) headers["x-delegated-by"] = this.#delegatedBy;
+    const pinned = Object.keys(this.#extraHeaders).find(
+      (k) => k.toLowerCase() === "x-request-id",
+    );
+    if (pinned !== undefined) {
+      headers["x-request-id"] = this.#extraHeaders[pinned]!;
+    } else if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      headers["x-request-id"] = crypto.randomUUID();
+    }
+    return headers;
   }
 
   // -------------------------------------------------------------------------
