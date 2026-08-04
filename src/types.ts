@@ -494,7 +494,12 @@ export interface SearchResponse {
 }
 
 /** Matching strategy for multi-term queries (#967). */
-export type MatchingStrategy = "all" | "last" | "frequency" | "any";
+/**
+ * Query-term matching strategy (#967). `"boolean"` (#3263) interprets
+ * uppercase `AND`/`OR`/`NOT` operators in the query text as posting-list set
+ * operations (left-associative; a bare space means OR).
+ */
+export type MatchingStrategy = "all" | "last" | "frequency" | "boolean" | "any";
 
 /** Per-query typo tolerance config (#967). */
 export interface TypoTolerance {
@@ -521,7 +526,11 @@ export interface SearchOptions {
   highlight?: boolean;
   /** Equality filters applied server-side (`{field: value}`). */
   filters?: Record<string, string>;
-  /** Matching strategy: "all" (AND), "last", "frequency", "any" (OR) (#967). */
+  /**
+   * Matching strategy: "all" (AND), "last", "frequency", "boolean", or
+   * "any" (OR, default) (#967). "boolean" (#3263) interprets uppercase
+   * AND/OR/NOT operators in the query text as set operations.
+   */
   matchingStrategy?: MatchingStrategy;
   /** Per-query typo tolerance override (#967). */
   typoTolerance?: TypoTolerance;
