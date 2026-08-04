@@ -574,7 +574,11 @@ export class RelataClient {
    * Execute a GraphQL query against the governed query path (ADR-220).
    *
    * @param query GraphQL query string.
-   * @param variables Optional variables map.
+   * @param variables Optional variables map. `$var` references in `limit` and
+   *   `where` are bound server-side (#3260). A referenced variable that is
+   *   missing, null, or wrong-typed is a hard server error (raised as
+   *   {@link RelataError}) — never silently dropped. String values are bound
+   *   as quoted literals, so variable content cannot inject SQL.
    * @param operationName Optional operation name (multi-operation documents).
    * @returns The `data` field — an array of row objects for a query, or the
    *   `__schema` object for an introspection request.
