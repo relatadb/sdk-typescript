@@ -255,6 +255,19 @@ export interface QueryOptions {
    * Overrides `RelataClientOptions.timeoutMs` for this call only.
    */
   timeoutMs?: number;
+
+  /**
+   * Query-language override sent as the `x-query-dialect` header (#3265).
+   * - `"sql"` — Relata SQL (default when the body is not `MATCH`-prefixed).
+   * - `"cypher"` — openCypher subset, translated to governed SQL.
+   * - `"gql"` — ISO/IEC 39075 GQL subset (header-selected only; never
+   *   auto-detected). GQL-status errors surface as `RelataError`
+   *   (42G04 syntax → HTTP 400, 0A501 unsupported feature → HTTP 501).
+   *
+   * When omitted, the server auto-detects: a `MATCH`-prefixed body is
+   * treated as Cypher, anything else as SQL.
+   */
+  dialect?: "sql" | "cypher" | "gql";
 }
 
 // ---------------------------------------------------------------------------

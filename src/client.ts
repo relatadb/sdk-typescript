@@ -368,14 +368,20 @@ export class RelataClient {
    * const r = await relata.query("SELECT * FROM Person LIMIT 10");
    * r.rows; // Record<string, unknown>[]
    *
-   * // Typed
-   * interface Person { id: string; name: string; dob: string }
-   * const r = await relata.query<Person>(
-   *   "SELECT id, name, dob FROM Person LIMIT 10",
-   * );
-   * r.rows[0]?.name; // string | undefined
-   * ```
-   */
+    * // Typed
+    * interface Person { id: string; name: string; dob: string }
+    * const r = await relata.query<Person>(
+    *   "SELECT id, name, dob FROM Person LIMIT 10",
+    * );
+    * r.rows[0]?.name; // string | undefined
+    *
+    * // GQL (ISO/IEC 39075) — header-selected dialect (#3265)
+    * const g = await relata.query(
+    *   "MATCH (n:Person) WHERE n.age > 35 RETURN n.name ORDER BY n.age DESC LIMIT 5",
+    *   { dialect: "gql" },
+    * );
+    * ```
+    */
   async query<T = Record<string, unknown>>(
     sql: string,
     options?: QueryOptions,
@@ -394,6 +400,7 @@ export class RelataClient {
       "/query",
       { purpose, sql },
       options?.timeoutMs,
+      options?.dialect ? { "x-query-dialect": options.dialect } : undefined,
     );
 
     // Normalise the wire shape. The server sends either:
@@ -1720,8 +1727,9 @@ export class RelataClient {
     path: string,
     body: Record<string, unknown>,
     timeoutMs?: number,
+    callHeaders?: Record<string, string>,
   ): Promise<T> {
-    return this.#send<T>("POST", path, body, timeoutMs);
+    return this.#send<T>("POST", path, body, timeoutMs, callHeaders);
   }
 
   /** @internal */
@@ -1816,6 +1824,7 @@ export class RelataClient {
     path: string,
     body: Record<string, unknown> | undefined,
     timeoutMs: number | undefined,
+    callHeaders?: Record<string, string>,
   ): Promise<T> {
     if (this.#destroyed) {
       throw new ClientClosedError();
@@ -1842,6 +1851,11 @@ export class RelataClient {
 
       try {
         const headers = this.#buildHeaders(!hasPinnedRequestId);
+        if (callHeaders) {
+          for (const [k, v] of Object.entries(callHeaders)) {
+            headers[k] = v;
+          }
+        }
         const init: RequestInit = {
           method,
           headers,
