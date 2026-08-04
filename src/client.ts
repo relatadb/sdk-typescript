@@ -101,7 +101,7 @@ export {
 // #3211: shared SQL-building guards live in `_sql.ts` so every SQL-building
 // module shares one identifier allowlist, one metric allowlist, and one
 // string-literal escaper without a runtime circular import.
-import { escapeSqlString, sqlLiteral } from "./_sql.ts";
+import { escapeSqlString, injectMatcherHint, sqlLiteral } from "./_sql.ts";
 
 /**
  * Percent-encode `s` for safe interpolation into a single URL path segment
@@ -344,11 +344,16 @@ export class RelataClient {
    * - `HYBRID_SCORE(...)` — combined BM25 + vector similarity
    * - `NETWORK_EXPAND(seed_id => ..., hops => 3)` — network expansion
    *
-   * @typeParam T - Row shape. Defaults to `Record<string, unknown>`.
-   * @param sql - The SQL string to execute.
-   * @param options - Optional per-call overrides (purpose, timeout).
-   * @returns Typed query result with `rows`, `queryId`, `elapsedMs`,
-   *          `rowCount`, `columns`.
+    * Multi-hop Cypher `MATCH` patterns run on the server's VF3 subgraph
+    * matcher, falling back to chained BFS for patterns VF3 cannot handle
+    * (e.g. unbounded `*` paths). Pass `options.matcher` (`"vf3"` / `"bfs"`)
+    * to force one; `"auto"` (default) lets the server choose (#1189).
+    *
+    * @typeParam T - Row shape. Defaults to `Record<string, unknown>`.
+    * @param sql - The SQL string to execute.
+    * @param options - Optional per-call overrides (purpose, timeout, matcher).
+    * @returns Typed query result with `rows`, `queryId`, `elapsedMs`,
+    *          `rowCount`, `columns`.
    *
    * @throws {PurposeError} No purpose declared or purpose not in PurposeRegistry.
    * @throws {AuthError} Bearer token missing or invalid.
@@ -398,7 +403,7 @@ export class RelataClient {
 
     const wire = await this.#post<WireQueryResponse>(
       "/query",
-      { purpose, sql },
+      { purpose, sql: injectMatcherHint(sql, options?.matcher) },
       options?.timeoutMs,
       options?.dialect ? { "x-query-dialect": options.dialect } : undefined,
     );
@@ -460,7 +465,7 @@ export class RelataClient {
     }
     const wire = await this.#post<WireQueryResponse>(
       "/query",
-      { purpose, sql, params },
+      { purpose, sql: injectMatcherHint(sql, options?.matcher), params },
       options?.timeoutMs,
     );
     let rows: unknown[];

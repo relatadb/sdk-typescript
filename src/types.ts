@@ -238,6 +238,17 @@ export interface ClusterNodesResponse {
 // ---------------------------------------------------------------------------
 
 /**
+ * Subgraph-matcher selection for multi-hop Cypher patterns (#1189).
+ *
+ * `"auto"` (the default) lets the server choose; `"vf3"` forces the VF3
+ * subgraph-isomorphism matcher; `"bfs"` forces the chained-BFS fallback.
+ * BFS is also the automatic fallback for patterns VF3 cannot handle
+ * (e.g. unbounded `*` variable-length paths). The server-wide kill-switch
+ * is `RELATA_VF3_ENABLED`.
+ */
+export type Matcher = "auto" | "vf3" | "bfs";
+
+/**
  * Per-call options accepted by `RelataClient.query()`.
  */
 export interface QueryOptions {
@@ -268,6 +279,13 @@ export interface QueryOptions {
    * treated as Cypher, anything else as SQL.
    */
   dialect?: "sql" | "cypher" | "gql";
+
+  /**
+   * Subgraph-matcher hint for multi-hop Cypher patterns (#1189).
+   * Injected as a leading `/*+ matcher=…` hint comment on the query text.
+   * Omitted or `"auto"` sends the query unchanged.
+   */
+  matcher?: Matcher;
 }
 
 // ---------------------------------------------------------------------------

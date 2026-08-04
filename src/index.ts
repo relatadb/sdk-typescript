@@ -84,6 +84,7 @@ export type {
   IngestDocumentResponse,
   IngestDocumentTaskStatus,
   IngestResponse,
+  Matcher,
   QueryOptions,
   QueryResult,
   ReadyReport,

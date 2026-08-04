@@ -151,6 +151,49 @@ test("query: throws PurposeError before hitting the wire when no purpose is set"
   assert.equal(calls.length, 0, "should not have issued a request");
 });
 
+// ---------------------------------------------------------------------------
+// VF3 matcher-hint injection (#1189)
+// ---------------------------------------------------------------------------
+
+const MATCHER_CYPHER =
+  "MATCH (a:Person)-[:KNOWS]->(b:Person)-[:KNOWS]->(c:Person) RETURN a, b, c";
+
+test("query: matcher 'vf3' prefixes the hint comment", async () => {
+  const { fetch, calls } = mockFetch({ body: { data: [], query_id: "q", elapsed_ms: 1 } });
+  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "p", fetch });
+  await relata.query(MATCHER_CYPHER, { matcher: "vf3" });
+  const sent = JSON.parse(calls[0]!.body!) as { sql: string };
+  assert.equal(sent.sql, `/*+ matcher=vf3 */ ${MATCHER_CYPHER}`);
+});
+
+test("query: matcher 'bfs' prefixes the hint comment", async () => {
+  const { fetch, calls } = mockFetch({ body: { data: [], query_id: "q", elapsed_ms: 1 } });
+  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "p", fetch });
+  await relata.query(MATCHER_CYPHER, { matcher: "bfs" });
+  const sent = JSON.parse(calls[0]!.body!) as { sql: string };
+  assert.equal(sent.sql, `/*+ matcher=bfs */ ${MATCHER_CYPHER}`);
+});
+
+test("query: matcher 'auto' and omitted send the query unchanged", async () => {
+  const { fetch, calls } = mockFetch([
+    { body: { data: [], query_id: "q", elapsed_ms: 1 } },
+    { body: { data: [], query_id: "q", elapsed_ms: 1 } },
+  ]);
+  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "p", fetch });
+  await relata.query(MATCHER_CYPHER, { matcher: "auto" });
+  await relata.query(MATCHER_CYPHER);
+  assert.equal((JSON.parse(calls[0]!.body!) as { sql: string }).sql, MATCHER_CYPHER);
+  assert.equal((JSON.parse(calls[1]!.body!) as { sql: string }).sql, MATCHER_CYPHER);
+});
+
+test("queryWithParams: matcher hint is injected alongside params", async () => {
+  const { fetch, calls } = mockFetch({ body: { data: [], query_id: "q", elapsed_ms: 1 } });
+  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "p", fetch });
+  await relata.queryWithParams(MATCHER_CYPHER, [], { matcher: "vf3" });
+  const sent = JSON.parse(calls[0]!.body!) as { sql: string };
+  assert.equal(sent.sql, `/*+ matcher=vf3 */ ${MATCHER_CYPHER}`);
+});
+
 test("stats / version / ready / ingestDocument: map wire shapes", async () => {
   const queue: MockResponse[] = [
     {

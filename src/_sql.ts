@@ -8,6 +8,7 @@
  */
 
 import { ValidationError } from "./errors.ts";
+import type { Matcher } from "./types.ts";
 
 /** Identifier allowlist for SQL interpolation (#3211). */
 const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -51,4 +52,21 @@ export function escapeSqlString(s: string): string {
 /** Quote a string as a SQL string literal, escaping `\` and `'` (#3211). */
 export function sqlLiteral(s: string): string {
   return `'${escapeSqlString(s)}'`;
+}
+
+/**
+ * Prefix `sql` with a `/*+ matcher=…` hint comment selecting the subgraph
+ * matcher for multi-hop Cypher patterns (#1189). `undefined` and `"auto"`
+ * return `sql` unchanged so the server's default selection applies; `"vf3"`
+ * forces the VF3 subgraph-isomorphism matcher and `"bfs"` the chained-BFS
+ * fallback. Any other value is rejected client-side.
+ */
+export function injectMatcherHint(sql: string, matcher?: Matcher): string {
+  if (matcher === undefined || matcher === "auto") return sql;
+  if (matcher !== "vf3" && matcher !== "bfs") {
+    throw new ValidationError(
+      `invalid matcher ${JSON.stringify(matcher)}: must be one of auto, vf3, bfs`,
+    );
+  }
+  return `/*+ matcher=${matcher} */ ${sql}`;
 }
