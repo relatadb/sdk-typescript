@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { RelataClient } from "./client.ts";
 import { S3Client } from "./s3.ts";
+import { ObjectClient } from "./objects.ts";
 import { ClientClosedError, ResponseTooLargeError } from "./errors.ts";
 
 test("bearer token is not reachable via a public getter", () => {
@@ -87,6 +88,26 @@ test("S3Client: buffered http() body is capped", async () => {
   const fetch = (async () => new Response(big, { status: 200 })) as typeof globalThis.fetch;
   const s3 = new S3Client("http://x", { fetch, maxResponseBytes: 1024 });
   await assert.rejects(() => s3.getObject("b", "k"), ResponseTooLargeError);
+});
+
+test("typed client (ObjectClient): response cap rejects oversized body via #parse", async () => {
+  // #3214 parity: the typed clients read through _typed-http's #parse, which
+  // used to call response.json()/text() unbounded — a malicious/buggy server
+  // could OOM the SDK on a typed-client response. It now routes through
+  // #readCappedBody like the main RelataClient path.
+  const big = "x".repeat(1 << 20); // 1 MiB
+  const fetch = (async () =>
+    new Response(big, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof globalThis.fetch;
+  const objects = new ObjectClient({
+    baseUrl: "http://x",
+    bearerToken: "tok",
+    fetch,
+    maxResponseBytes: 1024,
+  });
+  await assert.rejects(() => objects.get("Person", "p1"), ResponseTooLargeError);
 });
 
 test("S3Client: getObjectStream streams without buffering whole body", async () => {

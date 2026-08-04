@@ -22,6 +22,7 @@ import {
   mapHttpError,
   NetworkError,
   RelataError,
+  ResponseTooLargeError,
   TimeoutError,
 } from "./errors.ts";
 import {
@@ -44,6 +45,14 @@ import {
 // `_retry.ts` leaf module removes the runtime `_typed-http.ts` → `client.ts`
 // edge entirely, breaking the cycle.
 import type { RelataClient } from "./client.ts";
+
+/**
+ * Default response-body cap for typed clients (#3214 parity). Kept as a local
+ * constant here to avoid a runtime value-import from `client.ts` (which would
+ * re-open the ESM cycle the `import type` above exists to break); the value
+ * mirrors `DEFAULT_MAX_RESPONSE_BYTES` in `client.ts`.
+ */
+export const TYPED_DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Options shared by every typed client constructor
@@ -76,6 +85,12 @@ export interface TypedClientCtor {
   retryBackoffMs?: number;
   extraHeaders?: Record<string, string>;
   fetch?: typeof globalThis.fetch;
+  /**
+   * Response-body cap in bytes (#3214 parity with `RelataClient`). A body
+   * larger than this rejects with {@link ResponseTooLargeError} instead of
+   * being buffered into memory. Defaults to {@link TYPED_DEFAULT_MAX_RESPONSE_BYTES}.
+   */
+  maxResponseBytes?: number;
 }
 
 /**
@@ -152,6 +167,7 @@ export class TypedClientBase {
   readonly #retryBackoffMs: number;
   readonly #extraHeaders: Record<string, string>;
   readonly #fetch: typeof globalThis.fetch;
+  readonly #maxResponseBytes: number;
 
   constructor(opts: TypedClientCtor) {
     this.#baseUrl = opts.baseUrl.replace(/\/+$/, "");
@@ -165,6 +181,10 @@ export class TypedClientBase {
     this.#retryBackoffMs = opts.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
     this.#extraHeaders = opts.extraHeaders ?? {};
     this.#fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
+    this.#maxResponseBytes =
+      opts.maxResponseBytes && opts.maxResponseBytes > 0
+        ? opts.maxResponseBytes
+        : TYPED_DEFAULT_MAX_RESPONSE_BYTES;
   }
 
   /**
@@ -182,6 +202,7 @@ export class TypedClientBase {
       timeoutMs: client.timeoutMs,
       maxRetries: client.maxRetries,
       retryBackoffMs: client.retryBackoffMs,
+      maxResponseBytes: client.maxResponseBytes,
     };
     if (client.internalBearerToken !== undefined) ctor.bearerToken = client.internalBearerToken;
     if (client.adminBaseUrl !== undefined) ctor.adminBaseUrl = client.adminBaseUrl;
@@ -295,8 +316,10 @@ export class TypedClientBase {
       }
       throw this.#classify(response.status, path, true, errBody, response.headers);
     }
-    const buf = await response.arrayBuffer();
-    return new Uint8Array(buf);
+    // #3214: capped read so an oversized (e.g. PDF) response rejects with
+    // ResponseTooLargeError instead of `response.arrayBuffer()` buffering it
+    // all into memory.
+    return await this.#readCappedBody(response);
   }
 
   // -------------------------------------------------------------------------
@@ -388,6 +411,46 @@ export class TypedClientBase {
   }
 
   /**
+   * @internal Read a response body up to the response cap (#3214 parity with
+   * `RelataClient.#readCappedBody`). A body larger than `#maxResponseBytes`
+   * rejects with {@link ResponseTooLargeError} instead of being buffered into
+   * memory — the typed clients' old `response.json()`/`arrayBuffer()` reads
+   * were unbounded and could OOM on a malicious/buggy server response.
+   */
+  async #readCappedBody(response: Response): Promise<Uint8Array> {
+    const cap = this.#maxResponseBytes;
+    const body = response.body ?? new ReadableStream<Uint8Array>();
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value === undefined) continue;
+        total += value.byteLength;
+        if (total > cap) {
+          throw new ResponseTooLargeError(cap);
+        }
+        chunks.push(value);
+      }
+    } finally {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore cancel errors
+      }
+    }
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) {
+      out.set(c, off);
+      off += c.byteLength;
+    }
+    return out;
+  }
+
+  /**
    * @internal
    * `path` is the request path as sent (not derived from `response.url`,
    * which is the empty string for a `Response` built without going through a
@@ -398,9 +461,12 @@ export class TypedClientBase {
     const isJson =
       contentType.includes("application/json") ||
       contentType.includes("application/problem+json");
-    const body: unknown = isJson
-      ? await response.json()
-      : await response.text();
+    // #3214: read the body through #readCappedBody so an oversized response
+    // rejects with ResponseTooLargeError instead of `response.json()`/`.text()`
+    // buffering unbounded into memory.
+    const bytes = await this.#readCappedBody(response);
+    const text = new TextDecoder().decode(bytes);
+    const body: unknown = isJson ? (text ? JSON.parse(text) : {}) : text;
 
     if (!response.ok) {
       throw this.#classify(response.status, path, isJson, body, response.headers);
