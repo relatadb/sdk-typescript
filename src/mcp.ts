@@ -541,16 +541,26 @@ export class McpClient extends TypedClientBase {
     return this.callTool("summarise", args);
   }
 
-  /** `nl_query` — natural-language question translated to SQL and executed. */
+  /**
+   * `nl_query` — natural-language question translated to SQL and executed.
+   *
+   * A dialect router (#3267) classifies each question as SQL, Cypher, or a governed
+   * graph operator and prompts accordingly; the response carries a `dialect` field.
+   * Pass `maxSubQuestions > 1` to decompose a multi-part question (e.g. "find X, and
+   * who X is linked to") into independently-routed sub-questions — the response then
+   * carries `decomposed: true` and a `sub_results` array instead of a single result.
+   * Capped at 5 server-side regardless of the value given.
+   */
   async nlQuery(
     query: string,
-    opts: { purpose?: string; interpret?: boolean } = {},
+    opts: { purpose?: string; interpret?: boolean; maxSubQuestions?: number } = {},
   ): Promise<Record<string, unknown>> {
     const args: Record<string, unknown> = {
       query,
       interpret: opts.interpret ?? false,
     };
     if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
+    if (opts.maxSubQuestions !== undefined) args["max_sub_questions"] = opts.maxSubQuestions;
     return this.callTool("nl_query", args);
   }
 

@@ -528,6 +528,20 @@ test("McpClient #2322: nlQuery sends query", async () => {
   assert.equal(seen.arguments["interpret"], true);
 });
 
+test("McpClient #3267: nlQuery sends max_sub_questions when provided", async () => {
+  const seen = await callAndCapture((mcp) =>
+    mcp.nlQuery("find alice, and who alice is linked to", { maxSubQuestions: 3 }),
+  );
+  assert.equal(seen.name, "nl_query");
+  assert.equal(seen.arguments["max_sub_questions"], 3);
+});
+
+test("McpClient #3267: nlQuery omits max_sub_questions by default", async () => {
+  const seen = await callAndCapture((mcp) => mcp.nlQuery("find all persons in Dublin"));
+  assert.equal(seen.name, "nl_query");
+  assert.equal("max_sub_questions" in seen.arguments, false);
+});
+
 test("McpClient #2322: eraseSubject sends subject and reason", async () => {
   const seen = await callAndCapture((mcp) =>
     mcp.eraseSubject("alice@example.com", { reason: "user-request" }),
