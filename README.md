@@ -717,7 +717,7 @@ bun run examples/basic-query.ts
 
 ## Deployment profiles
 
-> `lite` is kept as a silent legacy alias for `free` (ADR-204).
+> `lite` was a silent legacy alias for `free` (ADR-204); it is now rejected outright — startup fails (FATAL) if `RELATA_PROFILE=lite` is set. Use `free` instead.
 
 | Profile | Use case | Start command |
 |---|---|---|
