@@ -177,6 +177,9 @@ export type { TokenStats } from "./tokens.ts";
 export { LogClient } from "./log.ts";
 export type { LogLeaf } from "./log.ts";
 
+export { ObservabilityClient } from "./observability.ts";
+export type { ObservabilityEvent } from "./observability.ts";
+
 // ---------------------------------------------------------------------------
 // Connection pool — multi-endpoint round-robin + failover (#2756)
 // ---------------------------------------------------------------------------
