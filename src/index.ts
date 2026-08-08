@@ -196,6 +196,13 @@ export type { ArrowFlightTransportOptions } from "./flight.ts";
 export type { FlightTransport } from "./client.ts";
 
 // ---------------------------------------------------------------------------
+// gRPC query — first-party Execute transport with Arrow-IPC opt-in (#4090)
+// ---------------------------------------------------------------------------
+
+export { GrpcQueryTransport, createGrpcQueryTransport } from "./grpc-query.ts";
+export type { GrpcQueryTransportOptions, GrpcQueryResult } from "./grpc-query.ts";
+
+// ---------------------------------------------------------------------------
 // Logger — pluggable diagnostic sink (silent by default)
 // ---------------------------------------------------------------------------
 

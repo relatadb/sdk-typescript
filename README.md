@@ -517,6 +517,46 @@ a `RelataError` with install guidance is thrown. TLS is selected automatically
 for `grpcs://` / `tls://` endpoints (#2362). Browser / edge runtimes are
 gRPC-less — pass your own `transport` (e.g. built on grpc-web) there.
 
+### Plain gRPC query with Arrow-IPC opt-in (#4090)
+
+`queryGrpc()` runs a SQL query over the server's plain gRPC `RelataQuery/Execute`
+RPC (default port 50051, `RELATA_GRPC_PORT`) and opts into the negotiated
+Arrow-IPC row encoding (`QueryRequest.wants_arrow_ipc_rows` — server side landed
+in PR #4086). The server answers with whichever encoding it supports
+(`arrow_ipc_rows` or a `rows_json` fallback); this method decodes either wire
+shape into the same row-object array, so callers never need to know which one
+came back.
+
+```typescript
+const result = await relata.queryGrpc<{ id: string; name: string }>(
+  "SELECT * FROM Person LIMIT 1000",
+  { purpose: "analytics" },
+);
+console.log(result.rowCount, result.rows[0]?.name);
+```
+
+Same optional-peer-dependency contract as `queryFlight()` — `@grpc/grpc-js` +
+`apache-arrow`, dynamically imported on first use, `npm install apache-arrow
+@grpc/grpc-js` to enable.
+
+`queryGrpcStream()` is the same opt-in over the server-streaming
+`RelataQuery/ExecuteStream` RPC — useful for result sets large enough that the
+server chunks them into multiple `RowBatch` frames (each frame independently
+negotiates the Arrow-IPC encoding, same fallback contract). It collects the
+stream and decodes it into the same result shape `queryGrpc()` returns:
+
+```typescript
+const result = await relata.queryGrpcStream<{ id: string; name: string }>(
+  "SELECT * FROM Person",
+  { purpose: "analytics" },
+);
+console.log(result.rowCount, result.rows[0]?.name);
+```
+
+The Python (`query_grpc_stream`) and Go (`QueryGrpcStream`) SDKs wire the same
+streaming opt-in — all three first-party SDKs now cover both `Execute` and
+`ExecuteStream`.
+
 ### S3 door — native fetch only
 
 The Python SDK ships `boto3` / `aiobotocore` / `httpx` flavours; this TypeScript port

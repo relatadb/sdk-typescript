@@ -68,6 +68,7 @@ import { type Logger, NoOpLogger, SafeLogger } from "./logger.ts";
 import { Namespace } from "./namespace.ts";
 import { QueryBuilder } from "./query.ts";
 import { createArrowFlightTransport } from "./flight.ts";
+import { createGrpcQueryTransport, type GrpcQueryResult } from "./grpc-query.ts";
 import {
   RETRYABLE_STATUS_CODES,
   isIdempotentMethod,
@@ -194,6 +195,22 @@ export function deriveFlightEndpoint(baseUrl: string, flightEndpoint?: string): 
     return `grpc://${host}:8815`;
   } catch {
     return "grpc://localhost:8815";
+  }
+}
+
+/**
+ * Resolve the plain gRPC `RelataQuery` service endpoint (#4090). Defaults to
+ * `grpc://<baseUrl host>:50051` — the server's default gRPC port
+ * (`RELATA_GRPC_PORT`, distinct from the Flight door's 8815).
+ * @internal
+ */
+export function deriveGrpcQueryEndpoint(baseUrl: string, grpcEndpoint?: string): string {
+  if (grpcEndpoint) return grpcEndpoint;
+  try {
+    const host = new URL(baseUrl).hostname || "localhost";
+    return `grpc://${host}:50051`;
+  } catch {
+    return "grpc://localhost:50051";
   }
 }
 
@@ -1288,6 +1305,87 @@ export class RelataClient {
     // once the optional apache-arrow + @grpc/grpc-js peers are installed.
     const flight = createArrowFlightTransport<T>({ timeoutMs: this.#timeoutMs });
     return flight.doGet(endpoint, ticketSql, bearer, headers);
+  }
+
+  /**
+   * Execute a SQL query over the plain gRPC `RelataQuery/Execute` RPC,
+   * opting into the negotiated Arrow-IPC row encoding (#4090,
+   * `QueryRequest.wants_arrow_ipc_rows` — landed server-side in PR #4086).
+   * The server transparently answers with either `arrow_ipc_rows` or
+   * `rows_json` (an older/unsupported result falls back to JSON rows,
+   * per the proto's documented contract); this method decodes either wire
+   * shape into the same row-object array, so callers never need to know
+   * which one the server picked.
+   *
+   * The gRPC + Arrow runtime libraries (`@grpc/grpc-js`, `apache-arrow`) are
+   * **optional peer dependencies** — same as {@link queryFlight}. If they are
+   * not installed, the call throws a `RelataError` with install guidance.
+   *
+   * @param sql - SQL query string.
+   * @param opts - `grpcEndpoint` override (defaults to
+   *   `grpc://<baseUrl host>:50051`, the server's default `RELATA_GRPC_PORT`),
+   *   `purpose`, `bearerToken` override (defaults to the client's token).
+   *
+   * @example
+   * ```typescript
+   * const result = await relata.queryGrpc("SELECT * FROM Person LIMIT 1000", {
+   *   purpose: "analytics",
+   * });
+   * console.log(result.rowCount, result.rows[0]);
+   * ```
+   */
+  async queryGrpc<T = Record<string, unknown>>(
+    sql: string,
+    opts?: { grpcEndpoint?: string; purpose?: string; bearerToken?: string },
+  ): Promise<GrpcQueryResult<T>> {
+    const endpoint = deriveGrpcQueryEndpoint(this.#baseUrl, opts?.grpcEndpoint);
+    const bearer = opts?.bearerToken !== undefined ? opts.bearerToken : this.#bearerToken;
+    const headers = this.#flightHeaders();
+    const purpose = opts?.purpose ?? this.#defaultPurpose;
+    const transport = createGrpcQueryTransport({ timeoutMs: this.#timeoutMs });
+    const queryOpts: { purpose?: string; bearer?: string; headers?: Record<string, string> } = {
+      headers,
+    };
+    if (purpose !== undefined) queryOpts.purpose = purpose;
+    if (bearer !== undefined) queryOpts.bearer = bearer;
+    return transport.execute<T>(endpoint, sql, queryOpts);
+  }
+
+  /**
+   * Execute a SQL query over the plain gRPC `RelataQuery/ExecuteStream`
+   * server-streaming RPC (#4090 follow-up to {@link queryGrpc}), opting into
+   * the negotiated Arrow-IPC row encoding on every streamed `RowBatch`
+   * frame. Collects the stream and decodes it into the same result shape
+   * {@link queryGrpc} returns — useful for result sets large enough that the
+   * server chunks them into multiple frames (the unary `Execute` RPC
+   * `queryGrpc` uses buffers the whole response in one `QueryResponse`
+   * message instead).
+   *
+   * Same options and optional-peer-dependency contract as {@link queryGrpc}.
+   *
+   * @example
+   * ```typescript
+   * const result = await relata.queryGrpcStream("SELECT * FROM Person", {
+   *   purpose: "analytics",
+   * });
+   * console.log(result.rowCount, result.rows[0]);
+   * ```
+   */
+  async queryGrpcStream<T = Record<string, unknown>>(
+    sql: string,
+    opts?: { grpcEndpoint?: string; purpose?: string; bearerToken?: string },
+  ): Promise<GrpcQueryResult<T>> {
+    const endpoint = deriveGrpcQueryEndpoint(this.#baseUrl, opts?.grpcEndpoint);
+    const bearer = opts?.bearerToken !== undefined ? opts.bearerToken : this.#bearerToken;
+    const headers = this.#flightHeaders();
+    const purpose = opts?.purpose ?? this.#defaultPurpose;
+    const transport = createGrpcQueryTransport({ timeoutMs: this.#timeoutMs });
+    const queryOpts: { purpose?: string; bearer?: string; headers?: Record<string, string> } = {
+      headers,
+    };
+    if (purpose !== undefined) queryOpts.purpose = purpose;
+    if (bearer !== undefined) queryOpts.bearer = bearer;
+    return transport.executeStream<T>(endpoint, sql, queryOpts);
   }
 
   /**
