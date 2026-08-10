@@ -10,7 +10,11 @@
  * **Frozen contract — do not deviate without re-opening ADR-0299 (#4514):**
  * request fields `query`, `type`, `topK` (default 8, matches
  * `RAG_RETRIEVE_DEFAULT_TOP_K`), `rerank` (default `false`), `searchMode`
- * (`"lexical" | "dense" | "hybrid"`, default `"hybrid"`), `embeddingSlot`
+ * (`"lexical" | "dense" | "hybrid" | "structural"`, default `"hybrid"` —
+ * `"structural"` added by #4542: retrieval via the persisted
+ * `DocumentStructureNode` table-of-contents index; the SDK-side multi-hop
+ * agentic descent loop over that tree is Python-only, per the same
+ * ADR-0298 split as the rest of this module's header note), `embeddingSlot`
  * (`"text" | "summary" | "keyword" | "question"`, default `"text"`),
  * `filters`, `asOf`, `purpose` (required), `expandWindow` (default `false`),
  * `graphHops` (default `0`). The response carries `bm25_score`/
@@ -25,7 +29,7 @@ import { PurposeError } from "./errors.ts";
 /** Matches `RAG_RETRIEVE_DEFAULT_TOP_K` (crates/relata-query/src/parser.rs:2854). */
 export const RAG_DEFAULT_TOP_K = 8;
 
-export type RagSearchMode = "lexical" | "dense" | "hybrid";
+export type RagSearchMode = "lexical" | "dense" | "hybrid" | "structural";
 export type RagEmbeddingSlot = "text" | "summary" | "keyword" | "question";
 
 /** A single `[{field, op, value}]` filter clause (standard `WHERE`-equivalent). */
@@ -43,7 +47,7 @@ export interface RagQueryOptions {
   topK?: number;
   /** Dispatch to the sidecar cross-encoder. */
   rerank?: boolean;
-  /** `"lexical" | "dense" | "hybrid"` (default `"hybrid"`). */
+  /** `"lexical" | "dense" | "hybrid" | "structural"` (default `"hybrid"`). */
   searchMode?: RagSearchMode;
   /** `"text" | "summary" | "keyword" | "question"` (default `"text"`). */
   embeddingSlot?: RagEmbeddingSlot;
