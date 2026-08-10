@@ -84,11 +84,13 @@ export interface RagHit {
   /**
    * Non-LLM per-hit confidence signal (#4520): a pure function of
    * `bm25_score`/`vector_score` channel agreement and entity-overlap
-   * fraction — no network or LLM call. `null` for a server that predates
-   * #4520; `./rag-rank.ts`'s `defaultRelevance` falls back to the
+   * fraction — no network or LLM call. Absent/`null` for a server that
+   * predates #4520 (matches Python's `relevance_confidence: float | None
+   * = None`, optional with a default, not just nullable);
+   * `./rag-rank.ts`'s `defaultRelevance` falls back to the
    * `bm25_score`/`vector_score` average in that case.
    */
-  relevance_confidence: number | null;
+  relevance_confidence?: number | null;
 }
 
 /** Response from `POST /rag/query`. */

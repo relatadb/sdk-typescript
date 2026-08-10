@@ -124,7 +124,10 @@ export function buildSynthesisPrompt(query: string, hits: RagHit[]): string {
     return `[${hit.chunk_id}] (section ${section}, p.${hit.page_start}-${hit.page_end})\n${hit.text}`;
   });
   const context = contextBlocks.join("\n\n");
-  const exampleId = hits.length > 0 ? hits[0].chunk_id : "chunk-id";
+  // `hits[0]` types as `RagHit | undefined` under `noUncheckedIndexedAccess`
+  // regardless of the `.length` check above — TS doesn't narrow array
+  // index access from a separate length comparison.
+  const exampleId = hits[0]?.chunk_id ?? "chunk-id";
   return (
     "Answer the question using ONLY the evidence chunks below. Every " +
     "factual claim MUST be immediately followed by the bracketed chunk " +

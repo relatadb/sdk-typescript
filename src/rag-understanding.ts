@@ -477,6 +477,36 @@ export interface AttributeFilter {
   value: unknown;
 }
 
+/**
+ * `{ purpose }` when `purpose` is defined, `{}` otherwise.
+ *
+ * Under `exactOptionalPropertyTypes`, an object literal with `purpose:
+ * possiblyUndefined` is a distinct (disallowed) type from the key being
+ * absent — every call site below that forwards an optional `purpose`
+ * through to a `QueryOptions`-shaped parameter spreads this instead of
+ * writing the key directly, so an unset `purpose` stays genuinely absent.
+ */
+function purposeOpt(purpose: string | undefined): { purpose?: string } {
+  return purpose !== undefined ? { purpose } : {};
+}
+
+/**
+ * Strip every `undefined`-valued key from `obj`, for the same
+ * `exactOptionalPropertyTypes` reason as {@link purposeOpt} but for a
+ * multi-field options object built from several independently-optional
+ * inputs at once.
+ */
+function stripUndefined<T extends Record<string, unknown>>(
+  obj: T,
+): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(obj)) {
+    const v = obj[key];
+    if (v !== undefined) out[key] = v;
+  }
+  return out as { [K in keyof T]?: Exclude<T[K], undefined> };
+}
+
 const SQL_OP_ALLOWLIST = new Set([">=", "<=", "=", "ILIKE", "NOT ILIKE", "IN"]);
 
 function sqlLiteralValue(value: unknown): string {
@@ -609,7 +639,7 @@ export async function routeAttributeFilterQuery(
 ): Promise<QueryResult | undefined> {
   const sql = attributeFilterSql(query, type, opts.fieldMap, opts.knownFields);
   if (sql === undefined) return undefined;
-  return client.query(sql, { purpose: opts.purpose });
+  return client.query(sql, purposeOpt(opts.purpose));
 }
 
 // ---------------------------------------------------------------------------
@@ -704,7 +734,7 @@ export async function routeAggregationQuery(
   if (filters.length > 0) {
     sql += ` WHERE ${filters.map(filterToSqlPredicate).join(" AND ")}`;
   }
-  return client.query(sql, { purpose: opts.purpose });
+  return client.query(sql, purposeOpt(opts.purpose));
 }
 
 /**
@@ -731,7 +761,7 @@ export async function routeNegationQuery(
   }
   if (filters.length === 0) return undefined;
   const whereClause = filters.map(filterToSqlPredicate).join(" AND ");
-  return client.query(`SELECT * FROM ${type} WHERE ${whereClause}`, { purpose: opts.purpose });
+  return client.query(`SELECT * FROM ${type} WHERE ${whereClause}`, purposeOpt(opts.purpose));
 }
 
 /** Matches the conjunction word actually used in a BOOLEAN-shaped query. */
@@ -762,7 +792,7 @@ export async function routeBooleanQuery(
   const conj = BOOLEAN_CONJUNCTION_WORD_RE.exec(query);
   const joiner = conj && conj[1]!.toLowerCase() === "or" ? " OR " : " AND ";
   const whereClause = filters.map(filterToSqlPredicate).join(joiner);
-  return client.query(`SELECT * FROM ${type} WHERE ${whereClause}`, { purpose: opts.purpose });
+  return client.query(`SELECT * FROM ${type} WHERE ${whereClause}`, purposeOpt(opts.purpose));
 }
 
 /** Explicit "top N" / "first N" count, when given. */
@@ -803,7 +833,7 @@ export async function routeRankingQuery(
   const limit = rankingLimit(query);
   const direction = RANKING_ASCENDING_RE.test(query) ? "ASC" : "DESC";
   const sql = `SELECT * FROM ${type} ORDER BY ${orderField} ${direction} LIMIT ${limit}`;
-  return client.query(sql, { purpose: opts.purpose });
+  return client.query(sql, purposeOpt(opts.purpose));
 }
 
 // ---------------------------------------------------------------------------
@@ -840,28 +870,34 @@ export const ENUMERATION_POLL_TIMEOUT_MS = 300_000;
  * result, readable back via the S3-compatible door.
  */
 export class LargeExportResult {
+  // Explicit `| undefined` unions, not the `?:` optional modifier: a
+  // constructed instance always has every key present (this isn't a wire
+  // payload where key-absence is meaningful), so under
+  // exactOptionalPropertyTypes the constructor's straight `this.x =
+  // init.x` assignments need the field's type to literally include
+  // `undefined` as a value, not just make the key optional.
   readonly rowCount: number;
   readonly columns: string[];
-  readonly data?: Record<string, unknown>[];
-  readonly preview?: Record<string, unknown>[];
-  readonly previewNote?: string;
-  readonly bucket?: string;
-  readonly key?: string;
-  readonly etag?: string;
-  readonly contentType?: string;
-  readonly sizeBytes?: number;
+  readonly data: Record<string, unknown>[] | undefined;
+  readonly preview: Record<string, unknown>[] | undefined;
+  readonly previewNote: string | undefined;
+  readonly bucket: string | undefined;
+  readonly key: string | undefined;
+  readonly etag: string | undefined;
+  readonly contentType: string | undefined;
+  readonly sizeBytes: number | undefined;
 
   constructor(init: {
     rowCount: number;
     columns: string[];
-    data?: Record<string, unknown>[];
-    preview?: Record<string, unknown>[];
-    previewNote?: string;
-    bucket?: string;
-    key?: string;
-    etag?: string;
-    contentType?: string;
-    sizeBytes?: number;
+    data?: Record<string, unknown>[] | undefined;
+    preview?: Record<string, unknown>[] | undefined;
+    previewNote?: string | undefined;
+    bucket?: string | undefined;
+    key?: string | undefined;
+    etag?: string | undefined;
+    contentType?: string | undefined;
+    sizeBytes?: number | undefined;
   }) {
     this.rowCount = init.rowCount;
     this.columns = init.columns;
@@ -1013,19 +1049,22 @@ export async function routeEnumerationQuery(
 
 /** Result of {@link smartRagQuery} — extends the plain `{hits}` RAG response with the gate/routing outcome. */
 export class SmartRagQueryResult {
+  // Explicit `| undefined` unions on refused/sqlResult/lowConfidenceReason
+  // (not `?:`), same reasoning as LargeExportResult above — a constructed
+  // instance always has every key present.
   readonly hits: RagHit[];
   readonly total: number;
-  readonly refused?: Refusal;
-  readonly sqlResult?: QueryResult;
+  readonly refused: Refusal | undefined;
+  readonly sqlResult: QueryResult | undefined;
   lowConfidence: boolean;
-  lowConfidenceReason?: string;
+  lowConfidenceReason: string | undefined;
 
   constructor(init: {
     hits: RagHit[];
-    refused?: Refusal;
-    sqlResult?: QueryResult;
+    refused?: Refusal | undefined;
+    sqlResult?: QueryResult | undefined;
     lowConfidence?: boolean;
-    lowConfidenceReason?: string;
+    lowConfidenceReason?: string | undefined;
   }) {
     this.hits = init.hits;
     this.total = init.hits.length;
@@ -1098,7 +1137,7 @@ export async function smartRagQuery(
   let lowConfidence = false;
   const shape = classifyQueryShape(query);
   if (SQL_ROUTABLE_SHAPES.has(shape)) {
-    const routeOpts: RouteQueryOptions = {
+    const routeOpts: RouteQueryOptions = stripUndefined({
       purpose: opts.purpose,
       fieldMap:
         shape === QueryShape.ATTRIBUTE_FILTER ? opts.attributeFieldMap : opts.structuredFieldMap,
@@ -1106,7 +1145,7 @@ export async function smartRagQuery(
         shape === QueryShape.ATTRIBUTE_FILTER
           ? opts.attributeKnownFields
           : opts.structuredKnownFields,
-    };
+    });
     let sqlResult: QueryResult | undefined;
     switch (shape) {
       case QueryShape.ATTRIBUTE_FILTER:
@@ -1140,7 +1179,10 @@ export async function smartRagQuery(
     const searchText = opts.hypothesisFn
       ? await expandQueryHyde(subQuery, opts.hypothesisFn)
       : subQuery;
-    return ragClient.query(searchText, { ...callOpts, type, purpose: opts.purpose });
+    // `type` is always defined here (unlike `purpose`), so stripUndefined's
+    // blanket-optional return type isn't right for this call — spread
+    // purposeOpt's conditional piece in alongside the always-present `type`.
+    return ragClient.query(searchText, { ...callOpts, type, ...purposeOpt(opts.purpose) });
   };
 
   let merged: RrfMergedResult;

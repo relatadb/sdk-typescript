@@ -119,9 +119,9 @@ test("RagClient.query posts the full contract and returns typed hits", async () 
   assert.equal(sent["rerank"], true);
   assert.equal(sent["purpose"], "research");
   assert.equal(res.hits.length, 1);
-  assert.equal(res.hits[0].bm25_score, 4.2);
-  assert.equal(res.hits[0].vector_score, 0.83);
-  assert.equal(res.hits[0].chunk_id, "chunk-1");
+  assert.equal(res.hits[0]!.bm25_score, 4.2);
+  assert.equal(res.hits[0]!.vector_score, 0.83);
+  assert.equal(res.hits[0]!.chunk_id, "chunk-1");
 });
 
 test("RagClient.query throws PurposeError when no purpose is available", async () => {

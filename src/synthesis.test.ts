@@ -73,14 +73,17 @@ test("synthesize resolves real citations inline", async () => {
   });
 
   assert.equal(result.citations.length, 1);
-  const citation = result.citations[0];
+  // Non-null: the length assertion above already guarantees this element
+  // exists — noUncheckedIndexedAccess doesn't narrow from a separate
+  // length check, so this asserts what's already proven, not a new risk.
+  const citation = result.citations[0]!;
   assert.equal(citation.chunkId, "chunk-1");
   assert.equal(citation.reportId, "doc-1");
   assert.deepEqual(citation.sectionPath, ["3", "3.2"]);
   assert.equal(citation.pageStart, 5);
   assert.equal(citation.pageEnd, 6);
   assert.match(result.answer, /\[chunk-1\]/);
-  assert.equal(result.sentences[0].citations[0].chunkId, "chunk-1");
+  assert.equal(result.sentences[0]!.citations[0]!.chunkId, "chunk-1");
 });
 
 test("synthesize strips a fabricated citation by construction", async () => {
@@ -91,7 +94,7 @@ test("synthesize strips a fabricated citation by construction", async () => {
 
   assert.deepEqual(result.citations, []);
   assert.ok(!result.answer.includes("chunk-does-not-exist"));
-  assert.deepEqual(result.sentences[0].citations, []);
+  assert.deepEqual(result.sentences[0]!.citations, []);
 });
 
 test("synthesize dedupes citations across sentences", async () => {
@@ -140,7 +143,13 @@ test("synthesize marks a deliberately injected unsupported claim", async () => {
 
   assert.equal(result.unsupportedCount, 1);
   assert.equal(result.hasUnsupportedClaims, true);
-  const [supportedSentence, unsupportedSentence] = result.sentences;
+  assert.equal(result.sentences.length, 2);
+  // Non-null: the length assertion above already guarantees both elements
+  // exist — array destructuring doesn't narrow under noUncheckedIndexedAccess.
+  const [supportedSentence, unsupportedSentence] = result.sentences as [
+    (typeof result.sentences)[number],
+    (typeof result.sentences)[number],
+  ];
   assert.equal(supportedSentence.supported, true);
   assert.ok(!supportedSentence.text.includes("[unsupported]"));
   assert.equal(unsupportedSentence.supported, false);
@@ -148,7 +157,7 @@ test("synthesize marks a deliberately injected unsupported claim", async () => {
   assert.match(result.answer, /\[unsupported\]/);
   // The unsupported sentence still carries its (real) citation — marking it
   // doesn't erase which chunk it claimed to come from.
-  assert.equal(unsupportedSentence.citations[0].chunkId, "chunk-2");
+  assert.equal(unsupportedSentence.citations[0]!.chunkId, "chunk-2");
 });
 
 test("synthesize supports a custom unsupported marker", async () => {
@@ -183,8 +192,8 @@ test("default entailment fn makes a second, independent llm call", async () => {
   const result = await synthesize("q", response(), { llm });
 
   assert.equal(prompts.length, 2); // one synthesis call, one entailment call
-  assert.match(prompts[1], /Claim:/);
-  assert.match(prompts[1], /Evidence:/);
+  assert.match(prompts[1]!, /Claim:/);
+  assert.match(prompts[1]!, /Evidence:/);
   assert.equal(result.unsupportedCount, 1);
 });
 

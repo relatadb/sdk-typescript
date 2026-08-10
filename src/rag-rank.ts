@@ -56,8 +56,14 @@ export const MMR_LAMBDA_BY_PURPOSE: Record<string, number> = {
  * Fallback lambda for a `purpose` not present in `MMR_LAMBDA_BY_PURPOSE`
  * (including `undefined`/`null`) — the "general" value, an even
  * relevance/diversity split.
+ *
+ * A literal, not `MMR_LAMBDA_BY_PURPOSE["general"]`: under
+ * `noUncheckedIndexedAccess` every indexed lookup on `Record<string,
+ * number>` types as `number | undefined`, even for a key the object
+ * literal guarantees is present — kept a plain literal to avoid that,
+ * must stay in sync with the `general` entry above.
  */
-export const DEFAULT_MMR_LAMBDA = MMR_LAMBDA_BY_PURPOSE["general"];
+export const DEFAULT_MMR_LAMBDA = 0.5;
 
 /**
  * Return the verified MMR lambda for `purpose` (case-insensitive), or
@@ -199,10 +205,14 @@ export function mmrSelectForPurpose(
   purpose: string | null | undefined,
   opts: MmrSelectForPurposeOptions = {},
 ): RagHit[] {
+  // Built conditionally, not `topN: opts.topN`: under `exactOptionalPropertyTypes`,
+  // an optional field being *present with value `undefined`* is a distinct,
+  // disallowed state from the key being *absent* — spreading only when the
+  // caller actually supplied a value keeps the key genuinely absent otherwise.
   return mmrSelect(hits, {
     lambdaMult: mmrLambdaForPurpose(purpose),
-    topN: opts.topN,
-    relevanceFn: opts.relevanceFn,
-    similarityFn: opts.similarityFn,
+    ...(opts.topN !== undefined && { topN: opts.topN }),
+    ...(opts.relevanceFn !== undefined && { relevanceFn: opts.relevanceFn }),
+    ...(opts.similarityFn !== undefined && { similarityFn: opts.similarityFn }),
   });
 }
