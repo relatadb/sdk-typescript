@@ -56,7 +56,7 @@ class FakeMemoryServer {
       const body = JSON.parse(String(init?.body ?? "{}"));
       const id = this.#newId();
       this.rows.set(id, { content: body.content, session_id: body.session_id });
-      return new Response(mcp({ id, session_id: body.session_id }), { status: 200 });
+      return new Response(mcp({ id, session_id: body.session_id }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (path === "/memory/consolidate") {
       this.consolidateCalls += 1;
@@ -66,7 +66,7 @@ class FakeMemoryServer {
       const newId = this.#newId();
       const sessionId = old ? old.session_id : "";
       this.rows.set(newId, { content: body.content, session_id: sessionId });
-      return new Response(mcp({ new_id: newId }), { status: 200 });
+      return new Response(mcp({ new_id: newId }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (path === "/memory/recall") {
       this.recallCalls += 1;
@@ -74,7 +74,7 @@ class FakeMemoryServer {
       const rows = [...this.rows.entries()]
         .filter(([, r]) => r.session_id === sid)
         .map(([id, r]) => ({ id, content: r.content, session_id: r.session_id }));
-      return new Response(mcp({ rows }), { status: 200 });
+      return new Response(mcp({ rows }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     throw new Error(`unexpected path: ${path}`);
   }) as typeof globalThis.fetch;
