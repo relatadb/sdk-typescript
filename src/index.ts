@@ -257,6 +257,45 @@ export type {
   SmartRagQueryOptions,
 } from "./rag-understanding.ts";
 
+// RAG epic — the agentic loop's spine (#4525) + sub-agent fan-out with a
+// deterministic (non-LLM) merge (#4526), TS/Go parity port of
+// sdks/python/relata/rag_loop.py (#4582, epic #4576). Heuristic gate ->
+// corrective retrieval grading -> loop-confidence stop, capped at
+// MAX_ITERATIONS; 2-5 parallel /rag/query strategies merged by strict
+// confidence argmax, never an LLM arbitration call.
+export {
+  HEURISTIC_PASS_THRESHOLD,
+  HEURISTIC_RETRY_THRESHOLD,
+  LOOP_CONFIDENCE_THRESHOLD,
+  MAX_ITERATIONS,
+  CORRECTIVE_FRACTION_CORRECT_FLOOR,
+  LOW_CONFIDENCE_FLOOR,
+  MERGE_THRESHOLD,
+  MIN_FANOUT_STRATEGIES,
+  MAX_FANOUT_STRATEGIES,
+  GateDecision,
+  heuristicGate,
+  HitGrade,
+  CorrectiveGradingResult,
+  gradeHits,
+  runAgenticLoop,
+  runSubagentFanout,
+} from "./rag-loop.ts";
+export type {
+  EmbeddingFn,
+  HeuristicGateResult,
+  GraderFn,
+  WebSearchFallbackFn,
+  LoopIteration,
+  LoopStoppedReason,
+  LoopResult,
+  RunAgenticLoopOptions,
+  SubAgentStrategy,
+  SubAgentResult,
+  FanoutResult,
+  RunSubagentFanoutOptions,
+} from "./rag-loop.ts";
+
 export { Namespace, validateNamespaceName } from "./namespace.ts";
 export type {
   NamespaceQueryOptions,
