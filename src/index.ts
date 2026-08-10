@@ -170,6 +170,10 @@ export type {
   EntailmentFn,
 } from "./synthesis.ts";
 
+// Session-scoped coreference (anaphora) resolution over `/rag/query` turns
+// (#4530, #4580 TS/Go parity). Port of `sdks/python/relata/coref.py`.
+export { CorefResolver, hasUnresolvedPronoun, subjectFromHit } from "./coref.ts";
+
 export { Namespace, validateNamespaceName } from "./namespace.ts";
 export type {
   NamespaceQueryOptions,
