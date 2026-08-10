@@ -296,6 +296,22 @@ export type {
   RunSubagentFanoutOptions,
 } from "./rag-loop.ts";
 
+// RAG epic — reasoning-trace write-back (#4528), the final SDK-side stage
+// of the agentic loop. TS/Go parity port of sdks/python/relata/rag_trace.py
+// (#4583, epic #4576): turns a completed #4525/#4582 loop result + #4527/
+// #4579 synthesis result (+ optional #4526 fan-out result) into the full
+// iteration_trace/evidence_gaps/sources payload written back via the
+// existing rag_store_answer MCP tool.
+export { buildReasoningTrace, storeReasoningTrace } from "./rag-trace.ts";
+export type {
+  BuildReasoningTraceOptions,
+  IterationTraceEntry,
+  CorrectiveGradingGap,
+  FanoutExclusionGap,
+  EvidenceGap,
+  SourceEntry,
+} from "./rag-trace.ts";
+
 export { Namespace, validateNamespaceName } from "./namespace.ts";
 export type {
   NamespaceQueryOptions,
