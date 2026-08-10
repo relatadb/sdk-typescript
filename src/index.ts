@@ -153,6 +153,23 @@ export type {
   RagEmbeddingSlot,
 } from "./rag.ts";
 
+// RAG epic — citation-injected synthesis + post-synthesis faithfulness
+// scoring (#4527, #4579). Ported from sdks/python's relata.synthesis;
+// provider-agnostic (ADR-013) — callers supply llm/entailmentFn.
+export {
+  buildSynthesisPrompt,
+  synthesize,
+  DEFAULT_UNSUPPORTED_MARKER,
+} from "./synthesis.ts";
+export type {
+  Citation,
+  SynthesizedSentence,
+  SynthesisResult,
+  SynthesizeOptions,
+  LlmFn,
+  EntailmentFn,
+} from "./synthesis.ts";
+
 export { Namespace, validateNamespaceName } from "./namespace.ts";
 export type {
   NamespaceQueryOptions,
