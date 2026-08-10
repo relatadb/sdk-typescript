@@ -205,6 +205,58 @@ export type {
   NavigateStructuralTreeOptions,
 } from "./structural-navigation.ts";
 
+// RAG epic — SDK-side query-understanding layer (#4524/#4536/#4535, epic
+// #4576/#4577): query-shape dispatch, HyDE, decomposition, content-safety
+// gate, structured-attribute-filter + aggregation/negation/boolean/ranking
+// SQL routing, and the composed `smartRagQuery` entry point. Faithful port
+// of sdks/python's relata.rag_understanding — closes the Python-only
+// asymmetry ADR-0298 left open pending real usage demand (#4576).
+export {
+  DANGEROUS_CONTENT_PATTERNS,
+  checkContentSafety,
+  QueryShape,
+  SQL_ROUTABLE_SHAPES,
+  ATTRIBUTE_FIELD_KEYWORDS,
+  isAttributeFilterIntent,
+  isAggregationIntent,
+  isNegationIntent,
+  isBooleanIntent,
+  isRankingIntent,
+  classifyQueryShape,
+  ENUMERATION_TOP_K,
+  isNumericIntent,
+  expandQueryHyde,
+  NUMERIC_INTENT_WORDS,
+  decomposeQuery,
+  rrfKForFanout,
+  rrfScores,
+  rrfMerge,
+  extractAttributeFilters,
+  routeAttributeFilterQuery,
+  extractKeywordFilters,
+  routeAggregationQuery,
+  routeNegationQuery,
+  routeBooleanQuery,
+  routeRankingQuery,
+  DEFAULT_RANKING_LIMIT,
+  routeEnumerationQuery,
+  LargeExportResult,
+  ENUMERATION_POLL_INTERVAL_MS,
+  ENUMERATION_POLL_TIMEOUT_MS,
+  SmartRagQueryResult,
+  smartRagQuery,
+} from "./rag-understanding.ts";
+export type {
+  Refusal,
+  HypothesisGenerator,
+  AttributeFilter,
+  RagHitResponse,
+  RrfMergedResult,
+  RouteQueryOptions,
+  RouteEnumerationOptions,
+  SmartRagQueryOptions,
+} from "./rag-understanding.ts";
+
 export { Namespace, validateNamespaceName } from "./namespace.ts";
 export type {
   NamespaceQueryOptions,
