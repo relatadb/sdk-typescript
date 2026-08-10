@@ -24,6 +24,7 @@ const RAG_HIT = {
   prev_chunk_id: null,
   next_chunk_id: "chunk-2",
   entity_ids: ["ent-1", "ent-2"],
+  relevance_confidence: null,
 };
 
 function makeClient(

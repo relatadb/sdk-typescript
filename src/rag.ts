@@ -81,6 +81,14 @@ export interface RagHit {
   prev_chunk_id: string | null;
   next_chunk_id: string | null;
   entity_ids: string[];
+  /**
+   * Non-LLM per-hit confidence signal (#4520): a pure function of
+   * `bm25_score`/`vector_score` channel agreement and entity-overlap
+   * fraction — no network or LLM call. `null` for a server that predates
+   * #4520; `./rag-rank.ts`'s `defaultRelevance` falls back to the
+   * `bm25_score`/`vector_score` average in that case.
+   */
+  relevance_confidence: number | null;
 }
 
 /** Response from `POST /rag/query`. */

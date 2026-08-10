@@ -174,6 +174,26 @@ export type {
 // (#4530, #4580 TS/Go parity). Port of `sdks/python/relata/coref.py`.
 export { CorefResolver, hasUnresolvedPronoun, subjectFromHit } from "./coref.ts";
 
+// MMR (Maximal Marginal Relevance) diversity selection — RAG epic (#4526),
+// TS/Go parity port of sdks/python/relata/rag_rank.py (#4578). Same
+// MMR_LAMBDA_BY_PURPOSE table + greedy selection formula as the Python
+// reference.
+export {
+  MMR_LAMBDA_BY_PURPOSE,
+  DEFAULT_MMR_LAMBDA,
+  mmrLambdaForPurpose,
+  defaultRelevance,
+  defaultTextSimilarity,
+  mmrSelect,
+  mmrSelectForPurpose,
+} from "./rag-rank.ts";
+export type {
+  RelevanceFn,
+  SimilarityFn,
+  MmrSelectOptions,
+  MmrSelectForPurposeOptions,
+} from "./rag-rank.ts";
+
 export { Namespace, validateNamespaceName } from "./namespace.ts";
 export type {
   NamespaceQueryOptions,
