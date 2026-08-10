@@ -194,6 +194,17 @@ export type {
   MmrSelectForPurposeOptions,
 } from "./rag-rank.ts";
 
+// Structural table-of-contents navigation — the true multi-hop agentic
+// tree-descent loop over the persisted DocumentStructureNode tree (#4542).
+// Port of sdks/python's relata.structural_navigation (#4581, TS/Go parity
+// — epic #4576).
+export { StructuralNavigator, DEFAULT_MAX_DEPTH } from "./structural-navigation.ts";
+export type {
+  StructureNode,
+  ChildSelector,
+  NavigateStructuralTreeOptions,
+} from "./structural-navigation.ts";
+
 export { Namespace, validateNamespaceName } from "./namespace.ts";
 export type {
   NamespaceQueryOptions,
