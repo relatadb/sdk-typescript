@@ -140,6 +140,19 @@ export { A2AClient } from "./a2a.ts";
 export { SearchClient, buildSearchPayload } from "./search.ts";
 export type { SearchQuery, SearchFilter, SearchRankBy } from "./search.ts";
 
+// RAG epic — typed /rag/query client (#4523, foundational; #4514/ADR-0299).
+// Thin pass-through only per ADR-0298 — the canonical agentic-loop
+// implementation lives in sdks/python's relata.rag.
+export { RagClient, buildRagPayload, RAG_DEFAULT_TOP_K } from "./rag.ts";
+export type {
+  RagQueryOptions,
+  RagQueryResponse,
+  RagHit,
+  RagFilter,
+  RagSearchMode,
+  RagEmbeddingSlot,
+} from "./rag.ts";
+
 export { Namespace, validateNamespaceName } from "./namespace.ts";
 export type {
   NamespaceQueryOptions,
