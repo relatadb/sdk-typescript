@@ -80,6 +80,7 @@ export type {
   AuditCountResponse,
   ClusterNode,
   ClusterNodesResponse,
+  DocumentUsageResponse,
   HealthResponse,
   IngestDocumentResponse,
   IngestDocumentTaskStatus,

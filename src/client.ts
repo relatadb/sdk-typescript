@@ -29,6 +29,7 @@
 import {
   type AuditCountResponse,
   type ClusterNode,
+  type DocumentUsageResponse,
   type HealthResponse,
   type IngestDocumentResponse,
   type IngestDocumentTaskStatus,
@@ -1638,6 +1639,51 @@ export class RelataClient {
     };
   }
 
+  /**
+   * Record a post-ingest usage signal against a `DocumentSource` (#4498).
+   *
+   * `citationCount`/`retrievalCount`/`lastCitedAt` are write-BACK signals,
+   * not ingest-time constants — an agentic RAG loop calls this once per
+   * retrieval/citation/feedback event, e.g. right after generating an
+   * answer that cites a chunk from `reportId`:
+   * `client.documentUsage(reportId, { cited: true })`.
+   *
+   * @param reportId - The `DocumentSource.reportId` this event targets.
+   * @param signal - At least one of `cited`, `retrieved`, `feedbackScore`
+   *   must be set. `cited: true` increments `citationCount` by 1 and sets
+   *   `lastCitedAt` to now; `retrieved: true` increments `retrievalCount`
+   *   by 1; `feedbackScore` (recommended range `[0.0, 1.0]`, not enforced
+   *   server-side) folds into `feedbackAvg` as a running mean.
+   * @returns The `DocumentSource`'s updated usage counters.
+   *
+   * @throws {NotFoundError} `reportId` has no live `DocumentSource` for the
+   *   caller's tenant (HTTP 404).
+   * @throws {ValidationError} No signal was supplied (HTTP 400).
+   * @throws {AuthError} Invalid/missing token.
+   * @throws {ServerError} Any other server-side failure (HTTP 5xx).
+   * @throws {NetworkError} Server unreachable.
+   */
+  async documentUsage(
+    reportId: string,
+    signal: { cited?: boolean; retrieved?: boolean; feedbackScore?: number },
+  ): Promise<DocumentUsageResponse> {
+    const body: Record<string, unknown> = {};
+    if (signal.cited) body["cited"] = true;
+    if (signal.retrieved) body["retrieved"] = true;
+    if (signal.feedbackScore !== undefined) body["feedback_score"] = signal.feedbackScore;
+    const wire = await this.#post<WireDocumentUsageResponse>(
+      `/rag/documents/${encodeURIComponent(reportId)}/usage`,
+      body,
+    );
+    return {
+      reportId: wire.report_id ?? reportId,
+      citationCount: wire.citation_count ?? null,
+      retrievalCount: wire.retrieval_count ?? null,
+      lastCitedAt: wire.last_cited_at ?? null,
+      feedbackAvg: wire.feedback_avg ?? null,
+    };
+  }
+
   // -------------------------------------------------------------------------
   // Public API — ingest + memory verbs (#751)
   // -------------------------------------------------------------------------
@@ -2227,6 +2273,15 @@ interface WireIngestDocumentTaskStatus {
   chunks_total?: number;
   chunks_written?: number;
   warnings?: string[];
+}
+
+/** @internal Wire shape for `POST /rag/documents/:report_id/usage` (#4498). */
+interface WireDocumentUsageResponse {
+  report_id?: string;
+  citation_count?: number | null;
+  retrieval_count?: number | null;
+  last_cited_at?: number | null;
+  feedback_avg?: number | null;
 }
 
 /** @internal Wire shape for `GET /version`. */

@@ -391,6 +391,27 @@ export interface IngestDocumentTaskStatus {
 }
 
 /**
+ * Response from `POST /rag/documents/{reportId}/usage` (#4498).
+ *
+ * Reports the `DocumentSource` row's usage counters *after* applying this
+ * call's increments — `citationCount`/`retrievalCount`/`lastCitedAt`/
+ * `feedbackAvg` are write-BACK signals maintained by repeated calls to this
+ * endpoint, not ingest-time constants.
+ */
+export interface DocumentUsageResponse {
+  /** The `DocumentSource` this usage event targeted. */
+  reportId: string;
+  /** Total citations recorded so far. */
+  citationCount: number | null;
+  /** Total retrievals recorded so far. */
+  retrievalCount: number | null;
+  /** Nanoseconds since epoch of the most recent citation, or `null` if never cited. */
+  lastCitedAt: number | null;
+  /** Running mean of every `feedbackScore` recorded so far, or `null` if none yet. */
+  feedbackAvg: number | null;
+}
+
+/**
  * Response from `GET /version` — runtime build-info.
  */
 export interface VersionInfo {
