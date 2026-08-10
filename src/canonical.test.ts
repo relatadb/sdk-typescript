@@ -1,9 +1,13 @@
 /**
  * Tests for the canonical validation module (#2248 Tier-1).
  *
- * Consumes the SHARED test-vectors file at `sdks/shared/canonical-vectors.json`
- * so all four SDKs (Rust/Python/TypeScript/Go) exercise identical valid +
- * reject cases.
+ * Consumes a vendored copy of the SHARED test-vectors file (`./canonical-vectors.json`,
+ * mirrored from `sdks/shared/canonical-vectors.json`) so all four SDKs
+ * (Rust/Python/TypeScript/Go) exercise identical valid + reject cases. Vendored
+ * rather than read from `sdks/shared` directly because this package is mirrored
+ * to a standalone repo (relatadb/sdk-typescript) via `git subtree split`, which
+ * drops everything outside `sdks/typescript`. Keep this file in sync with the
+ * shared source.
  */
 
 import { strict as assert } from "node:assert";
@@ -27,7 +31,7 @@ import {
 } from "./canonical.ts";
 
 const vectorsPath = fileURLToPath(
-  new URL("../../shared/canonical-vectors.json", import.meta.url),
+  new URL("./canonical-vectors.json", import.meta.url),
 );
 interface Case { input: string; expected: string; }
 interface Kind { valid: Case[]; reject: string[]; }
