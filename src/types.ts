@@ -355,7 +355,8 @@ export interface WireErrorResponse {
 // ---------------------------------------------------------------------------
 
 /**
- * Response from `POST /ingest/document` — the datagrep-extractor envelope.
+ * Response from `POST /rag/ingest` (renamed from `/ingest/document`) — the
+ * datagrep-extractor envelope.
  */
 export interface IngestDocumentResponse {
   /** Server-assigned manifest id for the ingested document. */
@@ -373,7 +374,8 @@ export interface IngestDocumentResponse {
 }
 
 /**
- * Status of an async document-ingest task — `GET /ingest/document/:task_id` (#1001).
+ * Status of an async document-ingest task — `GET /rag/ingest/:task_id`
+ * (renamed from `/ingest/document/:task_id`) (#1001).
  *
  * `status` is `"pending"` while chunks are still flushing to storage, then
  * `"complete"` once the background writer confirms them. `chunksWritten` reaches

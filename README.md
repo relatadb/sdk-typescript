@@ -159,8 +159,8 @@ const relata = createClient("http://localhost:9090", {
 | `.ready()` | `Promise<ReadyReport>` | `GET /health/ready` — 9-condition readiness |
 | `.auditCount()` | `Promise<AuditCountResponse>` | `GET /audit/count` — entry count + `chainValid` |
 | `.clusterNodes()` | `Promise<ClusterNode[]>` | `GET /cluster/nodes` — list cluster members |
-| `.ingestDocument(chunksJsonl, manifestJson)` | `Promise<IngestDocumentResponse>` | `POST /ingest/document` — datagrep-extractor envelope (returns `taskId` for polling) |
-| `.ingestDocumentStatus(taskId)` | `Promise<IngestDocumentTaskStatus>` | `GET /ingest/document/:task_id` — poll an async ingest to completion (#1001) |
+| `.ingestDocument(chunksJsonl, manifestJson)` | `Promise<IngestDocumentResponse>` | `POST /rag/ingest` (renamed from `/ingest/document` by #4499) — datagrep-extractor envelope (returns `taskId` for polling) |
+| `.ingestDocumentStatus(taskId)` | `Promise<IngestDocumentTaskStatus>` | `GET /rag/ingest/:task_id` (renamed from `/ingest/document/:task_id`) — poll an async ingest to completion (#1001) |
 
 Every method is async (TS is async-native). The `X-Request-ID` header is auto-generated
 per request via `crypto.randomUUID()` — pin your own by setting

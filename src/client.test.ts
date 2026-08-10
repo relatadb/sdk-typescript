@@ -262,7 +262,7 @@ test("stats / version / ready / ingestDocument: map wire shapes", async () => {
   assert.equal(calls[0]?.url, "http://x/debug/stats");
   assert.equal(calls[1]?.url, "http://x/version");
   assert.equal(calls[2]?.url, "http://x/health/ready");
-  assert.equal(calls[3]?.url, "http://x/ingest/document");
+  assert.equal(calls[3]?.url, "http://x/rag/ingest");
   // Verify the ingest payload
   assert.deepEqual(JSON.parse(calls[3]?.body ?? "{}"), {
     chunks_jsonl: `{"chunk": 1}\n{"chunk": 2}`,
@@ -299,7 +299,7 @@ test("ingestDocumentStatus: maps the task-status wire shape and GET path", async
   assert.equal(pending.status, "pending");
   // GET path encodes the task id.
   assert.equal(calls[0]?.method, "GET");
-  assert.equal(calls[0]?.url, "http://x/ingest/document/t-1");
+  assert.equal(calls[0]?.url, "http://x/rag/ingest/t-1");
 });
 
 test("transport: auto-generates X-Request-ID per request", async () => {

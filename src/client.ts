@@ -1573,8 +1573,10 @@ export class RelataClient {
    * Ingest a datagrep-extractor document into Relata.
    *
    * Submits the `_chunks.jsonl` and `_manifest.json` outputs of a `dgrep`
-   * extraction run to `POST /ingest/document`. The server parses and
-   * version-checks the protocol envelope, then queues the chunks for storage.
+   * extraction run to `POST /rag/ingest` (renamed from `/ingest/document` by
+   * #4499). The server parses and version-checks the protocol envelope, then
+   * queues the chunks for storage. See `GET /rag/specs` for the protocol
+   * version/field-contract handshake.
    *
    * @param chunksJsonl - Newline-delimited JSON string — one chunk per line,
    *   as produced by `dgrep run --mode chunks`.
@@ -1594,7 +1596,7 @@ export class RelataClient {
     manifestJson: string,
   ): Promise<IngestDocumentResponse> {
     const wire = await this.#post<WireIngestDocumentResponse>(
-      "/ingest/document",
+      "/rag/ingest",
       { chunks_jsonl: chunksJsonl, manifest_json: manifestJson },
     );
     return {
@@ -1610,7 +1612,7 @@ export class RelataClient {
   /**
    * Poll the status of an async document-ingest task (#1001).
    *
-   * `POST /ingest/document` returns immediately with a `taskId`; chunks flush to
+   * `POST /rag/ingest` returns immediately with a `taskId`; chunks flush to
    * storage in the background. Call this with the `taskId` until
    * `status === "complete"`.
    *
@@ -1624,7 +1626,7 @@ export class RelataClient {
    */
   async ingestDocumentStatus(taskId: string): Promise<IngestDocumentTaskStatus> {
     const wire = await this.#get<WireIngestDocumentTaskStatus>(
-      `/ingest/document/${encodeURIComponent(taskId)}`,
+      `/rag/ingest/${encodeURIComponent(taskId)}`,
     );
     return {
       taskId: wire.task_id ?? taskId,
@@ -2207,7 +2209,7 @@ export class RelataClient {
 // Wire shapes that are private to the client module
 // ---------------------------------------------------------------------------
 
-/** @internal Wire shape for `POST /ingest/document`. */
+/** @internal Wire shape for `POST /rag/ingest` (renamed from `/ingest/document`). */
 interface WireIngestDocumentResponse {
   report_id?: string;
   task_id?: string;
@@ -2217,7 +2219,7 @@ interface WireIngestDocumentResponse {
   queue_depth?: number;
 }
 
-/** @internal Wire shape for `GET /ingest/document/:task_id`. */
+/** @internal Wire shape for `GET /rag/ingest/:task_id` (renamed from `/ingest/document/:task_id`). */
 interface WireIngestDocumentTaskStatus {
   task_id?: string;
   status?: string;
