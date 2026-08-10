@@ -350,13 +350,21 @@ export interface LoopIteration {
   confidence: number | undefined;
 }
 
-/** Why {@link runAgenticLoop} stopped. */
+/**
+ * Why {@link runAgenticLoop} stopped. `"fanout_complete"` is never produced
+ * by {@link runAgenticLoop} itself — it's `./rag-answer.ts`'s marker for a
+ * {@link LoopResult} synthesized from a {@link FanoutResult} (no
+ * iteration/re-query ran), included here (rather than widening
+ * `stoppedReason` to a bare `string`) so every consumer of a `LoopResult`
+ * can still exhaustively switch over this union.
+ */
 export type LoopStoppedReason =
   | "heuristic_pass"
   | "confident"
   | "web_search_fallback"
   | "no_grader_configured"
-  | "max_iterations";
+  | "max_iterations"
+  | "fanout_complete";
 
 /** Final result of {@link runAgenticLoop}. */
 export interface LoopResult {

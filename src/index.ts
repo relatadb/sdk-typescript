@@ -312,6 +312,16 @@ export type {
   SourceEntry,
 } from "./rag-trace.ts";
 
+// RAG epic — the composed end-to-end pipeline (#4584, epic #4576): gate ->
+// retrieve (#4582's cost-ladder loop, or #4526's fan-out) -> synthesize +
+// cite + faithfulness-check (#4579) -> write the reasoning trace back
+// (#4583) as governed rows. TS/Go parity port of
+// sdks/python/relata/rag_answer.py — the epic's own validation criterion,
+// composing every other RAG-epic module rather than reimplementing any of
+// them.
+export { runRagAnswer } from "./rag-answer.ts";
+export type { RagAnswerResult, RunRagAnswerOptions } from "./rag-answer.ts";
+
 export { Namespace, validateNamespaceName } from "./namespace.ts";
 export type {
   NamespaceQueryOptions,
