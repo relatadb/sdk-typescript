@@ -157,26 +157,42 @@ export class McpClient extends TypedClientBase {
     return this.callTool("list_entity_types", {});
   }
 
-  /** `get_entities` — paginated entity list. */
+  /**
+   * `get_entities` — paginated entity list.
+   *
+   * `objectType` is required by the server as `entity_type` (#4620); an
+   * optional `filters` object (server field name, sent as-is) does exact-match
+   * client-side filtering by field value.
+   */
   async getEntities(
     objectType: string,
-    opts: { filterExpr?: string; limit?: number } = {},
+    opts: { filters?: Record<string, unknown>; limit?: number } = {},
   ): Promise<Record<string, unknown>> {
     const args: Record<string, unknown> = {
-      object_type: objectType,
+      entity_type: objectType,
       limit: opts.limit ?? 50,
     };
-    if (opts.filterExpr !== undefined) args["filter"] = opts.filterExpr;
+    if (opts.filters !== undefined) args["filters"] = opts.filters;
     return this.callTool("get_entities", args);
   }
 
-  /** `search_entities` — free-text entity search. */
+  /**
+   * `search_entities` — free-text entity search.
+   *
+   * The server reads `entity_types` as an array (#4620); `objectType` accepts
+   * either a single type or an array for call-site convenience and is always
+   * sent as an array on the wire.
+   */
   async searchEntities(
     query: string,
-    opts: { objectType?: string } = {},
+    opts: { objectType?: string | string[] } = {},
   ): Promise<Record<string, unknown>> {
     const args: Record<string, unknown> = { query };
-    if (opts.objectType !== undefined) args["object_type"] = opts.objectType;
+    if (opts.objectType !== undefined) {
+      args["entity_types"] = Array.isArray(opts.objectType)
+        ? opts.objectType
+        : [opts.objectType];
+    }
     return this.callTool("search_entities", args);
   }
 
@@ -201,13 +217,17 @@ export class McpClient extends TypedClientBase {
 
   // --- Identity ---
 
-  /** `lookup_identity` — universal identity lookup. */
+  /**
+   * `lookup_identity` — universal identity lookup.
+   *
+   * The server reads `raw`, not `value` (#4620).
+   */
   async lookupIdentity(
     value: string,
     opts: { purpose?: string } = {},
   ): Promise<Record<string, unknown>> {
     return this.callTool("lookup_identity", {
-      value,
+      raw: value,
       purpose: opts.purpose ?? "analytics",
     });
   }

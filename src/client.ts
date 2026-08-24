@@ -1059,8 +1059,13 @@ export class RelataClient {
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
-  async graphLinkPredict(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_LINK_PREDICT(${sqlLiteral(objectType)})` });
+  /**
+   * Link prediction between two nodes (#4615). The engine requires both
+   * `FROM =>` and `TO =>` — mirrors `graphDijkstra`'s FROM/TO shape.
+   */
+  async graphLinkPredict(objectType: string, from: string, to: string, purpose?: string): Promise<Record<string, unknown>> {
+    const sql = `GRAPH_LINK_PREDICT(${sqlLiteral(objectType)}, FROM => ${sqlLiteral(from)}, TO => ${sqlLiteral(to)})`;
+    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
   async graphTriangleCount(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
