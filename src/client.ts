@@ -1114,8 +1114,19 @@ export class RelataClient {
     return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: `HAWALA_TRACE(${sqlLiteral(seed)}, MAX_HOPS => ${maxHops})` });
   }
 
-  async dnsTunnelDetect(entity: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "security", sql: `DNS_TUNNEL_DETECT(${sqlLiteral(entity)})` });
+  /**
+   * DNS-tunnelling / exfil-channel detection (#4637). The server operator
+   * (`crates/relata-query/src/parser/wireup.rs`) has no entity-scoping
+   * capability — it discards any positional argument and only reads the
+   * named `MIN_ENTROPY`/`MIN_QUERIES` tunables over the whole `DnsLog`
+   * table — so this method takes those, not a misleading `entity` filter.
+   */
+  async dnsTunnelDetect(opts?: { minEntropy?: number; minQueries?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const parts: string[] = [];
+    if (opts?.minEntropy !== undefined) parts.push(`MIN_ENTROPY => ${opts.minEntropy}`);
+    if (opts?.minQueries !== undefined) parts.push(`MIN_QUERIES => ${opts.minQueries}`);
+    const sql = `DNS_TUNNEL_DETECT(${parts.join(", ")})`;
+    return this.#post("/query", { purpose: opts?.purpose ?? "security", sql });
   }
 
   async crimePatternCluster(area: string, purpose?: string): Promise<Record<string, unknown>> {
