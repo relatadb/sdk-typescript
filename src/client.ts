@@ -1133,11 +1133,15 @@ export class RelataClient {
     return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRIME_PATTERN_CLUSTER(${sqlLiteral(area)})` });
   }
 
-  async geofence(fence: string, opts?: { targetType?: string; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts = [`GEOFENCE(${sqlLiteral(fence)}`];
-    if (opts?.targetType !== undefined) parts.push(`, TARGET_TYPE => ${sqlLiteral(opts.targetType)}`);
-    parts.push(")");
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
+  /**
+   * Geofence — flag entities of `targetType` inside/near `fence` (#4635).
+   * The server operator hard-requires `TARGET_TYPE`
+   * (`crates/relata-query/src/parser.rs`, `"GEOFENCE requires TARGET_TYPE arg"`),
+   * so it is a required parameter here rather than an optional `opts` field.
+   */
+  async geofence(fence: string, targetType: string, opts?: { purpose?: string }): Promise<Record<string, unknown>> {
+    const sql = `GEOFENCE(${sqlLiteral(fence)}, TARGET_TYPE => ${sqlLiteral(targetType)})`;
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
   }
 
   // ── Maritime operators (#2247) ────────────────────────────────────────────
