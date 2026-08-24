@@ -673,8 +673,10 @@ export class RelataClient {
 
   /**
    * Online schema evolution — `PATCH /types/:name/schema` (#1307). `action` is
-   * "add" | "drop" | "rename" | "retype"; `column` is the target column;
-   * `newColumn` / `colType` / `optional` apply to the relevant actions.
+   * "add_column" | "remove_column" | "rename_column" | "change_type"; `column`
+   * is the target column; `newColumn` / `colType` / `optional` apply to the
+   * relevant actions (see the engine's `types_routes.rs` for the exact
+   * per-action requirements).
    */
   async schemaAlter(
     name: string,
