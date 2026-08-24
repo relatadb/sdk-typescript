@@ -562,14 +562,18 @@ export class RelataClient {
 
     const wire = await this.#post<WireSearchResponse>("/search", body);
     return {
+      // #4626: the wire response carries each hit's row under `data` and
+      // never sets `object_type` — see `WireSearchResponse`'s doc comment.
+      // `h.fields`/`h.object_type` are checked first for back-compat with a
+      // non-standard server response using that legacy shape.
       hits: (wire.hits ?? []).map((h) => ({
         id: h.id,
-        objectType: h.object_type,
-        fields: h.fields,
+        objectType: h.object_type ?? params.type,
+        fields: h.fields ?? h.data ?? {},
         score: h.score,
         highlights: h.highlights ?? {},
       })),
-      total: wire.total ?? 0,
+      total: wire.total ?? wire.estimatedTotalHits ?? 0,
       estimatedTotalHits: wire.estimatedTotalHits ?? wire.total ?? 0,
       facets: wire.facets ?? {},
       ...(wire.facetStats ? { facetStats: wire.facetStats } : {}),
@@ -590,12 +594,47 @@ export class RelataClient {
   async multiSearch(
     queries: { query: string; type: string; limit?: number; matchingStrategy?: string }[],
   ): Promise<{ results: SearchResponse[]; processingTimeMs: number }> {
-    const wire = await this.#post<{ results: unknown[]; processing_time_ms: number }>(
-      "/multi-search",
-      { queries },
-    );
+    // #4626: `multi_search_handler`'s per-query response shape
+    // (`crates/relata-cli/src/serve/search.rs`) is `{hits: [{id, score,
+    // snippet, data}], estimatedTotalHits, type, query}` — never `{hits,
+    // total, facets, processingTimeMs}` (`SearchResponse`'s own shape) — a
+    // failed sub-query is instead `{error: string}`. The previous `as
+    // SearchResponse[]` cast skipped mapping entirely, so every result's
+    // hits kept the wire's `data`/`snippet` fields instead of `SearchHit`'s
+    // `fields`/`objectType`, and `total`/`facets`/`processingTimeMs` were
+    // always `undefined`.
+    interface WireMultiSearchHit {
+      id: string;
+      score: number;
+      snippet?: string;
+      data?: Record<string, unknown>;
+    }
+    interface WireMultiSearchResult {
+      hits?: WireMultiSearchHit[];
+      estimatedTotalHits?: number;
+      type?: string;
+      query?: string;
+      error?: string;
+    }
+    const wire = await this.#post<{
+      results: WireMultiSearchResult[];
+      processing_time_ms: number;
+    }>("/multi-search", { queries });
+    const results: SearchResponse[] = (wire.results ?? []).map((r) => ({
+      hits: (r.hits ?? []).map((h) => ({
+        id: h.id,
+        objectType: r.type ?? "",
+        fields: h.data ?? {},
+        score: h.score,
+        highlights: {},
+      })),
+      total: r.estimatedTotalHits ?? 0,
+      estimatedTotalHits: r.estimatedTotalHits ?? 0,
+      facets: {},
+      processingTimeMs: wire.processing_time_ms ?? 0,
+    }));
     return {
-      results: (wire.results ?? []) as SearchResponse[],
+      results,
       processingTimeMs: wire.processing_time_ms ?? 0,
     };
   }

@@ -618,12 +618,27 @@ export interface RecallResponse {
   items: RecallItem[];
 }
 
-/** @internal Wire shape for `POST /search`. */
+/**
+ * @internal Wire shape for `POST /search`.
+ *
+ * Mirrors `search_handler`'s actual response (`crates/relata-cli/src/serve/search.rs`):
+ * each hit carries its row under `data`, and the handler never emits
+ * `object_type` at all — the caller already knows it from the request.
+ * (#4626: `search()`'s mapping previously read only `h.fields`/`h.object_type`,
+ * which the real wire response never sets, so every hit's `fields` came back
+ * empty and `objectType` came back `undefined` regardless of the `id`/score
+ * fixes on the server side.) `fields`/`object_type` stay here, optional, purely
+ * so a future or non-standard server response using that shape still maps
+ * correctly — `data`/omitted-`object_type` is what the current server sends.
+ */
 export interface WireSearchResponse {
   hits?: Array<{
     id: string;
-    object_type: string;
-    fields: Record<string, unknown>;
+    data?: Record<string, unknown>;
+    /** @deprecated legacy alias for `data`, kept for backward compatibility. */
+    fields?: Record<string, unknown>;
+    /** @deprecated the server does not currently send this. */
+    object_type?: string;
     score: number;
     highlights?: Record<string, string>;
   }>;
