@@ -614,13 +614,14 @@ test("McpClient #2322: listRules sends no args", async () => {
   assert.equal(seen.name, "list_rules");
 });
 
-test("McpClient #2322: createRule sends name and condition_sql", async () => {
+test("McpClient #2322/#4656: createRule sends name, condition_sql, and target_type", async () => {
   const seen = await callAndCapture((mcp) =>
-    mcp.createRule("high-value-txn", "amount > 10000", { severity: "high" }),
+    mcp.createRule("high-value-txn", "amount > 10000", "Transaction", { severity: "high" }),
   );
   assert.equal(seen.name, "create_rule");
   assert.equal(seen.arguments["name"], "high-value-txn");
   assert.equal(seen.arguments["condition_sql"], "amount > 10000");
+  assert.equal(seen.arguments["target_type"], "Transaction");
   assert.equal(seen.arguments["severity"], "high");
   assert.equal(seen.arguments["purpose"], "security");
 });
