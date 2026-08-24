@@ -69,7 +69,13 @@ export class McpClient extends TypedClientBase {
   // Core MCP protocol
   // -------------------------------------------------------------------------
 
-  /** Send the MCP initialize handshake. Wraps `POST /mcp/initialize`. */
+  /**
+   * Send the MCP initialize handshake. Wraps `POST /mcp/initialize`.
+   *
+   * `clientId`/`version` are accepted for API stability but currently have
+   * no server-side effect: `mcp_initialize` (`crates/relata-cli/src/serve/mcp.rs`)
+   * takes no body extractor at all, so the request body is never parsed (#4657).
+   */
   async initialize(
     opts: { clientId?: string; version?: string } = {},
   ): Promise<Record<string, unknown>> {
@@ -121,7 +127,12 @@ export class McpClient extends TypedClientBase {
     return this.callTool("query_knowledge", { sql, purpose });
   }
 
-  /** `search_knowledge` — hybrid BM25 + vector search. */
+  /**
+   * `search_knowledge` — hybrid BM25 + vector search. `opts.topK` is sent
+   * as the server's `limit` key (`mcp_tool_search_knowledge` in
+   * `crates/relata-cli/src/serve/mcp/knowledge_search.rs` reads `limit`,
+   * not `top_k`, #4652).
+   */
   async searchKnowledge(
     query: string,
     purpose: string,
@@ -130,7 +141,7 @@ export class McpClient extends TypedClientBase {
     return this.callTool("search_knowledge", {
       query,
       purpose,
-      top_k: opts.topK ?? 10,
+      limit: opts.topK ?? 10,
     });
   }
 
@@ -145,9 +156,16 @@ export class McpClient extends TypedClientBase {
     return this.callTool("explain_policy", { sql, purpose });
   }
 
-  /** `suggest_extensions` — type/canonical-kind autocomplete. */
-  async suggestExtensions(prefix: string): Promise<Record<string, unknown>> {
-    return this.callTool("suggest_extensions", { prefix });
+  /**
+   * `suggest_extensions` — type/canonical-kind autocomplete.
+   *
+   * The server's `mcp_tool_suggest_extensions` takes no `args` at all — the
+   * dispatch table calls it with no arguments forwarded — so it always
+   * returns the full, unfiltered extension-pack list; there is no `prefix`
+   * filter to send (#4657).
+   */
+  async suggestExtensions(): Promise<Record<string, unknown>> {
+    return this.callTool("suggest_extensions", {});
   }
 
   // --- Entity / type discovery ---
@@ -180,22 +198,38 @@ export class McpClient extends TypedClientBase {
     return this.callTool("search_entities", args);
   }
 
-  /** `get_domain_summary` — counts + freshness per type. */
-  async getDomainSummary(
-    opts: { objectType?: string } = {},
-  ): Promise<Record<string, unknown>> {
-    const args: Record<string, unknown> = {};
-    if (opts.objectType !== undefined) args["object_type"] = opts.objectType;
-    return this.callTool("get_domain_summary", args);
+  /**
+   * `get_domain_summary` — counts + freshness per type for one domain.
+   *
+   * The server's `mcp_tool_get_domain_summary` requires a `domain` key
+   * (e.g. `"financial"`, `"telco"`, `"cyber"`, `"humint"`, `"narcotics"`,
+   * `"fara"`, `"maritime"`, `"border"`, `"sanctions"`) — `object_type` is
+   * never read (#4645).
+   */
+  async getDomainSummary(domain: string): Promise<Record<string, unknown>> {
+    return this.callTool("get_domain_summary", { domain });
   }
 
-  /** `find_in_social_corpus` — search the ingested social-media corpus. */
+  /**
+   * `find_in_social_corpus` — search the ingested social-media corpus.
+   *
+   * The server's `mcp_tool_find_in_social_corpus` requires `object_type`
+   * and reads the free-text leg from `text_query`, not `query`; `corpus`
+   * is not read anywhere in the handler (#4644).
+   */
   async findInSocialCorpus(
-    query: string,
-    opts: { corpus?: string } = {},
+    objectType: string,
+    textQuery: string,
+    opts: { user?: string; userField?: string; blobField?: string; topK?: number } = {},
   ): Promise<Record<string, unknown>> {
-    const args: Record<string, unknown> = { query };
-    if (opts.corpus !== undefined) args["corpus"] = opts.corpus;
+    const args: Record<string, unknown> = {
+      object_type: objectType,
+      text_query: textQuery,
+    };
+    if (opts.user !== undefined) args["user"] = opts.user;
+    if (opts.userField !== undefined) args["user_field"] = opts.userField;
+    if (opts.blobField !== undefined) args["blob_field"] = opts.blobField;
+    if (opts.topK !== undefined) args["top_k"] = opts.topK;
     return this.callTool("find_in_social_corpus", args);
   }
 
@@ -214,26 +248,36 @@ export class McpClient extends TypedClientBase {
 
   // --- Case / investigation ---
 
-  /** `get_entity_profile` — rich per-entity dossier. */
+  /**
+   * `get_entity_profile` — rich per-entity dossier.
+   *
+   * The server's `mcp_tool_get_entity_profile` requires a `name` key (a
+   * case-insensitive name search across profile-relevant types) and never
+   * reads `entity_id` (#4647).
+   */
   async getEntityProfile(
-    entityId: string,
+    name: string,
     purpose: string,
   ): Promise<Record<string, unknown>> {
-    return this.callTool("get_entity_profile", {
-      entity_id: entityId,
-      purpose,
-    });
+    return this.callTool("get_entity_profile", { name, purpose });
   }
 
-  /** `get_timeline` — chronological event list for an entity. */
+  /**
+   * `get_timeline` — chronological event list for an entity.
+   *
+   * The server's `mcp_tool_get_timeline` reads the entity filter from
+   * `entity`, not `entity_id`, and has no time-range concept — `since_ns`/
+   * `until_ns` were dead parameters with no server-side effect and have
+   * been dropped; `limit` (real, server-side, capped at 1000) is exposed
+   * instead (#4649).
+   */
   async getTimeline(
-    entityId: string,
+    entity: string,
     purpose: string,
-    opts: { sinceNs?: number; untilNs?: number } = {},
+    opts: { limit?: number } = {},
   ): Promise<Record<string, unknown>> {
-    const args: Record<string, unknown> = { entity_id: entityId, purpose };
-    if (opts.sinceNs !== undefined) args["since_ns"] = opts.sinceNs;
-    if (opts.untilNs !== undefined) args["until_ns"] = opts.untilNs;
+    const args: Record<string, unknown> = { entity, purpose };
+    if (opts.limit !== undefined) args["limit"] = opts.limit;
     return this.callTool("get_timeline", args);
   }
 
@@ -253,20 +297,41 @@ export class McpClient extends TypedClientBase {
     });
   }
 
-  /** `get_relationships` — direct neighbours of `entityId`. */
+  /**
+   * `get_relationships` — filtered read over `KnowledgeTriple` rows.
+   *
+   * The server's `mcp_tool_get_relationships` never reads `entity_id`/
+   * `depth` (there is no hop-depth graph walk here, only a flat triple
+   * filter) — it reads `purpose`, `limit`, and lowercase `subject`/
+   * `predicate`/`object`/`source` filters. This wrapper now exposes that
+   * real filter shape directly (#4646).
+   */
   async getRelationships(
-    entityId: string,
     purpose: string,
-    opts: { depth?: number } = {},
+    opts: {
+      subject?: string;
+      predicate?: string;
+      object?: string;
+      source?: string;
+      limit?: number;
+    } = {},
   ): Promise<Record<string, unknown>> {
-    return this.callTool("get_relationships", {
-      entity_id: entityId,
-      depth: opts.depth ?? 1,
-      purpose,
-    });
+    const args: Record<string, unknown> = { purpose };
+    if (opts.subject !== undefined) args["subject"] = opts.subject;
+    if (opts.predicate !== undefined) args["predicate"] = opts.predicate;
+    if (opts.object !== undefined) args["object"] = opts.object;
+    if (opts.source !== undefined) args["source"] = opts.source;
+    if (opts.limit !== undefined) args["limit"] = opts.limit;
+    return this.callTool("get_relationships", args);
   }
 
-  /** `add_case_note` — append an investigative note to a case. */
+  /**
+   * `add_case_note` — append an investigative note to a case.
+   *
+   * `opts.author` is accepted for API stability but currently has no
+   * server-side effect: `mcp_tool_add_case_note_with_gate` never reads an
+   * `author` field (#4657).
+   */
   async addCaseNote(
     caseId: string,
     note: string,
@@ -277,57 +342,122 @@ export class McpClient extends TypedClientBase {
     return this.callTool("add_case_note", args);
   }
 
-  /** `get_audit_trail` — provenance chain for a case or entity. */
+  /**
+   * `get_audit_trail` — provenance chain, optionally filtered by principal.
+   *
+   * The server's `mcp_tool_get_audit_trail` never reads `case_id`/
+   * `entity_id` — it filters by `principal_filter` and `limit`, and treats
+   * `purpose: "all"` as a sentinel that bypasses the usual purpose
+   * allowlist check (#4650).
+   */
   async getAuditTrail(
-    opts: { caseId?: string; entityId?: string } = {},
+    opts: { principalFilter?: string; limit?: number; purpose?: string } = {},
   ): Promise<Record<string, unknown>> {
     const args: Record<string, unknown> = {};
-    if (opts.caseId !== undefined) args["case_id"] = opts.caseId;
-    if (opts.entityId !== undefined) args["entity_id"] = opts.entityId;
+    if (opts.principalFilter !== undefined) args["principal_filter"] = opts.principalFilter;
+    if (opts.limit !== undefined) args["limit"] = opts.limit;
+    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
     return this.callTool("get_audit_trail", args);
   }
 
-  /** `get_case_summary` — LLM-generated narrative summary of a case. */
+  /**
+   * `get_case_summary` — tenant-wide data inventory + knowledge-graph
+   * stats + analyst notes.
+   *
+   * NOT case-scoped: `mcp_tool_get_case_summary` never reads a `case_id`
+   * argument anywhere — there is no case-scoping capability in this
+   * handler at all (confirmed by reading the full function body), so the
+   * previously-required `caseId` parameter was dropped rather than kept as
+   * a misleading filter (#4651, same treatment as `dnsTunnelDetect` in
+   * #4637). `includeGraph`/`includeNotes`/`includeAnswers` are real,
+   * server-read toggles (each defaults `true` server-side when omitted).
+   */
   async getCaseSummary(
-    caseId: string,
     purpose: string,
+    opts: { includeGraph?: boolean; includeNotes?: boolean; includeAnswers?: boolean } = {},
   ): Promise<Record<string, unknown>> {
-    return this.callTool("get_case_summary", { case_id: caseId, purpose });
+    const args: Record<string, unknown> = { purpose };
+    if (opts.includeGraph !== undefined) args["include_graph"] = opts.includeGraph;
+    if (opts.includeNotes !== undefined) args["include_notes"] = opts.includeNotes;
+    if (opts.includeAnswers !== undefined) args["include_answers"] = opts.includeAnswers;
+    return this.callTool("get_case_summary", args);
   }
 
   // --- RAG / ingest ---
 
-  /** `rag_store_answer` — persist a Q&A pair for downstream RAG. */
+  /**
+   * `rag_store_answer` — persist a Q&A pair for downstream RAG.
+   *
+   * The server's `mcp_tool_rag_store_answer_with_gate` reads a `sources`
+   * array of objects (each with an `id`/`url`, `source`/`title`, and
+   * `score`/`relevance` field) — `source_ids` is never read anywhere in
+   * the handler, so citation data supplied that way was silently dropped
+   * (#4653).
+   */
   async ragStoreAnswer(
     question: string,
     answer: string,
     purpose: string,
-    opts: { sourceIds?: string[] } = {},
+    opts: { sources?: Record<string, unknown>[] } = {},
   ): Promise<Record<string, unknown>> {
     const args: Record<string, unknown> = { question, answer, purpose };
-    if (opts.sourceIds !== undefined) args["source_ids"] = opts.sourceIds;
+    if (opts.sources !== undefined) args["sources"] = opts.sources;
     return this.callTool("rag_store_answer", args);
   }
 
-  /** `rag_store_elements` — bulk persist structured RAG elements. */
+  /**
+   * `rag_store_elements` — bulk persist structured RAG elements.
+   *
+   * The server's `mcp_tool_rag_store_elements_with_gate` requires
+   * `source_filename` (no default) — every call 400ed without it (#4654).
+   * `sourceSha256`/`label` mirror the handler's other optional fields.
+   */
   async ragStoreElements(
     elements: Record<string, unknown>[],
+    sourceFilename: string,
     purpose: string,
+    opts: { sourceSha256?: string; label?: string } = {},
   ): Promise<Record<string, unknown>> {
-    return this.callTool("rag_store_elements", { elements, purpose });
+    const args: Record<string, unknown> = {
+      elements,
+      source_filename: sourceFilename,
+      purpose,
+    };
+    if (opts.sourceSha256 !== undefined) args["source_sha256"] = opts.sourceSha256;
+    if (opts.label !== undefined) args["label"] = opts.label;
+    return this.callTool("rag_store_elements", args);
   }
 
-  /** `ingest_document` — datagrep-envelope document ingest via MCP. */
+  /**
+   * `ingest_document` — store a source document, its extracted text, and
+   * (optionally) pre-extracted entities/relations.
+   *
+   * Rewritten (#4655): the previous `chunksJsonl`/`manifest_json` shape was
+   * never read anywhere in `mcp_tool_ingest_document_with_gate` — the
+   * handler has a flat schema instead (`source`, `text`, `label`,
+   * `confidence`, `entities`, `relations`), and since `text` always fell
+   * back to `""` (never sent by the old wrapper), the handler's
+   * `if !text.is_empty()` storage branch never ran: every call returned
+   * HTTP 200 but silently ingested nothing. This wrapper now matches the
+   * real schema instead of a nonexistent chunked-document API.
+   */
   async ingestDocument(
-    chunksJsonl: string,
-    manifestJson: string,
+    source: string,
+    text: string,
     purpose: string,
+    opts: {
+      label?: string;
+      confidence?: number;
+      entities?: Record<string, unknown>[];
+      relations?: Record<string, unknown>[];
+    } = {},
   ): Promise<Record<string, unknown>> {
-    return this.callTool("ingest_document", {
-      chunks_jsonl: chunksJsonl,
-      manifest_json: manifestJson,
-      purpose,
-    });
+    const args: Record<string, unknown> = { source, text, purpose };
+    if (opts.label !== undefined) args["label"] = opts.label;
+    if (opts.confidence !== undefined) args["confidence"] = opts.confidence;
+    if (opts.entities !== undefined) args["entities"] = opts.entities;
+    if (opts.relations !== undefined) args["relations"] = opts.relations;
+    return this.callTool("ingest_document", args);
   }
 
   // --- Memory (the cognitive verbs are reachable via MCP too) ---
@@ -671,19 +801,28 @@ export class McpClient extends TypedClientBase {
     return this.callTool("list_rules", {});
   }
 
-  /** `create_rule` — create a detection rule (ADR-162). */
+  /**
+   * `create_rule` — create a detection rule (ADR-162).
+   *
+   * The underlying `POST /rules` handler (`rules_create_handler`,
+   * `crates/relata-cli/src/serve/rules.rs`) requires `target_type` with no
+   * default — every call 400ed without it (#4656). `description` has been
+   * dropped: it is never read anywhere in `rules.rs` (a dead parameter,
+   * same treatment as `dnsTunnelDetect` in #4637).
+   */
   async createRule(
     name: string,
     conditionSql: string,
-    opts: { severity?: string; description?: string; purpose?: string } = {},
+    targetType: string,
+    opts: { severity?: string; purpose?: string } = {},
   ): Promise<Record<string, unknown>> {
     const args: Record<string, unknown> = {
       name,
       condition_sql: conditionSql,
+      target_type: targetType,
       purpose: opts.purpose ?? "security",
     };
     if (opts.severity !== undefined) args["severity"] = opts.severity;
-    if (opts.description !== undefined) args["description"] = opts.description;
     return this.callTool("create_rule", args);
   }
 
