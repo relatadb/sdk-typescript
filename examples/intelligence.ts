@@ -74,8 +74,8 @@ async function main(): Promise<void> {
     out(`  convoy_id=${row.convoy_id ?? "?"}  members=${row.members}  first_seen=${row.first_seen}`);
   }
 
-  step(`5. DNS_TUNNEL_DETECT: ${target}`);
-  const dns = (await relata.dnsTunnelDetect(target, "investigation")) as { rows?: Row[] } | undefined;
+  step("5. DNS_TUNNEL_DETECT");
+  const dns = (await relata.dnsTunnelDetect({ purpose: "investigation" })) as { rows?: Row[] } | undefined;
   const dRows = dns?.rows ?? [];
   out(`${dRows.length} anomalous DNS pattern(s)`);
   for (const row of dRows.slice(0, 5)) {

@@ -1121,19 +1121,34 @@ export class RelataClient {
     return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: `HAWALA_TRACE(${sqlLiteral(seed)}, MAX_HOPS => ${maxHops})` });
   }
 
-  async dnsTunnelDetect(entity: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "security", sql: `DNS_TUNNEL_DETECT(${sqlLiteral(entity)})` });
+  /**
+   * DNS-tunnelling / exfil-channel detection (#4637). The server operator
+   * (`crates/relata-query/src/parser/wireup.rs`) has no entity-scoping
+   * capability — it discards any positional argument and only reads the
+   * named `MIN_ENTROPY`/`MIN_QUERIES` tunables over the whole `DnsLog`
+   * table — so this method takes those, not a misleading `entity` filter.
+   */
+  async dnsTunnelDetect(opts?: { minEntropy?: number; minQueries?: number; purpose?: string }): Promise<Record<string, unknown>> {
+    const parts: string[] = [];
+    if (opts?.minEntropy !== undefined) parts.push(`MIN_ENTROPY => ${opts.minEntropy}`);
+    if (opts?.minQueries !== undefined) parts.push(`MIN_QUERIES => ${opts.minQueries}`);
+    const sql = `DNS_TUNNEL_DETECT(${parts.join(", ")})`;
+    return this.#post("/query", { purpose: opts?.purpose ?? "security", sql });
   }
 
   async crimePatternCluster(area: string, purpose?: string): Promise<Record<string, unknown>> {
     return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRIME_PATTERN_CLUSTER(${sqlLiteral(area)})` });
   }
 
-  async geofence(fence: string, opts?: { targetType?: string; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts = [`GEOFENCE(${sqlLiteral(fence)}`];
-    if (opts?.targetType !== undefined) parts.push(`, TARGET_TYPE => ${sqlLiteral(opts.targetType)}`);
-    parts.push(")");
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
+  /**
+   * Geofence — flag entities of `targetType` inside/near `fence` (#4635).
+   * The server operator hard-requires `TARGET_TYPE`
+   * (`crates/relata-query/src/parser.rs`, `"GEOFENCE requires TARGET_TYPE arg"`),
+   * so it is a required parameter here rather than an optional `opts` field.
+   */
+  async geofence(fence: string, targetType: string, opts?: { purpose?: string }): Promise<Record<string, unknown>> {
+    const sql = `GEOFENCE(${sqlLiteral(fence)}, TARGET_TYPE => ${sqlLiteral(targetType)})`;
+    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
   }
 
   // ── Maritime operators (#2247) ────────────────────────────────────────────
