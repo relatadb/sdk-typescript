@@ -122,6 +122,14 @@ export class IdentityClient extends TypedClientBase {
    * Issue `ERASE SUBJECT '<id>' REASON '<r>' [CERTIFY]` via the query path.
    * Returns the server's Art. 17 receipt.
    *
+   * `certify` is destructive **opt-in**: omitted or `false` omits the CERTIFY
+   * keyword, and the server refuses the erasure with
+   * "CERTIFY keyword required to confirm irreversible erasure" — matching the
+   * engine's own safety rail. Only an explicit `certify: true` confirms the
+   * irreversible crypto-shred. (Historically the omitted default was `true`,
+   * which silently confirmed destruction for callers that never considered
+   * the flag.)
+   *
    * Pairs with #61 — today the server does governed-tombstone only (the DEK
    * survives). Once #61 ships the per-subject DEK destroy, this same call
    * will produce crypto-shred semantics.
@@ -134,7 +142,7 @@ export class IdentityClient extends TypedClientBase {
       purpose: string;
     },
   ): Promise<Record<string, unknown>> {
-    const certifyKw = (opts.certify ?? true) ? " CERTIFY" : "";
+    const certifyKw = opts.certify === true ? " CERTIFY" : "";
     const sql =
       `ERASE SUBJECT '${escapeSqlString(subjectIdentity)}' ` +
       `REASON '${escapeSqlString(reason)}'${certifyKw}`;

@@ -1059,7 +1059,45 @@ test("IdentityClient: label, registerLookup, eraseSubject", async () => {
   const body = JSON.parse(calls[2]?.body ?? "{}");
   assert.equal(body["purpose"], "compliance");
   assert.ok(body["sql"].includes("ERASE SUBJECT 'alice@x.com'"));
-  assert.ok(body["sql"].includes("CERTIFY"));
+  // Omitted certify defaults to the safe side — no CERTIFY keyword.
+  assert.ok(!body["sql"].includes("CERTIFY"));
+});
+
+test("IdentityClient: eraseSubject CERTIFY is destructive opt-in", async () => {
+  const queue: MockResponse[] = [
+    { body: { receipt: "certified" } }, // certify: true
+    { body: { receipt: "no" } }, // certify: false
+    { body: { receipt: "no" } }, // omitted
+  ];
+  const { fetch, calls } = mockFetch(queue);
+  const id = new IdentityClient({ baseUrl: "http://x", fetch });
+
+  await id.eraseSubject("alice@x.com", "gdpr-art-17", {
+    purpose: "compliance",
+    certify: true,
+  });
+  await id.eraseSubject("alice@x.com", "gdpr-art-17", {
+    purpose: "compliance",
+    certify: false,
+  });
+  await id.eraseSubject("alice@x.com", "gdpr-art-17", {
+    purpose: "compliance",
+  });
+
+  const certified = JSON.parse(calls[0]?.body ?? "{}")["sql"] as string;
+  assert.ok(certified.includes("CERTIFY"), `sql = ${certified}`);
+
+  const explicitFalse = JSON.parse(calls[1]?.body ?? "{}")["sql"] as string;
+  assert.ok(!explicitFalse.includes("CERTIFY"), `sql = ${explicitFalse}`);
+
+  // The behavior change: omitted certify must NOT confirm the erasure — the
+  // server then refuses with "CERTIFY keyword required ...".
+  const omitted = JSON.parse(calls[2]?.body ?? "{}")["sql"] as string;
+  assert.ok(!omitted.includes("CERTIFY"), `sql = ${omitted}`);
+  assert.ok(
+    omitted.includes("ERASE SUBJECT 'alice@x.com' REASON 'gdpr-art-17'"),
+    `sql = ${omitted}`,
+  );
 });
 
 // ---------------------------------------------------------------------------

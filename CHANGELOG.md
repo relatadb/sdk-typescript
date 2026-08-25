@@ -9,6 +9,20 @@ workspace `Cargo.toml`'s `[workspace.package].version`, mirrored into
 
 ### Changed (behaviour)
 
+- **`IdentityClient.eraseSubject` omitted `certify` now defaults to the safe
+  side — no CERTIFY keyword (IntOps #3268).** `ERASE SUBJECT` is an
+  irreversible GDPR Art. 17 crypto-shred, and the engine deliberately
+  requires the literal `CERTIFY` keyword, refusing otherwise with
+  `CERTIFY keyword required to confirm irreversible erasure`
+  (`crates/relata-cli/src/serve/query.rs`). The SDK previously defaulted an
+  omitted `certify` to `true`, silently appending `CERTIFY` on behalf of
+  callers that never considered the flag — undermining the engine's safety
+  rail. Now only an explicit `certify: true` confirms the erasure; omitted or
+  `false` omits the keyword and the call fails loudly until the caller opts
+  in. **Breaking:** callers that relied on the old silent default must pass
+  `certify: true` explicitly — that is the point. (Same fix applied to the
+  Python and Go SDKs' `erase_subject`/`EraseSubject`.)
+
 - **POST is no longer auto-retried on 502/503/504 (#2489, P0 correctness).**
   The retry loop now only retries **idempotent** verbs (`GET`/`HEAD`/`OPTIONS`)
   on retryable status codes and network errors. `POST`/`PUT`/`PATCH`/`DELETE`
