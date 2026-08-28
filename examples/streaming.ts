@@ -15,13 +15,14 @@
  *   RELATA_TOKEN=secret node --experimental-strip-types examples/streaming.ts
  */
 
-import { createClient, LogClient, StreamingClient } from "../src/index.ts";
+import { createClient, IngestClient, LogClient, StreamingClient } from "../src/index.ts";
 import { banner, exitOnRelataError, loadEnv, out, step } from "./_helpers.ts";
 
 const { url, token } = loadEnv();
 const relata = createClient(url, { bearerToken: token, defaultPurpose: "analytics" });
 const streaming = StreamingClient.fromClient(relata);
 const log = LogClient.fromClient(relata);
+const ingest = IngestClient.fromClient(relata);
 
 async function main(): Promise<void> {
   banner("1. StreamingClient.watch('SELECT * FROM Person') — 5s window");
@@ -43,8 +44,10 @@ async function main(): Promise<void> {
   ]).catch(() => undefined);
   out(`watch window elapsed — saw ${seen} event(s)`);
 
+  // `/query` is read-only (#782) — writes go through the governed ingest
+  // door, not SQL INSERT.
   step("2. Issuing a write to trigger watch events");
-  await relata.query("INSERT INTO Person (_pk, name) VALUES ('watch-1', 'Watch Test 1')");
+  await ingest.bulk("Person", [{ _pk: "watch-1", name: "Watch Test 1" }]);
   out("inserted Person watch-1");
 
   step("3. Alerts stream URL (for external curl consumer)");
