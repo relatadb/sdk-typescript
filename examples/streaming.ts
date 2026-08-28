@@ -29,19 +29,35 @@ async function main(): Promise<void> {
 
   // Race the async-generator against a 5-second timeout. The generator
   // reconnects indefinitely, so without the timeout the example would hang.
+  // `Promise.race` alone does NOT cancel the losing side, though — the
+  // `for await` loop keeps driving `watchIter` forever after the timer wins
+  // (#5020). Explicitly call `watchIter.return()` once the timer fires, and
+  // await the consumer promise afterward so the generator's `finally` block
+  // (which closes the underlying SSE connection) has actually run before we
+  // move on — otherwise the process can still hang at exit.
   let seen = 0;
   const watchIter = streaming.watch("SELECT * FROM Person", "analytics");
 
-  const timer = new Promise((resolve) => setTimeout(resolve, 5_000));
-  await Promise.race([
-    (async () => {
-      for await (const evt of watchIter) {
-        seen++;
-        out(`  [${seen}] ${JSON.stringify(evt).slice(0, 200)}`);
-      }
-    })(),
+  const consumeEvents = (async () => {
+    for await (const evt of watchIter) {
+      seen++;
+      out(`  [${seen}] ${JSON.stringify(evt).slice(0, 200)}`);
+    }
+  })();
+  const timer = new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 5_000));
+
+  const winner = await Promise.race([
+    consumeEvents.then(() => "done" as const),
     timer,
-  ]).catch(() => undefined);
+  ]).catch(() => "error" as const);
+  if (winner !== "done") {
+    // Timer won (or the consumer errored) — ask the generator to stop
+    // reconnecting and tear down its SSE connection.
+    await watchIter.return(undefined).catch(() => undefined);
+  }
+  // Wait for the consumer to fully settle either way, so its cleanup
+  // (reader.cancel()) has run before we proceed.
+  await consumeEvents.catch(() => undefined);
   out(`watch window elapsed — saw ${seen} event(s)`);
 
   // `/query` is read-only (#782) — writes go through the governed ingest
