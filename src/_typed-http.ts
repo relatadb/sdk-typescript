@@ -30,6 +30,7 @@ import {
   isIdempotentMethod,
   RETRYABLE_STATUS_CODES,
 } from "./_retry.ts";
+import { bodyOrClosedStream } from "./_body.ts";
 // `import type` only — erased at runtime (`--experimental-strip-types`), so
 // this does NOT create a runtime dependency edge back to `client.ts`. That
 // edge (importing the retry constants above as *values* from `client.ts`)
@@ -419,7 +420,7 @@ export class TypedClientBase {
    */
   async #readCappedBody(response: Response): Promise<Uint8Array> {
     const cap = this.#maxResponseBytes;
-    const body = response.body ?? new ReadableStream<Uint8Array>();
+    const body = bodyOrClosedStream(response);
     const reader = body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;

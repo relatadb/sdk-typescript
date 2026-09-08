@@ -16,6 +16,7 @@
 
 import { RelataClient } from "./client.ts";
 import { assertNotRedirected, PurposeError } from "./errors.ts";
+import { bodyOrClosedStream } from "./_body.ts";
 
 /** Streaming client — async iterators over every streaming surface. */
 export class StreamingClient {
@@ -109,7 +110,7 @@ export class StreamingClient {
       await drainBody(response);
       throw new StreamingHttpError(response.status, await response.text());
     }
-    const reader = (response.body ?? new ReadableStream<Uint8Array>()).getReader();
+    const reader = bodyOrClosedStream(response).getReader();
     try {
       for (;;) {
         const { done, value } = await reader.read();
@@ -239,7 +240,7 @@ export class StreamingHttpError extends Error {
 async function* ndjsonStream<T>(
   response: Response,
 ): AsyncIterable<T> {
-  const body = response.body ?? new ReadableStream<Uint8Array>();
+  const body = bodyOrClosedStream(response);
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -273,7 +274,7 @@ async function* ndjsonStream<T>(
 async function* sseEvents(
   response: Response,
 ): AsyncIterable<Record<string, unknown>> {
-  const body = response.body ?? new ReadableStream<Uint8Array>();
+  const body = bodyOrClosedStream(response);
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
