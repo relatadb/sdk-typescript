@@ -302,17 +302,25 @@ export class GovernanceClient extends TypedClientBase {
    *   `"humint_unmask"` when omitted.
    * @param justification Free-text justification for the emergency access,
    *   captured for audit.
+   * @param officer Delegated/on-behalf-of human officer identity (#5276).
+   *   Set this when a service principal (e.g. a BFF holding one shared
+   *   bearer token) is mediating for a human officer, so the two-officer
+   *   rule can tell two officers behind the same token apart — otherwise
+   *   every request/approve pair through a shared token collapses to one
+   *   identity and approval is structurally impossible.
    */
   async requestBreakglass(
     sourceId: string,
     opts: {
       purpose?: string;
       justification?: string;
+      officer?: string;
     } = {},
   ): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = { source_id: sourceId };
     if (opts.purpose !== undefined) payload["purpose"] = opts.purpose;
     if (opts.justification !== undefined) payload["justification"] = opts.justification;
+    if (opts.officer !== undefined) payload["officer"] = opts.officer;
     return this._post("/humint/breakglass/request", payload);
   }
 
@@ -321,13 +329,19 @@ export class GovernanceClient extends TypedClientBase {
    * Wraps `POST /humint/breakglass/approve`. The server enforces: requester
    * cannot approve their own request, the approver must belong to the same
    * tenant, and two distinct approvals are required before access is granted.
+   *
+   * @param opts.officer Delegated/on-behalf-of human officer identity
+   *   (#5276) — see {@link requestBreakglass}'s `officer` doc for the full
+   *   rationale. Pass the approving officer here when this call is made
+   *   through a shared service-principal bearer token.
    */
   async approveBreakglass(
     requestId: string,
-    opts: { approverNote?: string } = {},
+    opts: { approverNote?: string; officer?: string } = {},
   ): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = { request_id: requestId };
     if (opts.approverNote !== undefined) payload["note"] = opts.approverNote;
+    if (opts.officer !== undefined) payload["officer"] = opts.officer;
     return this._post("/humint/breakglass/approve", payload);
   }
 
