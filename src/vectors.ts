@@ -171,6 +171,12 @@ export class VectorClient {
   /**
    * Multi-vector similarity (`SIMILAR TO`) — ranks by max-pool cosine over
    * every `_emb_*` slot on the reference row (#1013).
+   *
+   * `SIMILAR TO` is a standalone statement form — it is NOT wrapped in
+   * `SELECT * FROM`. The engine's parser (`parse_similar_body` in
+   * `crates/relata-query/src/parser.rs`) expects
+   * `[PURPOSE '<p>'] SIMILAR TO <type> WHERE id = '<id>' LIMIT <n>` directly
+   * (#5269).
    */
   async similarTo(
     objectType: string,
@@ -181,9 +187,7 @@ export class VectorClient {
     } = {},
   ): Promise<VectorRow[]> {
     validateIdentifier(objectType, "object_type");
-    const sql =
-      `SELECT * FROM SIMILAR TO ${objectType} ` +
-      `WHERE id = $1 LIMIT ${opts.k ?? 10}`;
+    const sql = `SIMILAR TO ${objectType} WHERE id = $1 LIMIT ${opts.k ?? 10}`;
     const result = await this.#client.queryWithParams<VectorRow>(sql, [referenceId], {
       purpose: this.#purpose(opts.purpose),
     });
