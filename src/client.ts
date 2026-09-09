@@ -104,6 +104,7 @@ export {
 // module shares one identifier allowlist, one metric allowlist, and one
 // string-literal escaper without a runtime circular import.
 import { escapeSqlString, injectMatcherHint, sqlLiteral } from "./_sql.ts";
+import { bodyOrClosedStream } from "./_body.ts";
 
 /**
  * Percent-encode `s` for safe interpolation into a single URL path segment
@@ -2274,7 +2275,7 @@ export class RelataClient {
    */
   async #readCappedBody(response: Response): Promise<Uint8Array> {
     const cap = this.#maxResponseBytes;
-    const body = response.body ?? new ReadableStream<Uint8Array>();
+    const body = bodyOrClosedStream(response);
     const reader = body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;

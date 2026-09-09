@@ -23,6 +23,7 @@
 
 import { RelataClient, DEFAULT_MAX_RESPONSE_BYTES } from "./client.ts";
 import { assertNotRedirected, ResponseTooLargeError } from "./errors.ts";
+import { bodyOrClosedStream } from "./_body.ts";
 
 // ---------------------------------------------------------------------------
 // S3Client
@@ -227,7 +228,7 @@ export class S3Client {
    */
   async #readCappedBody(response: Response): Promise<Uint8Array> {
     const cap = this.#maxResponseBytes;
-    const body = response.body ?? new ReadableStream<Uint8Array>();
+    const body = bodyOrClosedStream(response);
     const reader = body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
@@ -339,7 +340,7 @@ export class S3Client {
     return {
       status: response.status,
       headers: respHeaders,
-      body: response.body ?? new ReadableStream<Uint8Array>(),
+      body: bodyOrClosedStream(response),
     };
   }
 

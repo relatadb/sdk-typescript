@@ -17,6 +17,7 @@
 import { RelataClient } from "./client.ts";
 import { assertNotRedirected } from "./errors.ts";
 import { StreamingHttpError } from "./streaming.ts";
+import { bodyOrClosedStream } from "./_body.ts";
 
 /**
  * A single structured observability event yielded by `GET /observe/stream`.
@@ -111,7 +112,7 @@ export class ObservabilityClient {
       const bodyText = await response.text();
       throw new StreamingHttpError(response.status, bodyText);
     }
-    const body = response.body ?? new ReadableStream<Uint8Array>();
+    const body = bodyOrClosedStream(response);
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";

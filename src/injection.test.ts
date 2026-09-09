@@ -100,6 +100,22 @@ test("injection: similarTo rejects bad object_type, binds referenceId", async ()
   assert.deepEqual(body.params, [payload]);
 });
 
+test("#5269: similarTo emits the engine's standalone SIMILAR TO statement form (not SELECT * FROM …)", async () => {
+  // Regression for #5269: SDK 2.5.5 built `SELECT * FROM SIMILAR TO <type>
+  // WHERE id = $1 LIMIT <n>`, which crates/relata-query/src/parser.rs's
+  // `parse_similar_body` rejects with REL_PARSE — the grammar is the
+  // standalone statement `SIMILAR TO <type> WHERE id = '<id>' LIMIT <n>`,
+  // with no `SELECT * FROM` wrapper. Assert the exact wire string so this
+  // can't silently drift again.
+  const { fetch, calls } = mockFetch();
+  const v = new VectorClient(makeClient(fetch));
+  await v.similarTo("Person", "person-alice", { k: 3 });
+  assert.equal(calls.length, 1);
+  const body = JSON.parse(calls[0]?.body ?? "{}");
+  assert.equal(body.sql, "SIMILAR TO Person WHERE id = $1 LIMIT 3");
+  assert.deepEqual(body.params, ["person-alice"]);
+});
+
 test("injection: eraseSubject escapes the value into a contained literal", async () => {
   const { fetch, calls } = mockFetch();
   const relata = makeClient(fetch);
