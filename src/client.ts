@@ -696,8 +696,40 @@ export class RelataClient {
     return this.#get("/types");
   }
 
-  /** Register a custom object type at runtime. */
-  async registerType(name: string, spec?: Record<string, unknown>): Promise<Record<string, unknown>> {
+  /**
+   * Register a custom object type at runtime (`POST /types`). `spec` mirrors
+   * the server's full `TypeDef` body (`crates/relata-cli/src/serve/types_routes.rs`):
+   *
+   * - `description`/`owner` — free-text, not schema-enforced.
+   * - `properties` — `{ name, required?, stateMachine?: { initialState, transitions: [{ from, to }] } }[]`.
+   * - `computedColumns` — `{ name, kind: "concat" | "static", fields?, separator?, value? }[]`.
+   * - `graphTriggers` — `{ linkType, srcField, dstField }[]`: on every ingested row of this
+   *   type, materialise a `LinkStore` edge from `srcField`'s value to `dstField`'s value,
+   *   typed `linkType` — the mechanism behind automatic graph wiring on ingest.
+   * - `bm25Params` — `{ k1, b }`, overrides the full-text scoring preset for this type only.
+   * - `force` — required to redefine a `computedColumns` formula or `stateMachine` on a type
+   *   that already has rows (otherwise 409); existing rows are never retroactively revalidated.
+   *
+   * `spec`'s keys are wire-cased (`graph_triggers`, `computed_columns`, `bm25_params`,
+   * `src_field`/`dst_field`, `state_machine`, `initial_state`) — pass them exactly as the
+   * server expects; this method does not camelCase-translate.
+   */
+  async registerType(
+    name: string,
+    spec?: Record<string, unknown> & {
+      description?: string;
+      owner?: string;
+      properties?: Array<{
+        name: string;
+        required?: boolean;
+        state_machine?: { initial_state: string; transitions?: Array<{ from: string; to: string }> };
+      }>;
+      computed_columns?: Array<{ name: string; kind: "concat" | "static"; fields?: string[]; separator?: string; value?: string }>;
+      graph_triggers?: Array<{ link_type: string; src_field: string; dst_field: string }>;
+      bm25_params?: { k1: number; b: number };
+      force?: boolean;
+    },
+  ): Promise<Record<string, unknown>> {
     return this.#post("/types", { name, ...spec });
   }
 
@@ -948,8 +980,21 @@ export class RelataClient {
   }
 
   /** Register a webhook for push notifications (#967 Tier 5b). */
-  async registerWebhook(url: string, eventTypes?: string[]): Promise<Record<string, unknown>> {
-    return this.#post("/webhooks", { url, event_types: eventTypes ?? [] });
+  /**
+   * Register a webhook for push notifications (#967 Tier 5b). `opts.secret`,
+   * when supplied, is stored server-side (never echoed back by `listWebhooks`)
+   * and used to sign every delivered payload with HMAC-SHA256 in the
+   * `X-Webhook-Signature` header — the only way to get a *signed* (verifiable)
+   * webhook; omitting it registers an unsigned one.
+   */
+  async registerWebhook(
+    url: string,
+    eventTypes?: string[],
+    opts?: { secret?: string },
+  ): Promise<Record<string, unknown>> {
+    const body: Record<string, unknown> = { url, event_types: eventTypes ?? [] };
+    if (opts?.secret !== undefined) body["secret"] = opts.secret;
+    return this.#post("/webhooks", body);
   }
 
   /** List registered webhooks. */
