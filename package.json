@@ -1,6 +1,6 @@
 {
   "name": "@zysec-ai/relata-sdk",
-  "version": "2.6.1",
+  "version": "2.6.2",
   "description": "TypeScript SDK for the Relata data engine — ontology-driven, enterprise-grade workloads",
   "type": "module",
   "exports": {
@@ -74,12 +74,24 @@
     "llamaindex": "^0.12.0"
   },
   "peerDependenciesMeta": {
-    "@grpc/grpc-js": { "optional": true },
-    "@langchain/core": { "optional": true },
-    "@langchain/langgraph-checkpoint": { "optional": true },
-    "apache-arrow": { "optional": true },
-    "langchain": { "optional": true },
-    "llamaindex": { "optional": true }
+    "@grpc/grpc-js": {
+      "optional": true
+    },
+    "@langchain/core": {
+      "optional": true
+    },
+    "@langchain/langgraph-checkpoint": {
+      "optional": true
+    },
+    "apache-arrow": {
+      "optional": true
+    },
+    "langchain": {
+      "optional": true
+    },
+    "llamaindex": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=18.0.0"
