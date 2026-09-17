@@ -124,9 +124,11 @@ export function pathSegment(s: string): string {
 export const DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
 /**
- * Build a `SELECT * FROM FACE_SEARCH(...)` ticket (#2251). Mirrors the server
+ * Build a bare `FACE_SEARCH(...)` ticket (#2251, #5492). Mirrors the server
  * operator in `relata_query::parser`: `FACE_SEARCH('<csv floats>', '<gallery>',
- * K => n, THRESHOLD => f)` (defaults K=10, THRESHOLD=0.7).
+ * K => n, THRESHOLD => f)` (defaults K=10, THRESHOLD=0.7). The engine's
+ * "OPERATOR(…) keyword dispatch" (`parser/wireup.rs`) only recognizes this
+ * form as a bare top-level statement, not wrapped in `SELECT * FROM` (#5492).
  * @internal
  */
 export function buildFaceSearchSql(
@@ -137,12 +139,13 @@ export function buildFaceSearchSql(
   const csv = typeof embedding === "string" ? embedding : embedding.map((x) => Number(x)).join(",");
   const k = opts.k ?? 10;
   const threshold = opts.threshold ?? 0.7;
-  return `SELECT * FROM FACE_SEARCH(${sqlLiteral(csv)}, ${sqlLiteral(galleryId)}, K => ${k}, THRESHOLD => ${threshold})`;
+  return `FACE_SEARCH(${sqlLiteral(csv)}, ${sqlLiteral(galleryId)}, K => ${k}, THRESHOLD => ${threshold})`;
 }
 
 /**
- * Build a `SELECT * FROM MATCH_PDQ(...)` ticket (#2251). Mirrors
- * `MATCH_PDQ('<hash>', '<corpus>', THRESHOLD => f)` (default 0.9).
+ * Build a bare `MATCH_PDQ(...)` ticket (#2251, #5492). Mirrors
+ * `MATCH_PDQ('<hash>', '<corpus>', THRESHOLD => f)` (default 0.9). Bare
+ * top-level form only — see {@link buildFaceSearchSql}'s #5492 note.
  * @internal
  */
 export function buildMatchPdqSql(
@@ -150,15 +153,16 @@ export function buildMatchPdqSql(
   queryHash: string,
   threshold = 0.9,
 ): string {
-  return `SELECT * FROM MATCH_PDQ(${sqlLiteral(queryHash)}, ${sqlLiteral(corpusId)}, THRESHOLD => ${threshold})`;
+  return `MATCH_PDQ(${sqlLiteral(queryHash)}, ${sqlLiteral(corpusId)}, THRESHOLD => ${threshold})`;
 }
 
 /**
- * Build a `SELECT * FROM SIMILAR_IMAGE(...)` ticket (#2840, PR #2859). Mirrors
+ * Build a bare `SIMILAR_IMAGE(...)` ticket (#2840, PR #2859, #5492). Mirrors
  * the server operator in `relata_query::parser`: `SIMILAR_IMAGE('<media_ref>',
  * THRESHOLD => f, INDEX => '<index>')` (default THRESHOLD=0.9; `INDEX` is
  * omitted from the SQL entirely when not supplied, matching the parser's
- * `Option<String>` for the corpus/index scope).
+ * `Option<String>` for the corpus/index scope). Bare top-level form only —
+ * see {@link buildFaceSearchSql}'s #5492 note.
  * @internal
  */
 export function buildSimilarImageSql(
@@ -166,7 +170,7 @@ export function buildSimilarImageSql(
   opts: { threshold?: number; index?: string } = {},
 ): string {
   const threshold = opts.threshold ?? 0.9;
-  let sql = `SELECT * FROM SIMILAR_IMAGE(${sqlLiteral(mediaRef)}, THRESHOLD => ${threshold}`;
+  let sql = `SIMILAR_IMAGE(${sqlLiteral(mediaRef)}, THRESHOLD => ${threshold}`;
   if (opts.index !== undefined) sql += `, INDEX => ${sqlLiteral(opts.index)}`;
   sql += ")";
   return sql;
@@ -1275,8 +1279,7 @@ export class RelataClient {
   /**
    * Biometric face k-NN search against a gallery (#2251, ADR-030).
    *
-   * Executes `SELECT * FROM FACE_SEARCH(...)` through the governed `/query`
-   * door.
+   * Executes `FACE_SEARCH(...)` through the governed `/query` door.
    *
    * @param galleryId - Gallery to search (matches `MediaEmbedding.gallery_id`).
    * @param embedding - Probe face embedding as a number array, or a
@@ -1305,8 +1308,8 @@ export class RelataClient {
   /**
    * Perceptual-hash (PDQ) near-duplicate search over a corpus (#2251).
    *
-   * Executes `SELECT * FROM MATCH_PDQ(...)` through the governed `/query`
-   * door. PDQ near-duplicates differ by ≤ 31 bits (ADR-187).
+   * Executes `MATCH_PDQ(...)` through the governed `/query` door. PDQ
+   * near-duplicates differ by ≤ 31 bits (ADR-187).
    *
    * @param corpusId - Hash corpus (matches `MediaHash.corpus_id`).
    * @param queryHash - PDQ hash as a hex string.
@@ -1328,8 +1331,7 @@ export class RelataClient {
    * Near-duplicate/similar-image search against a media reference (#2840,
    * PR #2859).
    *
-   * Executes `SELECT * FROM SIMILAR_IMAGE(...)` through the governed
-   * `/query` door.
+   * Executes `SIMILAR_IMAGE(...)` through the governed `/query` door.
    *
    * @param mediaRef - Reference media identifier to find near-duplicates of.
    * @param opts - `threshold` (minimum similarity 0–1, default 0.9), `index`
