@@ -65,8 +65,16 @@ export class ObjectClient extends TypedClientBase {
    * key; re-upserting with the same id supersedes bi-temporally.
    * Wraps `POST /ingest?object_type=<Type>` with an NDJSON body.
    *
-   * @returns The server's upsert receipt
-   *          (`object_id`, `write_seq`, `valid_from`).
+   * **Resolves, does not throw, on a schema rejection.** `POST /ingest` is an
+   * asynchronous queue-ack: a row rejected by schema validation still yields
+   * a normal resolved promise, e.g.
+   * `{ rows_queued: 0, rows_rejected: 1, errors: ["Type.field: minCount 1 not met"] }`.
+   * "No throw" therefore does NOT mean "stored" — callers MUST check
+   * `rows_rejected` / `errors` on every call. A queued row is also not yet
+   * SQL-visible; see `batchUpsert` when read-your-writes matters.
+   *
+   * @returns The ingest ack (`rows_queued`, `rows_rejected`, `errors`,
+   *          `task_id`, ...), not a per-row receipt.
    */
   async upsert(
     objectType: string,
@@ -87,6 +95,9 @@ export class ObjectClient extends TypedClientBase {
    * interface Person { _pk: string; name: string; email: string }
    * await objects.typedUpsert("Person", { _pk: "p1", name: "Alice", email: "a@b.com" });
    * ```
+   *
+   * Same contract as `upsert`: a schema rejection resolves with
+   * `rows_rejected > 0` and does not throw — check the returned ack.
    */
   async typedUpsert<T extends { _pk: string }>(
     objectType: string,
@@ -100,6 +111,9 @@ export class ObjectClient extends TypedClientBase {
   /**
    * Bulk upsert. Each row must carry its own `id` key.
    * Wraps `POST /ingest?object_type=<Type>` with an NDJSON body.
+   *
+   * Like `upsert`, per-row rejections are reported in the returned receipt
+   * rather than thrown — inspect its rejected count and `errors`.
    *
    * @returns The bulk receipt
    *          (`accepted`, `rejected`, `write_seq`, `queue_depth`).
