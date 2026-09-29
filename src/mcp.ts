@@ -179,8 +179,9 @@ export class McpClient extends TypedClientBase {
    * `get_entities` — paginated entity list.
    *
    * `objectType` is required by the server as `entity_type` (#4620); an
-   * optional `filters` object (server field name, sent as-is) does exact-match
-   * client-side filtering by field value.
+   * optional `filters` object (server field name, sent as-is) is pushed into
+   * the SQL WHERE clause server-side before LIMIT (#5533): string values match
+   * exactly but case-insensitively, numbers/booleans exactly.
    */
   async getEntities(
     objectType: string,
