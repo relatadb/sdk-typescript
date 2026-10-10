@@ -1011,11 +1011,6 @@ export class RelataClient {
     return this.#delete(`/webhooks/${pathSegment(id)}`);
   }
 
-  /** Execute a SPARQL query. */
-  async sparql(query: string): Promise<Record<string, unknown>> {
-    return this.#post("/sparql", { query });
-  }
-
   /** Get cluster topology. */
   async clusterTopology(): Promise<Record<string, unknown>> {
     return this.#get("/cluster/topology");
