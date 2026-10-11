@@ -453,12 +453,35 @@ const entries = await audit.entries({ purpose: "compliance", limit: 50 });
 | `objects.ts` | `ObjectClient` | Typed upsert + batch via `/ingest?object_type=` |
 | `ingest.ts` | `IngestClient` | Bulk NDJSON + CSV + media task status; it does not upload raw media bytes |
 | `vectors.ts` | `VectorClient` | KNN + hybrid search + similar-to (SQL-backed) |
-| `system.ts` | `SystemClient` | LLM config + test + jobs status |
+| `system.ts` | `SystemClient` | Generic jobs and operator surfaces; no feed broker routing |
+| `feed-broker.ts` | `FeedBrokerClient` | Optional RIFN broker health, channels, signed-entry publishing at an explicit broker URL |
 | `streaming.ts` | `StreamingClient` | NDJSON row streams + SSE consumers (watch/alerts) + Arrow IPC |
 | `tenants.ts` | `TenantAdminClient` | Tenant CRUD + quota + sharing agreements + platform admin |
 | `backup.ts` | `BackupClient` | Backup / restore / PITR (admin) |
 | `tokens.ts` | `TokenClient` | Dedup / uniqueness tokens (test-and-set) |
 | `log.ts` | `LogClient` | Ordered integrity log (append / head / load leaves) |
+
+The former `get_domain_summary` MCP route is not a core tool in v3.0. To build
+the same application-facing inventory, call generic, tenant-scoped
+`mcp.listEntityTypes()` and pass the result to `summarizeDomain("financial", inventory)`.
+That helper supplies local profile metadata; it performs no extra query or
+authorization check.
+
+```ts
+import { createClient, McpClient, summarizeDomain } from "@zysec-ai/relata-sdk";
+
+const db = createClient("http://localhost:9090", { defaultPurpose: "analytics" });
+const mcp = McpClient.fromClient(db);
+const inventory = await mcp.listEntityTypes();
+console.log(summarizeDomain("financial", inventory));
+```
+
+RIFN is an optional broker service with its own URL, separate from the Relata
+database listener. Construct `FeedBrokerClient` with that explicit broker URL
+and its own options. Its `publish(publisherDid, entry)` sends a complete,
+caller-signed feed entry plus the required `X-Publisher-Did`; the SDK does not
+create or sign entries, and `SystemClient.fromClient()` does not configure a
+broker client.
 
 **Admin-listener reachability (`adminBaseUrl`, #2321):** on a hardened
 `server`/`cluster` deployment, `/admin/*` and `/platform/*` are mounted only

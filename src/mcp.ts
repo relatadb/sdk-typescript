@@ -216,18 +216,6 @@ export class McpClient extends TypedClientBase {
   }
 
   /**
-   * `get_domain_summary` — counts + freshness per type for one domain.
-   *
-   * The server's `mcp_tool_get_domain_summary` requires a `domain` key
-   * (e.g. `"financial"`, `"telco"`, `"cyber"`, `"humint"`, `"narcotics"`,
-   * `"fara"`, `"maritime"`, `"border"`, `"sanctions"`) — `object_type` is
-   * never read (#4645).
-   */
-  async getDomainSummary(domain: string): Promise<Record<string, unknown>> {
-    return this.callTool("get_domain_summary", { domain });
-  }
-
-  /**
    * `find_in_social_corpus` — search the ingested social-media corpus.
    *
    * The server's `mcp_tool_find_in_social_corpus` requires `object_type`

@@ -145,6 +145,8 @@ export { GovernanceClient } from "./governance.ts";
 
 export { McpClient } from "./mcp.ts";
 export { unwrapMcp } from "./mcp.ts";
+export { summarizeDomain } from "./domain-summary.ts";
+export type { DomainSummary, DomainSummaryResult, DomainTypeCount, VisibleTypeInventory } from "./domain-summary.ts";
 
 export { A2AClient } from "./a2a.ts";
 
@@ -353,6 +355,9 @@ export type { VectorRow } from "./vectors.ts";
 
 
 export { SystemClient } from "./system.ts";
+
+export { FeedBrokerClient } from "./feed-broker.ts";
+export type { FeedEntry, FeedBrokerClientOptions } from "./feed-broker.ts";
 
 export { StreamingClient } from "./streaming.ts";
 export { StreamingHttpError } from "./streaming.ts";

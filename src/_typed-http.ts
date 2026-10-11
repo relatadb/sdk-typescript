@@ -240,6 +240,15 @@ export class TypedClientBase {
     return this.#send<T>("POST", path, body);
   }
 
+  /** @internal Send JSON with per-request headers for external service APIs. */
+  protected async _postWithHeaders<T = Record<string, unknown>>(
+    path: string,
+    body: Record<string, unknown>,
+    extraHeaders: Record<string, string>,
+  ): Promise<T> {
+    return this.#send<T>("POST", path, body, extraHeaders);
+  }
+
   /** @internal */
   protected async _put<T = Record<string, unknown>>(
     path: string,
@@ -332,9 +341,11 @@ export class TypedClientBase {
     method: string,
     path: string,
     body: Record<string, unknown> | undefined,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
     const url = `${this.#resolveBaseUrl(path)}${path}`;
     const headers = this.#buildHeaders();
+    if (extraHeaders !== undefined) Object.assign(headers, extraHeaders);
     const init: RequestInit = { method, headers, redirect: "manual" };
     if (body !== undefined) {
       headers["Content-Type"] = "application/json";
