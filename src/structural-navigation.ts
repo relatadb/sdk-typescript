@@ -4,7 +4,7 @@
  * `sdks/python/relata/structural_navigation.py` (#4581, TS/Go parity —
  * epic #4576).
  *
- * The substrate half of #4542 (`crates/relata-storage/src/document_ingest.rs`
+ * The optional application adapter half of #4542 (`apps/relata-connectors/src/document_ingest.rs`
  * `document_structure_batch`) derives a `DocumentStructureNode` tree from
  * each document's `section_path`/`page_start`/`page_end` — one node per
  * distinct heading-breadcrumb prefix, plus a synthetic root, each carrying a
@@ -153,7 +153,7 @@ export class StructuralNavigator {
    * Build a {@link StructureNode} from one `/query` result row.
    *
    * `leafChunkIds` is stored server-side as a JSON array string
-   * (`crates/relata-storage/src/document_ingest.rs` — no native array
+   * (`apps/relata-connectors/src/document_ingest.rs` — no native array
    * `CanonicalValue` variant); this parses it back into a real list,
    * defaulting to `[]` on anything malformed rather than throwing, so a
    * node with no directly-attached chunks (an internal/structural-only

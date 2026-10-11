@@ -15,8 +15,8 @@ export type RelataRow = Record<string, unknown>;
 
 // ── CDR ingest helpers (#2252) ─────────────────────────────────────────────────
 
-// Canonical CDR column → accepted aliases (mirrors the server's
-// `CdrRecord::from_csv_row` header recognition, case-insensitive server-side).
+// Canonical CDR field → accepted input aliases. CDR normalization is an
+// application adapter; the server accepts the canonical row via generic ingest.
 const CDR_ALIASES: Record<string, readonly string[]> = {
   caller: ["caller", "caller_msisdn", "a_number", "a_msisdn"],
   callee: ["callee", "callee_msisdn", "b_number", "b_msisdn", "called"],
@@ -25,28 +25,84 @@ const CDR_ALIASES: Record<string, readonly string[]> = {
   tower: ["tower", "tower_id", "cell_id", "site", "cell"],
   type: ["type", "call_type", "record_type"],
 };
-const CDR_COLUMNS = ["caller", "callee", "start", "duration", "tower", "type"] as const;
-
-/** Render a CDR cell value — the server parses CSV via naive split(','). */
-function cdrField(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  // Strip commas / CR / LF so a value can never break column alignment.
-  return String(value).replace(/,/g, "").replace(/[\r\n]/g, " ");
+function cdrValue(row: RelataRow, aliases: readonly string[]): unknown {
+  const values = new Map(Object.entries(row).map(([key, value]) => [key.toLowerCase(), value]));
+  for (const key of aliases) if (values.has(key)) return values.get(key);
+  return undefined;
 }
 
-/** Serialise typed CDR rows into the CSV shape `POST /ingest/cdr` expects. */
-function rowsToCdrCsv(rows: RelataRow[]): string {
-  const lines: string[] = [CDR_COLUMNS.join(",")];
-  for (const row of rows) {
-    const fields = CDR_COLUMNS.map((col) => {
-      for (const key of CDR_ALIASES[col] ?? []) {
-        if (key in row) return cdrField(row[key]);
-      }
-      return "";
-    });
-    lines.push(fields.join(","));
+function cdrInteger(value: unknown, name: string, fallback?: number): number {
+  if (value === undefined || value === null) {
+    if (fallback !== undefined) return fallback;
+    throw new Error(`${name} '' is not an integer`);
   }
-  return lines.join("\n");
+  const text = String(value).trim();
+  if (!/^[+-]?\d+$/.test(text)) throw new Error(`${name} '${text}' is not an integer`);
+  const result = Number(text);
+  if (!Number.isSafeInteger(result)) throw new Error(`${name} '${text}' is outside JavaScript's safe integer range`);
+  return result;
+}
+
+function cdrTimestamp(value: unknown, fallbackNs: bigint): bigint {
+  const raw = value === undefined || value === null
+    ? fallbackNs
+    : BigInt(String(value).trim());
+  const ns = raw < 10_000_000_000_000n ? raw * 1_000_000_000n : raw;
+  if (ns < -(1n << 63n) || ns > (1n << 63n) - 1n) throw new Error(`call_start '${raw}': value out of range for i64`);
+  return ns;
+}
+
+function cdrJsonLine(row: RelataRow): string {
+  const fields = Object.entries(row).map(([key, value]) =>
+    `${JSON.stringify(key)}:${typeof value === "bigint" ? value.toString() : JSON.stringify(value)}`
+  );
+  return `{${fields.join(",")}}`;
+}
+
+function cdrMetadata(row: RelataRow, normalized: RelataRow): void {
+  for (const field of ["_pk", "id"] as const) {
+    const value = cdrValue(row, [field]);
+    if (value !== undefined && value !== null) normalized[field] = value;
+  }
+  const sourceFileId = cdrValue(row, ["source_file_id"]);
+  if (sourceFileId !== undefined && sourceFileId !== null) {
+    normalized["source_file_id"] = sourceFileId;
+  }
+}
+
+function normalizeCdrRows(rows: RelataRow[]): { rows: RelataRow[]; errors: RelataRow[] } {
+  const normalized: RelataRow[] = [];
+  const errors: RelataRow[] = [];
+  const nowNs = BigInt(Date.now()) * 1_000_000n;
+  rows.forEach((row, index) => {
+    try {
+      const callerRaw = cdrValue(row, CDR_ALIASES["caller"] ?? []);
+      const calleeRaw = cdrValue(row, CDR_ALIASES["callee"] ?? []);
+      const callerDigits = String(callerRaw ?? "").replace(/[^0-9]/g, "");
+      const calleeDigits = String(calleeRaw ?? "").replace(/[^0-9]/g, "");
+      if (callerDigits.length > 15) throw new Error(`caller_msisdn '${callerRaw}': too many digits (max 15 for E.164)`);
+      if (calleeDigits.length > 15) throw new Error(`callee_msisdn '${calleeRaw}': too many digits (max 15 for E.164)`);
+      const start = cdrTimestamp(cdrValue(row, CDR_ALIASES["start"] ?? []), nowNs);
+      const duration = cdrInteger(cdrValue(row, CDR_ALIASES["duration"] ?? []), "duration", 0);
+      if (duration < 0 || duration > 0xffff_ffff) throw new Error(`duration '${duration}': value out of range for u32`);
+      const type = String(cdrValue(row, CDR_ALIASES["type"] ?? []) ?? "").trim().toLowerCase();
+      const callType = ({ voice: "voice", call: "voice", "0": "voice", sms: "sms", mms: "sms", "1": "sms", data: "data", gprs: "data", "2": "data" } as Record<string, string>)[type] ?? "unknown";
+      const normalizedRow: RelataRow = {
+        caller_msisdn: cdrInteger(callerDigits, "caller_msisdn"),
+        callee_msisdn: cdrInteger(calleeDigits, "callee_msisdn"),
+        call_start_ns: start,
+        duration_secs: duration,
+        tower_id: String(cdrValue(row, CDR_ALIASES["tower"] ?? []) ?? "").trim(),
+        call_type: callType,
+        source_file_id: 0,
+      };
+      cdrMetadata(row, normalizedRow);
+      normalized.push(normalizedRow);
+    } catch (error) {
+      errors.push({ row: index + 1, error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+  return { rows: normalized, errors };
 }
 
 /** Options inherited from the parent client. */
@@ -196,24 +252,30 @@ export class IngestClient extends TypedClientBase {
   }
 
   /**
-   * Ingest CDR (call detail records) via `POST /ingest/cdr` (#2252).
-   *
-   * Each row maps CDR fields (`caller`, `callee`, `start`, `duration`, `tower`,
-   * `type`); common aliases like `caller_msisdn`/`a_number` are accepted. Rows
-   * are serialised to the CSV shape the server's `CdrBatch::from_csv` expects.
-   * `purpose` is mandatory server-side — pass it here or via the client default.
+   * Normalize telecom CDR aliases, then queue canonical `CdrRecord` rows via
+   * `POST /ingest?object_type=CdrRecord`. Invalid rows are returned in
+   * `errors`; poll the returned `task_id` for writer completion.
    */
   async ingestCdr(
     rows: RelataRow[],
     opts: { purpose?: string } = {},
   ): Promise<Record<string, unknown>> {
-    const csv = rowsToCdrCsv(rows);
-    return this._sendRaw(
-      "POST",
-      this.purposePath("/ingest/cdr", opts.purpose),
-      csv,
-      "text/csv",
-    );
+    const normalized = normalizeCdrRows(rows);
+    const receipt = normalized.rows.length > 0
+      ? await this._sendRaw(
+        "POST",
+        this.paramsPath("CdrRecord", opts.purpose),
+        normalized.rows.map(cdrJsonLine).join("\n"),
+        "application/x-ndjson",
+      )
+      : await this._sendRaw("POST", this.paramsPath("CdrRecord", opts.purpose), "[]", "application/json");
+    const serverErrors = Array.isArray(receipt["errors"]) ? receipt["errors"] : [];
+    const serverRejected = typeof receipt["rows_rejected"] === "number" ? receipt["rows_rejected"] : 0;
+    return {
+      ...receipt,
+      errors: [...normalized.errors, ...serverErrors],
+      rows_rejected: serverRejected + normalized.errors.length,
+    };
   }
 
   /** Ingest OTLP/JSON traces via `POST /v1/traces` (#2252). */

@@ -219,13 +219,10 @@ test("stats / version / ready / ingestDocument: map wire shapes", async () => {
     },
     {
       body: {
-        report_id: "r-1",
         task_id: "t-1",
-        chunks_ingested: 4,
-        relations_ingested: 2,
-        structure_nodes_ingested: 1,
-        warnings: [],
-        schema_version: "v1",
+        rows_queued: 2,
+        rows_rejected: 0,
+        errors: [],
         queue_depth: 2,
       },
     },
@@ -251,26 +248,26 @@ test("stats / version / ready / ingestDocument: map wire shapes", async () => {
   assert.equal(ready.isReady, true);
   assert.equal(ready.status, "ok");
 
-  const ingest = await relata.ingestDocument(
-    `{"chunk": 1}\n{"chunk": 2}`,
-    `{"schema": "v1"}`,
-  );
-  assert.equal(ingest.reportId, "r-1");
+  const documentRows = [
+    { _type: "DocumentSource", _pk: "doc-1", uri: "file://report.pdf" },
+    { _type: "DocumentChunk", _pk: "chunk-1", source_id: "doc-1", text: "hello" },
+  ];
+  const ingest = await relata.ingestDocument(documentRows);
   assert.equal(ingest.taskId, "t-1");
-  assert.equal(ingest.chunksIngested, 4);
-  assert.equal(ingest.relationsIngested, 2);
-  assert.equal(ingest.structureNodesIngested, 1);
+  assert.equal(ingest.rowsQueued, 2);
+  assert.equal(ingest.rowsRejected, 0);
   assert.equal(ingest.queueDepth, 2);
 
   // Verify the paths
   assert.equal(calls[0]?.url, "http://x/debug/stats");
   assert.equal(calls[1]?.url, "http://x/version");
   assert.equal(calls[2]?.url, "http://x/health/ready");
-  assert.equal(calls[3]?.url, "http://x/rag/ingest");
+  assert.equal(calls[3]?.url, "http://x/ingest/bulk");
   // Verify the ingest payload
   assert.deepEqual(JSON.parse(calls[3]?.body ?? "{}"), {
-    chunks_jsonl: `{"chunk": 1}\n{"chunk": 2}`,
-    manifest_json: `{"schema": "v1"}`,
+    objects: documentRows,
+    queued: true,
+    purpose: "analytics",
   });
 });
 
@@ -279,10 +276,10 @@ test("ingestDocumentStatus: maps the task-status wire shape and GET path", async
     body: {
       task_id: "t-1",
       status: "complete",
-      report_id: "r-1",
-      chunks_total: 4,
-      chunks_written: 4,
-      warnings: [],
+      rows_total: 4,
+      rows_written: 3,
+      rows_dropped: 1,
+      drop_reasons: ["write-failed"],
       _relata_write_token: { wall_ns: 123, counter: 0 },
     },
   });
@@ -294,9 +291,10 @@ test("ingestDocumentStatus: maps the task-status wire shape and GET path", async
   const status = await relata.ingestDocumentStatus("t-1");
   assert.equal(status.taskId, "t-1");
   assert.equal(status.status, "complete");
-  assert.equal(status.reportId, "r-1");
-  assert.equal(status.chunksTotal, 4);
-  assert.equal(status.chunksWritten, 4);
+  assert.equal(status.rowsTotal, 4);
+  assert.equal(status.rowsWritten, 3);
+  assert.equal(status.rowsDropped, 1);
+  assert.deepEqual(status.dropReasons, ["write-failed"]);
   assert.deepEqual(status.writeToken, { wallNs: 123, counter: 0 });
   // Unknown status normalises to "pending" rather than leaking arbitrary server text.
   const { fetch: fetch2 } = mockFetch({ body: { task_id: "t-2", status: "weird" } });
@@ -305,7 +303,7 @@ test("ingestDocumentStatus: maps the task-status wire shape and GET path", async
   assert.equal(pending.status, "pending");
   // GET path encodes the task id.
   assert.equal(calls[0]?.method, "GET");
-  assert.equal(calls[0]?.url, "http://x/rag/ingest/t-1");
+  assert.equal(calls[0]?.url, "http://x/ingest/tasks/t-1");
 });
 
 test("transport: auto-generates X-Request-ID per request", async () => {
@@ -351,6 +349,42 @@ test("transport: tenant / actingAs / delegatedBy become request headers", async 
   assert.equal(calls[0]?.headers["x-relata-tenant-id"], "acme");
   assert.equal(calls[0]?.headers["x-acting-as"], "user-bob");
   assert.equal(calls[0]?.headers["x-delegated-by"], "user-alice");
+});
+
+test("appendEvent sends the generic event contract and maps its receipt", async () => {
+  const { fetch, calls } = mockFetch({
+    status: 201,
+    body: {
+      event_id: "evt_abc",
+      object_type: "DocumentUsageEvent",
+      status: "accepted",
+      durability: "local_wal_sync",
+    },
+  });
+  const client = new RelataClient({ baseUrl: "http://x", fetch, tenant: "tenant-a" });
+  const receipt = await client.appendEvent({
+    object_type: "DocumentUsageEvent",
+    idempotency_key: "answer-1:citation",
+    target: { object_type: "DocumentSource", key: "report_id", value: "rpt-1" },
+    purpose: "rag-usage",
+    attributes: { cited: true },
+  });
+  assert.equal(calls[0]?.url, "http://x/events/append");
+  assert.equal(calls[0]?.method, "POST");
+  assert.equal(calls[0]?.headers["x-relata-tenant-id"], "tenant-a");
+  assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), {
+    object_type: "DocumentUsageEvent",
+    idempotency_key: "answer-1:citation",
+    target: { object_type: "DocumentSource", key: "report_id", value: "rpt-1" },
+    purpose: "rag-usage",
+    attributes: { cited: true },
+  });
+  assert.deepEqual(receipt, {
+    eventId: "evt_abc",
+    objectType: "DocumentUsageEvent",
+    status: "accepted",
+    durability: "local_wal_sync",
+  });
 });
 
 test("retry: retries on 503 then succeeds", async () => {

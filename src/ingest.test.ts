@@ -36,25 +36,33 @@ function mockFetch(body: unknown): {
   return { fetch, lastCall: () => last };
 }
 
-test("ingestCdr: serialises rows to CSV with aliases and threads purpose", async () => {
-  const { fetch, lastCall } = mockFetch({ rows_queued: 2, errors: [], queue_depth: 0 });
+test("ingestCdr: normalizes aliases, reports invalid rows, and queues via generic ingest", async () => {
+  const { fetch, lastCall } = mockFetch({ rows_queued: 1, rows_rejected: 0, errors: [], task_id: "itsk_test" });
   const client = new IngestClient({ baseUrl: "http://x", purpose: "finint", fetch });
   const out = await client.ingestCdr(
     [
-      { caller: "911234567890", callee: "919876543210", duration: 120, tower: "CELL-042", type: "voice" },
-      { a_number: "911111111111", b_number: "922222222222", tower_id: "CELL-001", call_type: "sms" },
+      { caller: "911234567890", callee: "919876543210", duration: 120, tower: "CELL-042", type: "voice", _pk: "cdr-stable-1", source_file_id: 42 },
+      { a_number: "+91 1111-1111", b_msisdn: "922222222222", call_start: 1_700_000_000, tower_id: "CELL-001", call_type: "sms", id: "cdr-stable-2", source_file_id: 43 },
+      { caller: "not a number", callee: "922222222222" },
     ],
     { purpose: "finint" },
   );
-  assert.equal((out as Record<string, unknown>)["rows_queued"], 2);
+  assert.equal(out["rows_queued"], 1);
+  assert.equal(out["task_id"], "itsk_test");
+  assert.equal(out["rows_rejected"], 1);
+  assert.equal((out["errors"] as unknown[]).length, 1);
   const call = lastCall();
-  assert.equal(call.url, "http://x/ingest/cdr?purpose=finint");
-  const lines = (call.body ?? "").split("\n");
-  assert.equal(lines[0], "caller,callee,start,duration,tower,type");
-  // Aliases resolve to canonical columns.
-  assert.ok(lines[1]?.includes("911234567890"));
-  assert.ok(lines[2]?.includes("911111111111"));
-  assert.ok((call.body ?? "").includes("CELL-042"));
+  assert.equal(call.url, "http://x/ingest?object_type=CdrRecord&purpose=finint");
+  const rows = (call.body ?? "").split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]?.["caller_msisdn"], 911234567890);
+  assert.equal(rows[0]?.["call_type"], "voice");
+  assert.equal(rows[0]?.["_pk"], "cdr-stable-1");
+  assert.equal(rows[0]?.["source_file_id"], 42);
+  assert.equal(rows[1]?.["call_start_ns"], 1_700_000_000_000_000_000);
+  assert.equal(rows[1]?.["tower_id"], "CELL-001");
+  assert.equal(rows[1]?.["id"], "cdr-stable-2");
+  assert.equal(rows[1]?.["source_file_id"], 43);
 });
 
 test("otlpTraces/Logs/Metrics: POST JSON to the right /v1 door", async () => {

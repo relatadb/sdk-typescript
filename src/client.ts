@@ -29,7 +29,8 @@
 import {
   type AuditCountResponse,
   type ClusterNode,
-  type DocumentUsageResponse,
+  type EventAppendReceipt,
+  type EventAppendRequest,
   type HealthResponse,
   type IngestDocumentResponse,
   type IngestDocumentTaskStatus,
@@ -598,6 +599,24 @@ export class RelataClient {
   }
 
   /**
+   * Return type and link names the authenticated principal may read.
+   * This names-only context is intended for application-owned query
+   * composition; generated SQL must still be sent through {@link query}.
+   */
+  async querySchema(purpose?: string): Promise<{
+    purpose: string;
+    object_types: string[];
+    link_types: string[];
+  }> {
+    const params = new URLSearchParams();
+    if (purpose ?? this.#defaultPurpose) {
+      params.set("purpose", purpose ?? this.#defaultPurpose!);
+    }
+    const suffix = params.size > 0 ? `?${params.toString()}` : "";
+    return this.#get(`/query/schema${suffix}`);
+  }
+
+  /**
    * Register a custom object type at runtime (`POST /types`). `spec` mirrors
    * the server's full `TypeDef` body (`crates/relata-cli/src/serve/types_routes.rs`):
    *
@@ -1131,32 +1150,8 @@ export class RelataClient {
     return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
   }
 
-  // ── Maritime operators (#2247) ────────────────────────────────────────────
-
-  /** Vessel track — track a vessel's AIS position reports over a time window. */
-  async vesselTrack(mmsi: number, opts?: { windowSecs?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts = [`VESSEL_TRACK(${mmsi}`];
-    if (opts?.windowSecs !== undefined) parts.push(`, WINDOW => ${opts.windowSecs * 1_000_000_000}`);
-    parts.push(")");
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
-  }
-
-  /** Dark-fleet detection — flag vessels with AIS gaps (transponder-off periods). */
-  async darkFleetDetect(opts?: { maxGapHours?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const sql = opts?.maxGapHours !== undefined
-      ? `DARK_FLEET_DETECT(MAX_GAP_HOURS => ${opts.maxGapHours})`
-      : "DARK_FLEET_DETECT()";
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
-  }
-
-  /** Vessel-to-vessel (ship-to-ship) transfer detection — close-proximity encounters. */
-  async vesselToVesselTransfer(opts?: { proximityNm?: number; timeWindowMinutes?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts: string[] = [];
-    if (opts?.proximityNm !== undefined) parts.push(`PROXIMITY_NM => ${opts.proximityNm}`);
-    if (opts?.timeWindowMinutes !== undefined) parts.push(`TIME_WINDOW_MINUTES => ${opts.timeWindowMinutes}`);
-    const sql = parts.length ? `VESSEL_TO_VESSEL_TRANSFER(${parts.join(", ")})` : "VESSEL_TO_VESSEL_TRANSFER()";
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
-  }
+  // Domain workflows such as vessel-track reconstruction are solution code.
+  // Use governed SQL over the package-authored VesselPositionReport schema.
 
   // ── Multimedia operators (#2251, epic #655 — ADR-030) ───────────────────
   //
@@ -1441,77 +1436,56 @@ export class RelataClient {
   }
 
   /**
-   * Ingest a datagrep-extractor document into Relata.
+   * Queue a prepared document batch through the generic mixed-type HTTP
+   * contract. Extractors and document mapping belong in application adapters;
+   * this helper sends already-prepared governed rows to `/ingest/bulk`.
    *
-   * Submits the `_chunks.jsonl` and `_manifest.json` outputs of a `dgrep`
-   * extraction run to `POST /rag/ingest` (renamed from `/ingest/document` by
-   * #4499). The server parses and version-checks the protocol envelope, then
-   * queues the chunks for storage. See `GET /rag/specs` for the protocol
-   * version/field-contract handshake.
-   *
-   * @param chunksJsonl - Newline-delimited JSON string — one chunk per line,
-   *   as produced by `dgrep run --mode chunks`.
-   * @param manifestJson - JSON string of the extraction manifest.
-   * @returns The ingest receipt (`reportId`, `taskId`, `chunksIngested`,
-   *          `warnings`, `schemaVersion`, `queueDepth`). Poll `taskId` with
-   *          `ingestDocumentStatus()` to confirm storage completion (#1001).
-   *
-   * @throws {AuthError} Invalid/missing token.
-   * @throws {RateLimitedError} Ingest queue full (HTTP 429).
-   * @throws {ValidationError} Protocol error (HTTP 422).
-   * @throws {ServerError} Any other server-side failure (HTTP 5xx).
-   * @throws {NetworkError} Server unreachable.
+   * The batch should include its `DocumentSource`, `DocumentChunk` rows and
+   * any linked evidence rows, each with `_type` and stable `_pk` identity.
+   * The server admits all object types together under one process-local task
+   * receipt and applies normal auth, tenant, purpose, validation and write
+   * governance. Queue acceptance is not crash-durable; poll the task endpoint
+   * to observe rows written and dropped.
    */
   async ingestDocument(
-    chunksJsonl: string,
-    manifestJson: string,
+    objects: Array<Record<string, unknown>>,
+    purpose?: string,
   ): Promise<IngestDocumentResponse> {
     const wire = await this.#post<WireIngestDocumentResponse>(
-      "/rag/ingest",
-      { chunks_jsonl: chunksJsonl, manifest_json: manifestJson },
+      "/ingest/bulk",
+      {
+        objects,
+        queued: true,
+        ...(purpose ?? this.#defaultPurpose
+          ? { purpose: purpose ?? this.#defaultPurpose }
+          : {}),
+      },
     );
     return {
-      reportId: wire.report_id ?? "",
       taskId: wire.task_id ?? "",
-      chunksIngested: wire.chunks_ingested ?? 0,
-      ...(typeof wire.relations_ingested === "number"
-        ? { relationsIngested: wire.relations_ingested }
-        : {}),
-      ...(typeof wire.structure_nodes_ingested === "number"
-        ? { structureNodesIngested: wire.structure_nodes_ingested }
-        : {}),
-      warnings: Array.isArray(wire.warnings) ? wire.warnings : [],
-      schemaVersion: wire.schema_version ?? "",
+      rowsQueued: wire.rows_queued ?? 0,
+      rowsRejected: wire.rows_rejected ?? 0,
+      errors: Array.isArray(wire.errors) ? wire.errors : [],
       queueDepth: wire.queue_depth ?? 0,
     };
   }
 
   /**
-   * Poll the status of an async document-ingest task (#1001).
-   *
-   * `POST /rag/ingest` returns immediately with a `taskId`; chunks flush to
-   * storage in the background. Call this with the `taskId` until
-   * `status === "complete"`.
-   *
-   * @param taskId - The `taskId` returned by `ingestDocument()`.
-   * @returns The task status (`status`, `chunksTotal`, `chunksWritten`, …).
-   *
-   * @throws {AuthError} Invalid/missing token.
-   * @throws {NotFoundError} Unknown / wrong-endpoint `taskId` (HTTP 404).
-   * @throws {ServerError} Any other server-side failure (HTTP 5xx).
-   * @throws {NetworkError} Server unreachable.
+   * Poll generic mixed-type ingest task progress at `/ingest/tasks/:task_id`.
+   * Task state is process-local; `rows_written`/`rows_dropped` are the
+   * server-confirmed outcomes, not queue acceptance.
    */
   async ingestDocumentStatus(taskId: string): Promise<IngestDocumentTaskStatus> {
     const wire = await this.#get<WireIngestDocumentTaskStatus>(
-      `/rag/ingest/${encodeURIComponent(taskId)}`,
+      `/ingest/tasks/${encodeURIComponent(taskId)}`,
     );
     return {
       taskId: wire.task_id ?? taskId,
       status: wire.status === "complete" ? "complete" : "pending",
-      reportId: wire.report_id ?? null,
-      chunksTotal: wire.chunks_total ?? 0,
-      chunksWritten: wire.chunks_written ?? 0,
-      warnings: Array.isArray(wire.warnings) ? wire.warnings : [],
+      rowsTotal: wire.rows_total ?? 0,
+      rowsWritten: wire.rows_written ?? 0,
+      rowsDropped: wire.rows_dropped ?? 0,
+      dropReasons: Array.isArray(wire.drop_reasons) ? wire.drop_reasons : [],
       ...(wire._relata_write_token
         ? {
             writeToken: {
@@ -1524,47 +1498,18 @@ export class RelataClient {
   }
 
   /**
-   * Record a post-ingest usage signal against a `DocumentSource` (#4498).
-   *
-   * `citationCount`/`retrievalCount`/`lastCitedAt` are write-BACK signals,
-   * not ingest-time constants — an agentic RAG loop calls this once per
-   * retrieval/citation/feedback event, e.g. right after generating an
-   * answer that cites a chunk from `reportId`:
-   * `client.documentUsage(reportId, { cited: true })`.
-   *
-   * @param reportId - The `DocumentSource.reportId` this event targets.
-   * @param signal - At least one of `cited`, `retrieved`, `feedbackScore`
-   *   must be set. `cited: true` increments `citationCount` by 1 and sets
-   *   `lastCitedAt` to now; `retrieved: true` increments `retrievalCount`
-   *   by 1; `feedbackScore` (recommended range `[0.0, 1.0]`, not enforced
-   *   server-side) folds into `feedbackAvg` as a running mean.
-   * @returns The `DocumentSource`'s updated usage counters.
-   *
-   * @throws {NotFoundError} `reportId` has no live `DocumentSource` for the
-   *   caller's tenant (HTTP 404).
-   * @throws {ValidationError} No signal was supplied (HTTP 400).
-   * @throws {AuthError} Invalid/missing token.
-   * @throws {ServerError} Any other server-side failure (HTTP 5xx).
-   * @throws {NetworkError} Server unreachable.
+   * Append a schema-governed event with an explicit idempotency key.
+   * The server returns the original receipt on an exact retry and rejects a
+   * key reused with a different payload. Requires local persistent WAL and
+   * currently rejects cluster deployments.
    */
-  async documentUsage(
-    reportId: string,
-    signal: { cited?: boolean; retrieved?: boolean; feedbackScore?: number },
-  ): Promise<DocumentUsageResponse> {
-    const body: Record<string, unknown> = {};
-    if (signal.cited) body["cited"] = true;
-    if (signal.retrieved) body["retrieved"] = true;
-    if (signal.feedbackScore !== undefined) body["feedback_score"] = signal.feedbackScore;
-    const wire = await this.#post<WireDocumentUsageResponse>(
-      `/rag/documents/${encodeURIComponent(reportId)}/usage`,
-      body,
-    );
+  async appendEvent(request: EventAppendRequest): Promise<EventAppendReceipt> {
+    const wire = await this.#post<WireEventAppendReceipt>("/events/append", { ...request });
     return {
-      reportId: wire.report_id ?? reportId,
-      citationCount: wire.citation_count ?? null,
-      retrievalCount: wire.retrieval_count ?? null,
-      lastCitedAt: wire.last_cited_at ?? null,
-      feedbackAvg: wire.feedback_avg ?? null,
+      eventId: wire.event_id,
+      objectType: wire.object_type,
+      status: wire.status,
+      durability: wire.durability,
     };
   }
 
@@ -2138,36 +2083,32 @@ export class RelataClient {
 // Wire shapes that are private to the client module
 // ---------------------------------------------------------------------------
 
-/** @internal Wire shape for `POST /rag/ingest` (renamed from `/ingest/document`). */
+/** @internal Wire shape for queued `POST /ingest/bulk`. */
 interface WireIngestDocumentResponse {
-  report_id?: string;
   task_id?: string;
-  chunks_ingested?: number;
-  relations_ingested?: number;
-  structure_nodes_ingested?: number;
-  warnings?: string[];
-  schema_version?: string;
+  rows_queued?: number;
+  rows_rejected?: number;
+  errors?: string[];
   queue_depth?: number;
 }
 
-/** @internal Wire shape for `GET /rag/ingest/:task_id` (renamed from `/ingest/document/:task_id`). */
+/** @internal Wire shape for `GET /ingest/tasks/:task_id`. */
 interface WireIngestDocumentTaskStatus {
   task_id?: string;
   status?: string;
-  report_id?: string | null;
-  chunks_total?: number;
-  chunks_written?: number;
-  warnings?: string[];
+  rows_total?: number;
+  rows_written?: number;
+  rows_dropped?: number;
+  drop_reasons?: string[];
   _relata_write_token?: { wall_ns: number; counter: number };
 }
 
-/** @internal Wire shape for `POST /rag/documents/:report_id/usage` (#4498). */
-interface WireDocumentUsageResponse {
-  report_id?: string;
-  citation_count?: number | null;
-  retrieval_count?: number | null;
-  last_cited_at?: number | null;
-  feedback_avg?: number | null;
+/** @internal Wire shape for `POST /events/append`. */
+interface WireEventAppendReceipt {
+  event_id: string;
+  object_type: string;
+  status: "accepted" | "duplicate";
+  durability: "local_wal_sync";
 }
 
 /** @internal Wire shape for `GET /version`. */

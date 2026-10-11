@@ -519,29 +519,6 @@ test("McpClient #2322: summarise sends ids", async () => {
   assert.equal(seen.arguments["scope"], "topic:fraud");
 });
 
-test("McpClient #2322: nlQuery sends query", async () => {
-  const seen = await callAndCapture((mcp) =>
-    mcp.nlQuery("find all persons in Dublin", { interpret: true }),
-  );
-  assert.equal(seen.name, "nl_query");
-  assert.equal(seen.arguments["query"], "find all persons in Dublin");
-  assert.equal(seen.arguments["interpret"], true);
-});
-
-test("McpClient #3267: nlQuery sends max_sub_questions when provided", async () => {
-  const seen = await callAndCapture((mcp) =>
-    mcp.nlQuery("find alice, and who alice is linked to", { maxSubQuestions: 3 }),
-  );
-  assert.equal(seen.name, "nl_query");
-  assert.equal(seen.arguments["max_sub_questions"], 3);
-});
-
-test("McpClient #3267: nlQuery omits max_sub_questions by default", async () => {
-  const seen = await callAndCapture((mcp) => mcp.nlQuery("find all persons in Dublin"));
-  assert.equal(seen.name, "nl_query");
-  assert.equal("max_sub_questions" in seen.arguments, false);
-});
-
 test("McpClient #2322: eraseSubject sends subject and reason", async () => {
   const seen = await callAndCapture((mcp) =>
     mcp.eraseSubject("alice@example.com", { reason: "user-request" }),
@@ -646,23 +623,6 @@ test("McpClient #2322: scheduleJob sends name", async () => {
   );
   assert.equal(seen.name, "schedule_job");
   assert.equal(seen.arguments["name"], "transaction_ring");
-});
-
-test("McpClient #2322: listWorkflows sends no args", async () => {
-  const seen = await callAndCapture((mcp) => mcp.listWorkflows());
-  assert.equal(seen.name, "list_workflows");
-});
-
-test("McpClient #2322: runWorkflow sends name", async () => {
-  const seen = await callAndCapture((mcp) => mcp.runWorkflow("aml-review"));
-  assert.equal(seen.name, "run_workflow");
-  assert.equal(seen.arguments["name"], "aml-review");
-});
-
-test("McpClient #2322: workflowStatus sends run_id", async () => {
-  const seen = await callAndCapture((mcp) => mcp.workflowStatus("run-1"));
-  assert.equal(seen.name, "workflow_status");
-  assert.equal(seen.arguments["run_id"], "run-1");
 });
 
 test("McpClient #2322: traceCrypto sends address", async () => {
@@ -1104,65 +1064,12 @@ test("IdentityClient: eraseSubject CERTIFY is destructive opt-in", async () => {
 // SystemClient
 // ---------------------------------------------------------------------------
 
-test("SystemClient: llmConfig, testLlm, jobsStatus", async () => {
-  const queue: MockResponse[] = [
-    { body: { endpoint: "http://llm" } },
-    { body: { ok: true, latency_ms: 12 } },
-    { body: { jobs: [{ id: "j1" }] } },
-  ];
+test("SystemClient: jobsStatus", async () => {
+  const queue: MockResponse[] = [{ body: { jobs: [{ id: "j1" }] } }];
   const { fetch, calls } = mockFetch(queue);
   const sys = new SystemClient({ baseUrl: "http://x", fetch });
-
-  await sys.llmConfig();
-  assert.equal(calls[0]?.url, "http://x/config/llm");
-
-  await sys.testLlm("hello", { model: "gpt-4" });
-  assert.deepEqual(JSON.parse(calls[1]?.body ?? "{}"), {
-    prompt: "hello",
-    model: "gpt-4",
-  });
-
   await sys.jobsStatus();
-  assert.equal(calls[2]?.url, "http://x/jobs");
-});
-
-test("SystemClient: jobs and workflow methods (#723)", async () => {
-  const queue: MockResponse[] = [
-    { body: { name: "c2_beacon_detect", status: "ok" } }, // jobStatus
-    { body: { workflows: ["demo_flow"] } }, // listWorkflows
-    { body: { name: "demo_flow" } }, // registerWorkflow
-    { body: { name: "demo_flow", steps: [] } }, // getWorkflow
-    { body: { run_id: "run-1", status: "running" } }, // runWorkflow
-    { body: { run_id: "run-1", status: "ok" } }, // workflowStatus
-    { body: { run_id: "run-1", attempt_count: 1, last_error: null, steps: [] } }, // workflowRun
-  ];
-  const { fetch, calls } = mockFetch(queue);
-  const sys = new SystemClient({ baseUrl: "http://x", fetch });
-
-  await sys.jobStatus("c2_beacon_detect");
-  assert.equal(calls[0]?.url, "http://x/jobs/c2_beacon_detect");
-
-  await sys.listWorkflows();
-  assert.equal(calls[1]?.url, "http://x/workflows");
-
-  await sys.registerWorkflow("demo_flow", []);
-  assert.equal(calls[2]?.url, "http://x/workflows");
-  assert.equal(calls[2]?.method, "POST");
-
-  await sys.getWorkflow("demo_flow");
-  assert.equal(calls[3]?.url, "http://x/workflows/demo_flow");
-
-  await sys.runWorkflow("demo_flow");
-  assert.equal(calls[4]?.url, "http://x/workflows/demo_flow/run");
-  assert.equal(calls[4]?.method, "POST");
-
-  await sys.workflowStatus("demo_flow");
-  assert.equal(calls[5]?.url, "http://x/workflows/demo_flow/status");
-
-  const detail = await sys.workflowRun("run-1");
-  assert.equal(calls[6]?.url, "http://x/workflows/runs/run-1");
-  assert.equal(detail.attempt_count, 1);
-  assert.equal(detail.last_error, null);
+  assert.equal(calls[0]?.url, "http://x/jobs");
 });
 
 // ---------------------------------------------------------------------------

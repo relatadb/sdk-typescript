@@ -64,6 +64,15 @@
 
 export { RelataClient } from "./client.ts";
 export type { RelataClientOptions } from "./types.ts";
+export { queryInNaturalLanguage, summariseMemory } from "./natural-language.ts";
+export type {
+  Completion,
+  CompletionContext,
+  NaturalLanguageQueryOptions,
+  NaturalLanguageQueryResult,
+} from "./natural-language.ts";
+export { recordUsage } from "./usage.ts";
+export type { UsageObservation } from "./usage.ts";
 
 // ---------------------------------------------------------------------------
 // Query builder
@@ -80,7 +89,9 @@ export type {
   AuditCountResponse,
   ClusterNode,
   ClusterNodesResponse,
-  DocumentUsageResponse,
+  EventAppendReceipt,
+  EventAppendRequest,
+  EventTarget,
   HealthResponse,
   IngestDocumentResponse,
   IngestDocumentTaskStatus,
@@ -342,7 +353,6 @@ export type { VectorRow } from "./vectors.ts";
 
 
 export { SystemClient } from "./system.ts";
-export type { WorkflowRun, WorkflowStepStatus } from "./system.ts";
 
 export { StreamingClient } from "./streaming.ts";
 export { StreamingHttpError } from "./streaming.ts";

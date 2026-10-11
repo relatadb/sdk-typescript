@@ -489,14 +489,22 @@ export class McpClient extends TypedClientBase {
   async remember(
     content: string,
     purpose: string,
-    opts: { confidence?: number; memoryClass?: string } = {},
+    opts: {
+      confidence?: number;
+      memoryClass?: string;
+      sessionId?: string;
+      fields?: Record<string, unknown>;
+    } = {},
   ): Promise<Record<string, unknown>> {
-    return this.callTool("remember", {
+    const args: Record<string, unknown> = {
       content,
       purpose,
       confidence: opts.confidence ?? 1.0,
       memory_class: opts.memoryClass ?? "semantic",
-    });
+    };
+    if (opts.sessionId !== undefined) args["session_id"] = opts.sessionId;
+    if (opts.fields !== undefined) args["fields"] = opts.fields;
+    return this.callTool("remember", args);
   }
 
   /**
@@ -520,6 +528,7 @@ export class McpClient extends TypedClientBase {
       budgetTokens?: number;
       stabilityDays?: number;
       cancelThreshold?: number;
+      sessionId?: string;
     } = {},
   ): Promise<Record<string, unknown>> {
     const args: Record<string, unknown> = {
@@ -534,6 +543,7 @@ export class McpClient extends TypedClientBase {
     if (opts.budgetTokens !== undefined) args["budget_tokens"] = opts.budgetTokens;
     if (opts.stabilityDays !== undefined) args["stability_days"] = opts.stabilityDays;
     if (opts.cancelThreshold !== undefined) args["cancel_threshold"] = opts.cancelThreshold;
+    if (opts.sessionId !== undefined) args["session_id"] = opts.sessionId;
     return this.callTool("recall", args);
   }
 
@@ -673,7 +683,11 @@ export class McpClient extends TypedClientBase {
     return this.callTool("resolve", args);
   }
 
-  /** `summarise` — governed, provenance-stamped summary of a session/topic. */
+  /**
+   * `summarise` — deterministic extractive compaction of a session/topic.
+   * For application-owned model composition over governed `recall` rows, use
+   * the exported `summariseMemory` helper with a completion callback.
+   */
   async summarise(
     opts: {
       ids?: string[];
@@ -690,29 +704,6 @@ export class McpClient extends TypedClientBase {
     if (opts.contents !== undefined) args["contents"] = opts.contents;
     if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
     return this.callTool("summarise", args);
-  }
-
-  /**
-   * `nl_query` — natural-language question translated to SQL and executed.
-   *
-   * A dialect router (#3267) classifies each question as SQL, Cypher, or a governed
-   * graph operator and prompts accordingly; the response carries a `dialect` field.
-   * Pass `maxSubQuestions > 1` to decompose a multi-part question (e.g. "find X, and
-   * who X is linked to") into independently-routed sub-questions — the response then
-   * carries `decomposed: true` and a `sub_results` array instead of a single result.
-   * Capped at 5 server-side regardless of the value given.
-   */
-  async nlQuery(
-    query: string,
-    opts: { purpose?: string; interpret?: boolean; maxSubQuestions?: number } = {},
-  ): Promise<Record<string, unknown>> {
-    const args: Record<string, unknown> = {
-      query,
-      interpret: opts.interpret ?? false,
-    };
-    if (opts.purpose !== undefined) args["purpose"] = opts.purpose;
-    if (opts.maxSubQuestions !== undefined) args["max_sub_questions"] = opts.maxSubQuestions;
-    return this.callTool("nl_query", args);
   }
 
   /** `erase_subject` — GDPR Art. 17 crypto-shred erasure with a signed receipt. */
@@ -866,21 +857,6 @@ export class McpClient extends TypedClientBase {
   /** `schedule_job` — trigger an immediate run of a named detection job. */
   async scheduleJob(name: string): Promise<Record<string, unknown>> {
     return this.callTool("schedule_job", { name });
-  }
-
-  /** `list_workflows` — list all registered workflow definitions. */
-  async listWorkflows(): Promise<Record<string, unknown>> {
-    return this.callTool("list_workflows", {});
-  }
-
-  /** `run_workflow` — start a workflow execution by name. */
-  async runWorkflow(name: string): Promise<Record<string, unknown>> {
-    return this.callTool("run_workflow", { name });
-  }
-
-  /** `workflow_status` — query step-level status of a workflow run. */
-  async workflowStatus(runId: string): Promise<Record<string, unknown>> {
-    return this.callTool("workflow_status", { run_id: runId });
   }
 
   /** `trace_crypto` — follow a cryptocurrency address hop-by-hop. */

@@ -354,68 +354,54 @@ export interface WireErrorResponse {
 // Ingest / introspection
 // ---------------------------------------------------------------------------
 
-/**
- * Response from `POST /rag/ingest` (renamed from `/ingest/document`) — the
- * datagrep-extractor envelope.
- */
+/** Receipt from a queued, mixed-type document batch sent through `/ingest/bulk`. */
 export interface IngestDocumentResponse {
-  /** Server-assigned manifest id for the ingested document. */
-  reportId: string;
-  /** Async task id — poll with `ingestDocumentStatus(taskId)` until `status === "complete"` (#1001). */
+  /** Process-local task id; poll with `ingestDocumentStatus(taskId)`. */
   taskId: string;
-  /** Number of chunks accepted into the ingest queue. */
-  chunksIngested: number;
-  /** Number of relation rows accepted, when reported by the server. */
-  relationsIngested?: number;
-  /** Number of structure nodes accepted, when reported by the server. */
-  structureNodesIngested?: number;
-  /** Non-fatal protocol warnings (e.g. newer-minor-version fields). */
-  warnings: string[];
-  /** Protocol version the server parsed the document as. */
-  schemaVersion: string;
+  /** Rows accepted into the in-memory queue, across all supplied object types. */
+  rowsQueued: number;
+  /** Rows rejected before queue admission. */
+  rowsRejected: number;
+  /** Per-row errors returned before queue admission. */
+  errors: string[];
   /** Current ingest queue depth after this submission. */
   queueDepth: number;
 }
 
-/**
- * Status of an async document-ingest task — `GET /rag/ingest/:task_id`
- * (renamed from `/ingest/document/:task_id`) (#1001).
- *
- * `status` is `"pending"` while chunks are still flushing to storage, then
- * `"complete"` once the background writer confirms them. `chunksWritten` reaches
- * `chunksTotal` on a successful completion. Task status is process-local and
- * may be unavailable after a restart or when queried on another cluster node.
- */
+/** Generic task status from `GET /ingest/tasks/:task_id`. State is process-local. */
 export interface IngestDocumentTaskStatus {
   taskId: string;
   status: "pending" | "complete";
-  reportId: string | null;
-  chunksTotal: number;
-  chunksWritten: number;
-  warnings: string[];
-  /** Optional cluster write watermark, present after durable completion on configured nodes. */
+  rowsTotal: number;
+  rowsWritten: number;
+  rowsDropped: number;
+  dropReasons: string[];
+  /** Optional cluster write watermark after task completion. */
   writeToken?: { wallNs: number; counter: number };
 }
 
-/**
- * Response from `POST /rag/documents/{reportId}/usage` (#4498).
- *
- * Reports the `DocumentSource` row's usage counters *after* applying this
- * call's increments — `citationCount`/`retrievalCount`/`lastCitedAt`/
- * `feedbackAvg` are write-BACK signals maintained by repeated calls to this
- * endpoint, not ingest-time constants.
- */
-export interface DocumentUsageResponse {
-  /** The `DocumentSource` this usage event targeted. */
-  reportId: string;
-  /** Total citations recorded so far. */
-  citationCount: number | null;
-  /** Total retrievals recorded so far. */
-  retrievalCount: number | null;
-  /** Nanoseconds since epoch of the most recent citation, or `null` if never cited. */
-  lastCitedAt: number | null;
-  /** Running mean of every `feedbackScore` recorded so far, or `null` if none yet. */
-  feedbackAvg: number | null;
+/** Target reference for a generic append-only event. */
+export interface EventTarget {
+  object_type: string;
+  key: string;
+  value: string;
+}
+
+/** One event to append to an installed schema type marked `append_only`. */
+export interface EventAppendRequest {
+  object_type: string;
+  idempotency_key: string;
+  target: EventTarget;
+  attributes: Record<string, unknown>;
+  purpose?: string;
+}
+
+/** Receipt returned after local WAL fsync or exact idempotent replay. */
+export interface EventAppendReceipt {
+  eventId: string;
+  objectType: string;
+  status: "accepted" | "duplicate";
+  durability: "local_wal_sync";
 }
 
 /**

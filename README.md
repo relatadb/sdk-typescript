@@ -165,8 +165,19 @@ const relata = createClient("http://localhost:9090", {
 | `.ready()` | `Promise<ReadyReport>` | `GET /health/ready` — 9-condition readiness |
 | `.auditCount()` | `Promise<AuditCountResponse>` | `GET /audit/count` — entry count + `chainValid` |
 | `.clusterNodes()` | `Promise<ClusterNode[]>` | `GET /cluster/nodes` — list cluster members |
-| `.ingestDocument(chunksJsonl, manifestJson)` | `Promise<IngestDocumentResponse>` | `POST /rag/ingest` (renamed from `/ingest/document` by #4499) — datagrep-extractor envelope (returns `taskId` for polling) |
-| `.ingestDocumentStatus(taskId)` | `Promise<IngestDocumentTaskStatus>` | `GET /rag/ingest/:task_id` (renamed from `/ingest/document/:task_id`) — poll an async ingest to completion (#1001) |
+| `.ingestDocument(objects, purpose?)` | `Promise<IngestDocumentResponse>` | Queues prepared mixed-type rows through `POST /ingest/bulk` (`queued: true`) and returns one process-local task receipt |
+| `.ingestDocumentStatus(taskId)` | `Promise<IngestDocumentTaskStatus>` | `GET /ingest/tasks/:task_id` — observe persisted, dropped, and pending row counts |
+
+`ingestDocument` accepts application-prepared governed rows (for example a
+`DocumentSource`, linked `DocumentChunk` rows, and optional evidence rows with
+`_type` and stable `_pk` fields). It does not parse raw documents or datagrep
+extractor files. Use the optional `relata-connectors prepare-document` adapter
+to turn an extractor JSONL/manifest pair into an `objects` array, then pass
+that array to this method. Queue admission returns a process-local receipt;
+it is not crash-durable, so poll `ingestDocumentStatus` and use its
+`rowsWritten`/`rowsDropped` fields to observe backend outcomes. The distinct
+MCP `ingest_document(source, text, ...)` tool remains a source/text application
+workflow and is not this queued prepared-row contract.
 
 Every method is async (TS is async-native). The `X-Request-ID` header is auto-generated
 per request via `crypto.randomUUID()` — pin your own by setting
@@ -528,7 +539,7 @@ method for `/ingest/media` in this TypeScript SDK.
 | `StatusResponse` | `profile`, `role`, `queryQuota` |
 | `AuditCountResponse` | `entries`, `chainValid` |
 | `ClusterNode` | `nodeId`, `role`, `url` |
-| `IngestDocumentResponse` | `reportId`, `taskId`, `chunksIngested`, `warnings`, `schemaVersion`, `queueDepth` |
+| `IngestDocumentResponse` | `taskId`, `rowsQueued`, `rowsRejected`, `errors`, `queueDepth` |
 | `VersionInfo` | `version`, `commit`, `profile`, `schemaVersion`, `features` |
 | `Stats` | `records`, `states`, `snapshotRows`, `logLeaves`, `tokens`, `raw` |
 | `ReadyReport` | `isReady`, `status`, `reason`, `detail` |

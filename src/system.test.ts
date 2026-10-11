@@ -1,4 +1,4 @@
-// Tests for the jobs/workflows SDK surface (#723) — SystemClient methods.
+// Tests for the jobs SDK surface (#723) — SystemClient methods.
 //
 // Mirrors the client.test.ts mockFetch pattern: stub the wire, assert the
 // route + method, and verify the typed response.
@@ -42,45 +42,6 @@ test("jobStatus: GET /jobs/:name", async () => {
   deepEqual(got.status, "Running");
   deepEqual(c.method, "GET");
   if (!c.url.includes("/jobs/c2_beacon")) throw new Error(`url=${c.url}`);
-});
-
-test("runWorkflow: POST /workflows/:name/run returns run_id", async () => {
-  const { fetch, calls } = mockFetch({
-    body: { run_id: "enrich/abc-123", status: "Running" },
-  });
-  const s = new SystemClient({ baseUrl: BASE, fetch });
-  const got = (await s.runWorkflow("enrich")) as { run_id: string };
-  const c = calls[0]!;
-  deepEqual(got.run_id, "enrich/abc-123");
-  deepEqual(c.method, "POST");
-  if (!c.url.includes("/workflows/enrich/run")) throw new Error(`url=${c.url}`);
-});
-
-test("workflowRun: surfaces attempt_count + last_error (#711/#713)", async () => {
-  const { fetch } = mockFetch({
-    body: {
-      run_id: "enrich/abc-123",
-      workflow_name: "enrich",
-      status: "Failed",
-      attempt_count: 3,
-      last_error: "embed timeout",
-      steps: [],
-    },
-  });
-  const s = new SystemClient({ baseUrl: BASE, fetch });
-  const got = await s.workflowRun("enrich/abc-123");
-  deepEqual(got.attempt_count, 3);
-  deepEqual(got.last_error, "embed timeout");
-});
-
-test("registerWorkflow: POST /workflows with steps", async () => {
-  const { fetch, calls } = mockFetch({ body: { name: "wf" } });
-  const s = new SystemClient({ baseUrl: BASE, fetch });
-  await s.registerWorkflow("wf", [{ name: "q1", kind: "query", sql: "SELECT 1" }]);
-  const c = calls[0]!;
-  deepEqual(c.method, "POST");
-  if (!c.url.endsWith("/workflows")) throw new Error(`url=${c.url}`);
-  if (c.body === undefined || !c.body.includes('"name":"wf"')) throw new Error(`body=${c.body}`);
 });
 
 test("feedChannels: GET /feed/channels (#2254)", async () => {
