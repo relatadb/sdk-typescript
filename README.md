@@ -15,6 +15,12 @@ Compatible with Node.js 18+, Deno, Bun, and browser environments.
 - **Runtime deps:** **zero** — uses native `fetch`, native `crypto.randomUUID()`, native `AbortController`
 - **By:** [ZySec AI](https://zysec.ai) — Frontier Sovereign Intelligence · hello@zysec.ai
 
+For the v3.0 platform boundary and SDK migration plan, see the
+[SDK migration guide](../README-v3-migration.md).
+TypeScript is one of the three supported consumer SDKs (Python, TypeScript,
+Go). Other languages use the HTTP API and its OpenAPI reference at
+`GET /openapi.json`.
+
 TypeScript is **async-native**, so every SDK method returns a `Promise`. There are no
 separate `Async*` classes — that is the idiomatic parity with the Python SDK's sync/async
 split.
@@ -216,7 +222,7 @@ const relata = createClient(url, {
 ### Transport security — redirects are never followed
 
 Every `fetch()` call the SDK makes (the main client, the typed v1.1 clients,
-`Memory`, the S3 door client, and the streaming/SSE helpers) passes an
+`Memory` and the streaming/SSE helpers) passes an
 explicit `redirect: "manual"` policy, and a 3xx response is treated as a
 hard `NetworkError` instead of being silently followed. This is a
 code-level guarantee that the `Authorization: Bearer <token>` header is
@@ -434,9 +440,8 @@ const entries = await audit.entries({ purpose: "compliance", limit: 50 });
 | `audit.ts` | `AuditClient` | Audit entries (filtered/paginated) + signed receipts + PDF export |
 | `identity.ts` | `IdentityClient` | Identity label/uncertainty + lookup tables + `ERASE SUBJECT` |
 | `objects.ts` | `ObjectClient` | Typed upsert + batch via `/ingest?object_type=` |
-| `ingest.ts` | `IngestClient` | Bulk NDJSON + CSV + media status |
+| `ingest.ts` | `IngestClient` | Bulk NDJSON + CSV + media task status; it does not upload raw media bytes |
 | `vectors.ts` | `VectorClient` | KNN + hybrid search + similar-to (SQL-backed) |
-| `s3.ts` | `S3Client` | Native-fetch wrapper for the S3 protocol door (no boto3) |
 | `system.ts` | `SystemClient` | LLM config + test + jobs status |
 | `streaming.ts` | `StreamingClient` | NDJSON row streams + SSE consumers (watch/alerts) + Arrow IPC |
 | `tenants.ts` | `TenantAdminClient` | Tenant CRUD + quota + sharing agreements + platform admin |
@@ -489,89 +494,30 @@ for await (const chunk of streaming.queryArrowRaw("SELECT * FROM Person", { purp
 SSE consumers reconnect with exponential backoff until you break out of the
 `for await` loop.
 
-### Arrow Flight — zero-copy columnar SQL (#2492)
+### HTTP Arrow IPC
 
-`queryFlight()` runs a SQL query over the server's Arrow Flight `do_get` door
-(`RELATA_FLIGHT_ENABLE=true`, default port 8815) and returns the decoded
-`apache-arrow` `Table` — no JSON intermediate, byte-for-byte the path the
-Python/Go/Rust SDKs walk natively.
+The supported columnar query path is `POST /query/arrow`. `StreamingClient`
+exposes its response as raw byte chunks so an application can pass them to
+its own Arrow IPC reader. This SDK does not include a typed `apache-arrow`
+table helper.
 
 ```typescript
-import type { Table } from "apache-arrow";
+import { StreamingClient } from "@zysec-ai/relata-sdk";
 
-// Works out of the box: the SDK drives its built-in first-party Flight
-// transport (gRPC do_get → FlightData → reassembled IPC → apache-arrow Table).
-const table = await relata.queryFlight<Table>(
+const streaming = StreamingClient.fromClient(relata);
+let totalBytes = 0;
+for await (const chunk of streaming.queryArrowRaw(
   "SELECT * FROM Person LIMIT 1000",
   { purpose: "analytics" },
-);
-for (const row of table.toArray()) console.log(row);
+)) {
+  totalBytes += chunk.byteLength;
+}
+console.log(`Received ${totalBytes} Arrow IPC bytes`);
 ```
 
-The gRPC + Arrow runtime libraries — `@grpc/grpc-js` and `apache-arrow` — are
-**optional peer dependencies**: they are dynamically imported on first use, so
-importing the SDK never pulls them in, and apps that never call `queryFlight()`
-pay no cost. Install them with `npm install apache-arrow @grpc/grpc-js`; if they
-are absent when `queryFlight()` is called without a caller-supplied `transport`,
-a `RelataError` with install guidance is thrown. TLS is selected automatically
-for `grpcs://` / `tls://` endpoints (#2362). Browser / edge runtimes are
-gRPC-less — pass your own `transport` (e.g. built on grpc-web) there.
-
-### Plain gRPC query with Arrow-IPC opt-in (#4090)
-
-`queryGrpc()` runs a SQL query over the server's plain gRPC `RelataQuery/Execute`
-RPC (default port 50051, `RELATA_GRPC_PORT`) and opts into the negotiated
-Arrow-IPC row encoding (`QueryRequest.wants_arrow_ipc_rows` — server side landed
-in PR #4086). The server answers with whichever encoding it supports
-(`arrow_ipc_rows` or a `rows_json` fallback); this method decodes either wire
-shape into the same row-object array, so callers never need to know which one
-came back.
-
-```typescript
-const result = await relata.queryGrpc<{ id: string; name: string }>(
-  "SELECT * FROM Person LIMIT 1000",
-  { purpose: "analytics" },
-);
-console.log(result.rowCount, result.rows[0]?.name);
-```
-
-Same optional-peer-dependency contract as `queryFlight()` — `@grpc/grpc-js` +
-`apache-arrow`, dynamically imported on first use, `npm install apache-arrow
-@grpc/grpc-js` to enable.
-
-`queryGrpcStream()` is the same opt-in over the server-streaming
-`RelataQuery/ExecuteStream` RPC — useful for result sets large enough that the
-server chunks them into multiple `RowBatch` frames (each frame independently
-negotiates the Arrow-IPC encoding, same fallback contract). It collects the
-stream and decodes it into the same result shape `queryGrpc()` returns:
-
-```typescript
-const result = await relata.queryGrpcStream<{ id: string; name: string }>(
-  "SELECT * FROM Person",
-  { purpose: "analytics" },
-);
-console.log(result.rowCount, result.rows[0]?.name);
-```
-
-The Python (`query_grpc_stream`) and Go (`QueryGrpcStream`) SDKs wire the same
-streaming opt-in — all three first-party SDKs now cover both `Execute` and
-`ExecuteStream`.
-
-### S3 door — native fetch only
-
-The Python SDK ships `boto3` / `aiobotocore` / `httpx` flavours; this TypeScript port
-ships **only** the native-fetch equivalent (`S3Client.http(method, path, opts)`) because
-boto3 is Python-only and the TS SDK has zero runtime dependencies. Convenience wrappers
-(`listBuckets`, `createBucket`, `putObject`, `getObject`, `deleteObject`) are included.
-
-```typescript
-import { S3Client } from "@zysec-ai/relata-sdk";
-const s3 = S3Client.fromClient(relata);
-await s3.createBucket("acme-intel");
-await s3.putObject("acme-intel", "report.pdf", pdfBytes, { contentType: "application/pdf" });
-const obj = await s3.getObject("acme-intel", "report.pdf");
-console.log(obj.body); // Uint8Array
-```
+`IngestClient` exposes media task status, and `McpClient.ingestMedia()` calls
+the MCP media tool with its documented payload. There is no raw byte upload
+method for `/ingest/media` in this TypeScript SDK.
 
 ## Response models
 
