@@ -1474,6 +1474,12 @@ export class RelataClient {
       reportId: wire.report_id ?? "",
       taskId: wire.task_id ?? "",
       chunksIngested: wire.chunks_ingested ?? 0,
+      ...(typeof wire.relations_ingested === "number"
+        ? { relationsIngested: wire.relations_ingested }
+        : {}),
+      ...(typeof wire.structure_nodes_ingested === "number"
+        ? { structureNodesIngested: wire.structure_nodes_ingested }
+        : {}),
       warnings: Array.isArray(wire.warnings) ? wire.warnings : [],
       schemaVersion: wire.schema_version ?? "",
       queueDepth: wire.queue_depth ?? 0,
@@ -1506,6 +1512,14 @@ export class RelataClient {
       chunksTotal: wire.chunks_total ?? 0,
       chunksWritten: wire.chunks_written ?? 0,
       warnings: Array.isArray(wire.warnings) ? wire.warnings : [],
+      ...(wire._relata_write_token
+        ? {
+            writeToken: {
+              wallNs: wire._relata_write_token.wall_ns,
+              counter: wire._relata_write_token.counter,
+            },
+          }
+        : {}),
     };
   }
 
@@ -2129,6 +2143,8 @@ interface WireIngestDocumentResponse {
   report_id?: string;
   task_id?: string;
   chunks_ingested?: number;
+  relations_ingested?: number;
+  structure_nodes_ingested?: number;
   warnings?: string[];
   schema_version?: string;
   queue_depth?: number;
@@ -2142,6 +2158,7 @@ interface WireIngestDocumentTaskStatus {
   chunks_total?: number;
   chunks_written?: number;
   warnings?: string[];
+  _relata_write_token?: { wall_ns: number; counter: number };
 }
 
 /** @internal Wire shape for `POST /rag/documents/:report_id/usage` (#4498). */

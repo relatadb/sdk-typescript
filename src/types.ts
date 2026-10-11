@@ -365,6 +365,10 @@ export interface IngestDocumentResponse {
   taskId: string;
   /** Number of chunks accepted into the ingest queue. */
   chunksIngested: number;
+  /** Number of relation rows accepted, when reported by the server. */
+  relationsIngested?: number;
+  /** Number of structure nodes accepted, when reported by the server. */
+  structureNodesIngested?: number;
   /** Non-fatal protocol warnings (e.g. newer-minor-version fields). */
   warnings: string[];
   /** Protocol version the server parsed the document as. */
@@ -379,7 +383,8 @@ export interface IngestDocumentResponse {
  *
  * `status` is `"pending"` while chunks are still flushing to storage, then
  * `"complete"` once the background writer confirms them. `chunksWritten` reaches
- * `chunksTotal` on a successful completion.
+ * `chunksTotal` on a successful completion. Task status is process-local and
+ * may be unavailable after a restart or when queried on another cluster node.
  */
 export interface IngestDocumentTaskStatus {
   taskId: string;
@@ -388,6 +393,8 @@ export interface IngestDocumentTaskStatus {
   chunksTotal: number;
   chunksWritten: number;
   warnings: string[];
+  /** Optional cluster write watermark, present after durable completion on configured nodes. */
+  writeToken?: { wallNs: number; counter: number };
 }
 
 /**

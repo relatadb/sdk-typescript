@@ -222,6 +222,8 @@ test("stats / version / ready / ingestDocument: map wire shapes", async () => {
         report_id: "r-1",
         task_id: "t-1",
         chunks_ingested: 4,
+        relations_ingested: 2,
+        structure_nodes_ingested: 1,
         warnings: [],
         schema_version: "v1",
         queue_depth: 2,
@@ -256,6 +258,8 @@ test("stats / version / ready / ingestDocument: map wire shapes", async () => {
   assert.equal(ingest.reportId, "r-1");
   assert.equal(ingest.taskId, "t-1");
   assert.equal(ingest.chunksIngested, 4);
+  assert.equal(ingest.relationsIngested, 2);
+  assert.equal(ingest.structureNodesIngested, 1);
   assert.equal(ingest.queueDepth, 2);
 
   // Verify the paths
@@ -279,6 +283,7 @@ test("ingestDocumentStatus: maps the task-status wire shape and GET path", async
       chunks_total: 4,
       chunks_written: 4,
       warnings: [],
+      _relata_write_token: { wall_ns: 123, counter: 0 },
     },
   });
   const relata = new RelataClient({
@@ -292,6 +297,7 @@ test("ingestDocumentStatus: maps the task-status wire shape and GET path", async
   assert.equal(status.reportId, "r-1");
   assert.equal(status.chunksTotal, 4);
   assert.equal(status.chunksWritten, 4);
+  assert.deepEqual(status.writeToken, { wallNs: 123, counter: 0 });
   // Unknown status normalises to "pending" rather than leaking arbitrary server text.
   const { fetch: fetch2 } = mockFetch({ body: { task_id: "t-2", status: "weird" } });
   const relata2 = new RelataClient({ baseUrl: "http://x", fetch: fetch2 });
