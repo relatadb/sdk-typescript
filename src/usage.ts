@@ -26,6 +26,31 @@ export interface UsageAggregate {
   lastCitedAt: string | null;
 }
 
+/** Versioned, frozen snapshot of counters captured before event cutover. */
+export interface LegacyUsageBaseline {
+  formatVersion: "document-usage-baseline-v1";
+  target: EventTarget;
+  /** Signed i64 nanoseconds, represented losslessly. */
+  cutoverAt: string | number | bigint;
+  citationCount: number;
+  retrievalCount: number;
+  feedbackAvg: number | null;
+  /** Null unless a trusted external source retained the original sample count. */
+  feedbackCount: number | null;
+  lastCitedAt: string | number | bigint | null;
+}
+
+/** Combined counters with legacy and post-cutover feedback kept distinguishable. */
+export interface MigratedUsageAggregate {
+  legacy: LegacyUsageBaseline;
+  postCutover: UsageAggregate;
+  citationCount: number;
+  retrievalCount: number;
+  feedbackCount: number | null;
+  feedbackAvg: number | null;
+  lastCitedAt: string | null;
+}
+
 function timestampText(value: string | number | bigint): string {
   let timestamp: bigint;
   if (typeof value === "bigint") {
@@ -127,6 +152,85 @@ export function aggregateUsageEvents(
     retrievalCount,
     feedbackCount,
     feedbackAvg: feedbackCount === 0 ? null : feedbackTotal / feedbackCount,
+    lastCitedAt,
+  };
+}
+
+/**
+ * Combine a frozen v1 snapshot with a complete post-cutover event inventory.
+ * Old writers must be drained before snapshotting. Events before the cutover
+ * are rejected. If the legacy feedback count is unknown, averages stay
+ * separate and the combined feedback fields remain null.
+ */
+export function aggregateUsageWithBaseline(
+  rows: readonly DocumentUsageEventRow[],
+  target: EventTarget,
+  baseline: LegacyUsageBaseline,
+): MigratedUsageAggregate {
+  if (baseline.formatVersion !== "document-usage-baseline-v1") {
+    throw new TypeError("unsupported legacy usage baseline formatVersion");
+  }
+  if (baseline.target.object_type !== target.object_type
+    || baseline.target.key !== target.key || baseline.target.value !== target.value) {
+    throw new TypeError("legacy usage baseline belongs to a different target");
+  }
+  const cutoverAt = BigInt(timestampText(baseline.cutoverAt));
+  for (const [name, value] of [["citationCount", baseline.citationCount], ["retrievalCount", baseline.retrievalCount]] as const) {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new TypeError(`${name} must be a non-negative safe integer`);
+    }
+  }
+  if (baseline.feedbackCount !== null
+    && (!Number.isSafeInteger(baseline.feedbackCount) || baseline.feedbackCount < 0)) {
+    throw new TypeError("feedbackCount must be a non-negative safe integer or null");
+  }
+  if (baseline.feedbackAvg !== null && (!Number.isFinite(baseline.feedbackAvg)
+    || baseline.feedbackAvg < 0 || baseline.feedbackAvg > 1)) {
+    throw new TypeError("feedbackAvg must be finite and between 0 and 1");
+  }
+  if (baseline.feedbackCount === 0 && baseline.feedbackAvg !== null) {
+    throw new TypeError("feedbackAvg must be null when feedbackCount is zero");
+  }
+  if (baseline.feedbackCount !== null && baseline.feedbackCount > 0 && baseline.feedbackAvg === null) {
+    throw new TypeError("feedbackAvg is required when feedbackCount is positive");
+  }
+  const combinedCitationCount = baseline.citationCount;
+  const combinedRetrievalCount = baseline.retrievalCount;
+  const postCutover = aggregateUsageEvents(rows, target);
+  for (const row of rows) {
+    if (BigInt(timestampText(row.observed_at)) < cutoverAt) {
+      throw new TypeError("usage event predates the baseline cutover");
+    }
+  }
+  let feedbackCount: number | null = null;
+  let feedbackAvg: number | null = null;
+  if (baseline.feedbackCount !== null) {
+    feedbackCount = baseline.feedbackCount + postCutover.feedbackCount;
+    if (!Number.isSafeInteger(feedbackCount)) throw new TypeError("combined feedbackCount exceeds the safe integer range");
+    const total = (baseline.feedbackCount * (baseline.feedbackAvg ?? 0))
+      + (postCutover.feedbackCount * (postCutover.feedbackAvg ?? 0));
+    feedbackAvg = feedbackCount === 0 ? null : total / feedbackCount;
+  }
+  const legacyLastCited = baseline.lastCitedAt === null
+    ? null
+    : timestampText(baseline.lastCitedAt);
+  const lastCitedAt = legacyLastCited === null
+    ? postCutover.lastCitedAt
+    : postCutover.lastCitedAt === null || BigInt(legacyLastCited) > BigInt(postCutover.lastCitedAt)
+      ? legacyLastCited
+      : postCutover.lastCitedAt;
+  const citationCount = combinedCitationCount + postCutover.citationCount;
+  const retrievalCount = combinedRetrievalCount + postCutover.retrievalCount;
+  if (!Number.isSafeInteger(citationCount) || !Number.isSafeInteger(retrievalCount)) {
+    throw new TypeError("combined usage count exceeds the safe integer range");
+  }
+  return {
+    legacy: baseline,
+    postCutover,
+    citationCount,
+    retrievalCount,
+    feedbackCount,
+    feedbackAvg,
     lastCitedAt,
   };
 }

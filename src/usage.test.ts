@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aggregateUsageEvents, recordUsage, type UsageObservation } from "./usage.ts";
+import { aggregateUsageEvents, aggregateUsageWithBaseline, recordUsage, type LegacyUsageBaseline, type UsageObservation } from "./usage.ts";
 import type { EventAppendReceipt, EventAppendRequest } from "./types.ts";
 
 const receipt: EventAppendReceipt = {
@@ -101,4 +101,52 @@ test("aggregateUsageEvents preserves exact modern epoch nanoseconds", () => {
     { event_id: "evt-earlier", target_type: target.object_type, target_id: target.value, observed_at: base.toString(), cited: true },
   ];
   assert.equal(aggregateUsageEvents(rows, target).lastCitedAt, (base + 1n).toString());
+});
+
+test("aggregateUsageWithBaseline keeps unknown legacy feedback separate", () => {
+  const baseline: LegacyUsageBaseline = {
+    formatVersion: "document-usage-baseline-v1",
+    target,
+    cutoverAt: "100",
+    citationCount: 8,
+    retrievalCount: 12,
+    feedbackAvg: 0.6,
+    feedbackCount: null,
+    lastCitedAt: "90",
+  };
+  const rows = [{ event_id: "evt-new", target_type: target.object_type, target_id: target.value, observed_at: "101", cited: true, retrieved: true, feedback_score: 0.9 }];
+  const result = aggregateUsageWithBaseline(rows, target, baseline);
+  assert.equal(result.citationCount, 9);
+  assert.equal(result.retrievalCount, 13);
+  assert.equal(result.lastCitedAt, "101");
+  assert.equal(result.postCutover.feedbackAvg, 0.9);
+  assert.equal(result.legacy.feedbackAvg, 0.6);
+  assert.equal(result.feedbackCount, null);
+  assert.equal(result.feedbackAvg, null);
+});
+
+test("aggregateUsageWithBaseline weights only a trusted legacy sample count", () => {
+  const result = aggregateUsageWithBaseline(
+    [{ event_id: "evt-new", target_type: target.object_type, target_id: target.value, observed_at: "100", feedback_score: 1 }],
+    target,
+    { formatVersion: "document-usage-baseline-v1", target, cutoverAt: "100", citationCount: 0, retrievalCount: 0, feedbackAvg: 0.5, feedbackCount: 2, lastCitedAt: null },
+  );
+  assert.equal(result.feedbackCount, 3);
+  assert.ok(Math.abs((result.feedbackAvg ?? 0) - 2 / 3) < 1e-12);
+});
+
+test("aggregateUsageWithBaseline rejects old events and invalid snapshot versions", () => {
+  const baseline: LegacyUsageBaseline = {
+    formatVersion: "document-usage-baseline-v1", target, cutoverAt: "100", citationCount: 0,
+    retrievalCount: 0, feedbackAvg: null, feedbackCount: null, lastCitedAt: null,
+  };
+  assert.throws(() => aggregateUsageWithBaseline(
+    [{ event_id: "old", target_type: target.object_type, target_id: target.value, observed_at: "99" }],
+    target,
+    baseline,
+  ), /predates/);
+  assert.throws(() => aggregateUsageWithBaseline([], target, { ...baseline, formatVersion: "v2" as never }), /formatVersion/);
+  assert.throws(() => aggregateUsageWithBaseline([], target, {
+    ...baseline, target: { ...target, value: "another-report" },
+  }), /different target/);
 });

@@ -71,8 +71,8 @@ export type {
   NaturalLanguageQueryOptions,
   NaturalLanguageQueryResult,
 } from "./natural-language.ts";
-export { aggregateUsageEvents, recordUsage } from "./usage.ts";
-export type { DocumentUsageEventRow, UsageAggregate, UsageObservation } from "./usage.ts";
+export { aggregateUsageEvents, aggregateUsageWithBaseline, recordUsage } from "./usage.ts";
+export type { DocumentUsageEventRow, LegacyUsageBaseline, MigratedUsageAggregate, UsageAggregate, UsageObservation } from "./usage.ts";
 
 // ---------------------------------------------------------------------------
 // Query builder

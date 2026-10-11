@@ -105,6 +105,51 @@ test("ingestCdr: preserves exact nanosecond timestamps and rejects unsafe number
   assert.match(ndjsonRows[1] ?? "", /"call_start_ns":1700000000000000003/);
 });
 
+test("ingestCdr: matches legacy i64 validation and saturating seconds conversion", async () => {
+  const { fetch, lastCall } = mockFetch({
+    rows_queued: 3,
+    rows_rejected: 0,
+    errors: [],
+    task_id: "itsk_saturated_seconds",
+  });
+  const client = new IngestClient({ baseUrl: "http://x", purpose: "finint", fetch });
+  const out = await client.ingestCdr([
+    {
+      caller_msisdn: "14155552671",
+      callee_msisdn: "919876500000",
+      call_start_ns: "9223372036854775807",
+      duration_secs: 1,
+    },
+    {
+      caller_msisdn: "14155552671",
+      callee_msisdn: "919876500000",
+      call_start_ns: "-9223372036854775808",
+      duration_secs: 1,
+    },
+    {
+      caller_msisdn: "14155552671",
+      callee_msisdn: "919876500000",
+      call_start_ns: "10000000000000",
+      duration_secs: 1,
+    },
+    {
+      caller_msisdn: "14155552671",
+      callee_msisdn: "919876500000",
+      call_start_ns: "9223372036854775808",
+      duration_secs: 1,
+    },
+  ]);
+
+  assert.equal(out["rows_queued"], 3);
+  assert.equal(out["rows_rejected"], 1);
+  const ndjsonRows = (lastCall().body ?? "").split("\n");
+  assert.equal(ndjsonRows.length, 3);
+  assert.match(ndjsonRows[0] ?? "", /"call_start_ns":9223372036854775807/);
+  assert.match(ndjsonRows[1] ?? "", /"call_start_ns":-9223372036854775808/);
+  assert.match(ndjsonRows[2] ?? "", /"call_start_ns":10000000000000/);
+  assert.match(String((out["errors"] as Array<Record<string, unknown>>)[0]?.["error"]), /out of range for i64/);
+});
+
 test("otlpTraces/Logs/Metrics: POST JSON to the right /v1 door", async () => {
   const { fetch, lastCall } = mockFetch({ ok: true });
   const relata = new RelataClient({ baseUrl: "http://x", fetch });

@@ -1,8 +1,10 @@
 import {
   aggregateUsageEvents,
+  aggregateUsageWithBaseline,
   createClient,
   recordUsage,
   type DocumentUsageEventRow,
+  type LegacyUsageBaseline,
 } from "../src/index.ts";
 import { createExactUsageFetch } from "../src/usage-precision.ts";
 
@@ -48,6 +50,33 @@ const summary = aggregateUsageEvents(events.rows, {
   key: "report_id",
   value: targetId,
 });
+const target = { object_type: "DocumentSource", key: "report_id", value: targetId } as const;
+// Synthetic pre-cutover state for demonstrating the versioned reducer. Real
+// applications load this record from their governed migration export.
+const baseline: LegacyUsageBaseline = {
+  formatVersion: "document-usage-baseline-v1",
+  target,
+  cutoverAt: "0",
+  citationCount: 7,
+  retrievalCount: 11,
+  feedbackAvg: 0.6,
+  feedbackCount: null,
+  lastCitedAt: null,
+};
+const migrated = aggregateUsageWithBaseline(events.rows, target, baseline);
+const trustedMigrated = aggregateUsageWithBaseline(events.rows, target, {
+  ...baseline,
+  feedbackCount: 2,
+});
+let wrongTargetRejected = false;
+try {
+  aggregateUsageWithBaseline(events.rows, target, {
+    ...baseline,
+    target: { ...target, value: "other" },
+  });
+} catch {
+  wrongTargetRejected = true;
+}
 console.log(JSON.stringify({
   receipt: { event_id: receipt.eventId, status: receipt.status, durability: receipt.durability },
   summary: {
@@ -59,6 +88,18 @@ console.log(JSON.stringify({
     feedback_count: summary.feedbackCount,
     feedback_avg: summary.feedbackAvg,
     last_cited_at_ns: summary.lastCitedAt,
+  },
+  migration: {
+    baseline_format_version: migrated.legacy.formatVersion,
+    citation_count: migrated.citationCount,
+    retrieval_count: migrated.retrievalCount,
+    legacy_feedback_avg: migrated.legacy.feedbackAvg,
+    post_cutover_feedback_avg: migrated.postCutover.feedbackAvg,
+    feedback_count: migrated.feedbackCount,
+    feedback_avg: migrated.feedbackAvg,
+    trusted_feedback_count: trustedMigrated.feedbackCount,
+    trusted_feedback_avg: trustedMigrated.feedbackAvg,
+    wrong_target_rejected: wrongTargetRejected,
   },
 }));
 await client.close();

@@ -54,12 +54,21 @@ function cdrTimestamp(value: unknown, fallbackNs: bigint): bigint {
       );
     }
     raw = BigInt(value);
+  } else if (typeof value === "bigint") {
+    raw = value;
   } else {
-    raw = BigInt(String(value).trim());
+    const text = String(value).trim();
+    if (!/^[+-]?\d+$/.test(text)) throw new Error(`call_start '${text}' is not an integer`);
+    raw = BigInt(text);
   }
-  const ns = raw < 10_000_000_000_000n ? raw * 1_000_000_000n : raw;
-  if (ns < -(1n << 63n) || ns > (1n << 63n) - 1n) throw new Error(`call_start '${raw}': value out of range for i64`);
-  return ns;
+  const minI64 = -(1n << 63n);
+  const maxI64 = (1n << 63n) - 1n;
+  if (raw < minI64 || raw > maxI64) {
+    throw new Error(`call_start '${raw}': value out of range for i64`);
+  }
+  if (raw >= 10_000_000_000_000n) return raw;
+  const nanoseconds = raw * 1_000_000_000n;
+  return nanoseconds < minI64 ? minI64 : nanoseconds > maxI64 ? maxI64 : nanoseconds;
 }
 
 function cdrJsonLine(row: RelataRow): string {
@@ -266,7 +275,9 @@ export class IngestClient extends TypedClientBase {
    * `POST /ingest?object_type=CdrRecord`. Invalid rows are returned in
    * `errors`; poll the returned `task_id` for writer completion. Pass
    * nanosecond timestamps as decimal strings or `bigint`; unsafe JavaScript
-   * numeric timestamps are rejected instead of silently rounded.
+   * numeric timestamps are rejected instead of silently rounded. Inputs must
+   * fit i64 before unit detection; epoch-second conversion then saturates to
+   * the i64 nanosecond bounds, matching Python, Go, and the legacy parser.
    */
   async ingestCdr(
     rows: RelataRow[],

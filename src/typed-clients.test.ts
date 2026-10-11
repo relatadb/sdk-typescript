@@ -625,36 +625,37 @@ test("McpClient #2322: scheduleJob sends name", async () => {
   assert.equal(seen.arguments["name"], "transaction_ring");
 });
 
-test("McpClient #2322: traceCrypto sends address", async () => {
+test("McpClient financial helper: traceCrypto builds governed SQL", async () => {
   const seen = await callAndCapture((mcp) =>
-    mcp.traceCrypto("bc1qxyz", { maxHops: 3 }),
+    mcp.traceCrypto("bc1qxyz", { maxHops: 30, minAmount: 1.25, purpose: "audit" }),
   );
-  assert.equal(seen.name, "trace_crypto");
-  assert.equal(seen.arguments["address"], "bc1qxyz");
-  assert.equal(seen.arguments["max_hops"], 3);
-  assert.equal(seen.arguments["purpose"], "analytics");
+  assert.equal(seen.name, "query");
+  assert.deepEqual(seen.arguments, {
+    sql: "PURPOSE 'audit' CRYPTO_TRACE('bc1qxyz', MAX_HOPS => 10, MIN_AMOUNT => 1.25)",
+    purpose: "audit",
+  });
 });
 
-test("McpClient #2322: beneficialOwnership sends party", async () => {
+test("McpClient financial helper: beneficialOwnership defaults and rejects unsafe literals", async () => {
   const seen = await callAndCapture((mcp) =>
     mcp.beneficialOwnership("Acme Holdings"),
   );
-  assert.equal(seen.name, "beneficial_ownership");
-  assert.equal(seen.arguments["party"], "Acme Holdings");
+  assert.equal(seen.name, "query");
+  assert.equal(seen.arguments["sql"], "PURPOSE 'analytics' BENEFICIAL_OWNERSHIP_CHAIN('Acme Holdings', MAX_DEPTH => 6)");
 });
 
-test("McpClient #2322: reconstructWire sends account", async () => {
+test("McpClient financial helper: reconstructWire builds governed SQL", async () => {
   const seen = await callAndCapture((mcp) =>
-    mcp.reconstructWire("IE12BOFI90000112345678"),
+    mcp.reconstructWire("IE12BOFI90000112345678", { tolerancePct: 2.5 }),
   );
-  assert.equal(seen.name, "reconstruct_wire");
-  assert.equal(seen.arguments["account"], "IE12BOFI90000112345678");
+  assert.equal(seen.name, "query");
+  assert.equal(seen.arguments["sql"], "PURPOSE 'analytics' WIRE_RECONSTRUCTION('IE12BOFI90000112345678', TOLERANCE_PCT => 2.5)");
 });
 
-test("McpClient #2322: traceHawala sends seed", async () => {
-  const seen = await callAndCapture((mcp) => mcp.traceHawala("actor-1"));
-  assert.equal(seen.name, "trace_hawala");
-  assert.equal(seen.arguments["seed"], "actor-1");
+test("McpClient financial helper: traceHawala preserves lower clamp", async () => {
+  const seen = await callAndCapture((mcp) => mcp.traceHawala("actor-1", { maxHops: 0 }));
+  assert.equal(seen.name, "query");
+  assert.equal(seen.arguments["sql"], "PURPOSE 'analytics' HAWALA_TRACE('actor-1', MAX_HOPS => 1)");
 });
 
 test("McpClient #2322: geofence sends lat/lon", async () => {
@@ -716,14 +717,23 @@ test("McpClient #2322: findScc sends entity_type", async () => {
   assert.equal(seen.arguments["entity_type"], "Person");
 });
 
-test("McpClient #2322: screenSanctions sends name", async () => {
+test("McpClient financial helper: screenSanctions builds governed SQL", async () => {
   const seen = await callAndCapture((mcp) =>
     mcp.screenSanctions("John Doe", { threshold: 0.9 }),
   );
-  assert.equal(seen.name, "screen_sanctions");
-  assert.equal(seen.arguments["name"], "John Doe");
-  assert.equal(seen.arguments["threshold"], 0.9);
-  assert.equal(seen.arguments["purpose"], "compliance_review");
+  assert.equal(seen.name, "query");
+  assert.deepEqual(seen.arguments, {
+    sql: "PURPOSE 'compliance_review' SANCTIONS_SCREEN('John Doe', THRESHOLD => 0.9)",
+    purpose: "compliance_review",
+  });
+});
+
+test("McpClient financial helper rejects SQL literal and purpose injection", async () => {
+  const { fetch, calls } = mockFetch({ body: mcpEnvelope({ ok: true }) });
+  const mcp = new McpClient({ baseUrl: "http://x", fetch });
+  await assert.rejects(() => mcp.traceCrypto("x'); SELECT * FROM Person; --"));
+  await assert.rejects(() => mcp.traceCrypto("address", { purpose: "audit' SELECT" }));
+  assert.equal(calls.length, 0);
 });
 
 test("McpClient #2322: aggregateStats sends entity_type", async () => {
