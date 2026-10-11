@@ -1002,7 +1002,7 @@ test("TenantAdminClient: me, create, get, delete, setQuota, createSharing", asyn
   const created = await tenants.create("t1", { tier: "premium" });
   assert.equal(created["tier"], "standard"); // server returns its value
   assert.deepEqual(JSON.parse(calls[1]?.body ?? "{}"), {
-    tenant_id: "t1",
+    id: "t1",
     tier: "premium",
   });
 

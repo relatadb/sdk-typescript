@@ -53,7 +53,7 @@ export class TenantAdminClient extends TypedClientBase {
     } = {},
   ): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = {
-      tenant_id: tenantId,
+      id: tenantId,
       tier: opts.tier ?? "standard",
       ...(opts.fields ?? {}),
     };
