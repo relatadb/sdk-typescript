@@ -65,6 +65,46 @@ test("ingestCdr: normalizes aliases, reports invalid rows, and queues via generi
   assert.equal(rows[1]?.["source_file_id"], 43);
 });
 
+test("ingestCdr: preserves exact nanosecond timestamps and rejects unsafe number inputs", async () => {
+  const { fetch, lastCall } = mockFetch({
+    rows_queued: 2,
+    rows_rejected: 0,
+    errors: [],
+    task_id: "itsk_precision",
+  });
+  const client = new IngestClient({ baseUrl: "http://x", purpose: "finint", fetch });
+  const out = await client.ingestCdr([
+    {
+      caller_msisdn: "14155552671",
+      callee_msisdn: "919876500000",
+      call_start_ns: 1_700_000_000_000_000_001,
+      duration_secs: 30,
+    },
+    {
+      caller_msisdn: "14155552671",
+      callee_msisdn: "919876500000",
+      call_start_ns: "1700000000000000001",
+      duration_secs: 30,
+      _pk: "cdr-exact-ns",
+    },
+    {
+      caller_msisdn: "14155552671",
+      callee_msisdn: "919876500000",
+      call_start_ns: 1_700_000_000_000_000_003n,
+      duration_secs: 30,
+      _pk: "cdr-bigint-ns",
+    },
+  ]);
+
+  assert.equal(out["rows_queued"], 2);
+  assert.equal(out["rows_rejected"], 1);
+  assert.match(String((out["errors"] as Array<Record<string, unknown>>)[0]?.["error"]), /string or bigint/);
+  const ndjsonRows = (lastCall().body ?? "").split("\n");
+  assert.equal(ndjsonRows.length, 2);
+  assert.match(ndjsonRows[0] ?? "", /"call_start_ns":1700000000000000001/);
+  assert.match(ndjsonRows[1] ?? "", /"call_start_ns":1700000000000000003/);
+});
+
 test("otlpTraces/Logs/Metrics: POST JSON to the right /v1 door", async () => {
   const { fetch, lastCall } = mockFetch({ ok: true });
   const relata = new RelataClient({ baseUrl: "http://x", fetch });

@@ -1,10 +1,10 @@
 /**
  * Bulk ingest SDK (#83).
  *
- * Surfaces the server's `POST /ingest?object_type=<Type>` for NDJSON / CSV
- * batches. Distinct from `RelataClient.ingestDocument` which is the
- * datagrep-extractor envelope; this module is the general batch path the
- * partner contract (§4) calls for.
+ * Exposes the generic row-ingest APIs. `RelataClient.ingestDocument` sends
+ * prepared document rows as a queued mixed-type request to `/ingest/bulk`;
+ * document extraction and source-format mapping belong in an application
+ * adapter.
  */
 
 import { RelataClient } from "./client.ts";
@@ -44,9 +44,19 @@ function cdrInteger(value: unknown, name: string, fallback?: number): number {
 }
 
 function cdrTimestamp(value: unknown, fallbackNs: bigint): bigint {
-  const raw = value === undefined || value === null
-    ? fallbackNs
-    : BigInt(String(value).trim());
+  let raw: bigint;
+  if (value === undefined || value === null) {
+    raw = fallbackNs;
+  } else if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(
+        `call_start '${value}' is not a safe JavaScript integer; pass exact timestamps as a string or bigint`,
+      );
+    }
+    raw = BigInt(value);
+  } else {
+    raw = BigInt(String(value).trim());
+  }
   const ns = raw < 10_000_000_000_000n ? raw * 1_000_000_000n : raw;
   if (ns < -(1n << 63n) || ns > (1n << 63n) - 1n) throw new Error(`call_start '${raw}': value out of range for i64`);
   return ns;
@@ -254,7 +264,9 @@ export class IngestClient extends TypedClientBase {
   /**
    * Normalize telecom CDR aliases, then queue canonical `CdrRecord` rows via
    * `POST /ingest?object_type=CdrRecord`. Invalid rows are returned in
-   * `errors`; poll the returned `task_id` for writer completion.
+   * `errors`; poll the returned `task_id` for writer completion. Pass
+   * nanosecond timestamps as decimal strings or `bigint`; unsafe JavaScript
+   * numeric timestamps are rejected instead of silently rounded.
    */
   async ingestCdr(
     rows: RelataRow[],
