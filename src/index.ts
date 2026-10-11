@@ -147,6 +147,8 @@ export { McpClient } from "./mcp.ts";
 export { unwrapMcp } from "./mcp.ts";
 export { summarizeDomain } from "./domain-summary.ts";
 export type { DomainSummary, DomainSummaryResult, DomainTypeCount, VisibleTypeInventory } from "./domain-summary.ts";
+export { suggestExtensions } from "./extension-suggestions.ts";
+export type { ExtensionInventory, ExtensionSuggestion, ExtensionSuggestions } from "./extension-suggestions.ts";
 
 export { A2AClient } from "./a2a.ts";
 

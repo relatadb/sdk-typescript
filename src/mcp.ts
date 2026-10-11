@@ -156,18 +156,6 @@ export class McpClient extends TypedClientBase {
     return this.callTool("explain_policy", { sql, purpose });
   }
 
-  /**
-   * `suggest_extensions` — type/canonical-kind autocomplete.
-   *
-   * The server's `mcp_tool_suggest_extensions` takes no `args` at all — the
-   * dispatch table calls it with no arguments forwarded — so it always
-   * returns the full, unfiltered extension-pack list; there is no `prefix`
-   * filter to send (#4657).
-   */
-  async suggestExtensions(): Promise<Record<string, unknown>> {
-    return this.callTool("suggest_extensions", {});
-  }
-
   // --- Entity / type discovery ---
 
   /** `list_entity_types` — every registered ontology type. */
