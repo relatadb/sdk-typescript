@@ -238,7 +238,7 @@ test("#2731: non-idempotent POST is NOT retried on 503 (double-execution guard, 
     retryBackoffMs: 1,
   });
   await assert.rejects(
-    () => gov.createRule({ name: "big-xfer" }),
+    () => gov.createRule({ name: "big-xfer", condition_sql: "amount > 10000", target_type: "Transaction" }),
     (err: unknown) => err instanceof ServerError,
   );
   assert.equal(calls.length, 1, "POST must NOT be retried on 503");
@@ -248,11 +248,10 @@ test("#2731: non-idempotent POST is NOT retried on 503 (double-execution guard, 
 // GovernanceClient
 // ---------------------------------------------------------------------------
 
-test("GovernanceClient: listRules, createRule, importSigma, placeLegalHold, requestBreakglass, submitDsar", async () => {
+test("GovernanceClient: listRules, createRule, placeLegalHold, requestBreakglass, submitDsar", async () => {
   const queue: MockResponse[] = [
     { body: { rules: [{ id: "r1" }] } }, // listRules
     { body: { id: "r2", name: "big-xfer" } }, // createRule
-    { body: { rules_imported: 1, rules_skipped: 0 } }, // importSigma
     { body: { case_id: "c1", object_type: "Person" } }, // placeLegalHold
     { body: { request_id: "bg1", status: "pending" } }, // requestBreakglass
     { body: { dsar_id: "d1" } }, // submitDsar
@@ -264,20 +263,14 @@ test("GovernanceClient: listRules, createRule, importSigma, placeLegalHold, requ
   assert.equal(rules.length, 1);
   assert.ok(calls[0]?.url.includes("/rules?object_type=Transaction"));
 
-  const rule = await gov.createRule({ name: "big-xfer" });
+  const rule = await gov.createRule({ name: "big-xfer", condition_sql: "amount > 10000", target_type: "Transaction" });
   assert.equal(rule["id"], "r2");
   assert.equal(calls[1]?.method, "POST");
   assert.ok(calls[1]?.url.includes("/rules?purpose=compliance"));
 
-  const sigma = await gov.importSigma("title: x");
-  assert.equal(sigma["rules_imported"], 1);
-  assert.ok(calls[2]?.url.includes("/rules/sigma?purpose=compliance"));
-  assert.equal(calls[2]?.headers["content-type"], "application/x-yaml");
-  assert.equal(calls[2]?.body, "title: x");
-
   const hold = await gov.placeLegalHold("c1", "Person", { field: "env", value: "prod" });
   assert.equal(hold["case_id"], "c1");
-  assert.deepEqual(JSON.parse(calls[3]?.body ?? "{}"), {
+  assert.deepEqual(JSON.parse(calls[2]?.body ?? "{}"), {
     case_id: "c1",
     object_type: "Person",
     field: "env",
@@ -286,24 +279,23 @@ test("GovernanceClient: listRules, createRule, importSigma, placeLegalHold, requ
 
   const bg = await gov.requestBreakglass("SRC-0042", { justification: "urgent triage" });
   assert.equal(bg["request_id"], "bg1");
-  assert.deepEqual(JSON.parse(calls[4]?.body ?? "{}"), {
+  assert.deepEqual(JSON.parse(calls[3]?.body ?? "{}"), {
     source_id: "SRC-0042",
     justification: "urgent triage",
   });
 
   const dsar = await gov.submitDsar("alice@x.com", "gdpr-art-15", { scope: "email" });
   assert.equal(dsar["dsar_id"], "d1");
-  assert.ok(calls[5]?.url.includes("/gdpr/dsar?"));
-  assert.ok(calls[5]?.url.includes("subject_identity=alice%40x.com"));
-  assert.ok(calls[5]?.url.includes("reason=gdpr-art-15"));
-  assert.ok(calls[5]?.url.includes("scope=email"));
+  assert.ok(calls[4]?.url.includes("/gdpr/dsar?"));
+  assert.ok(calls[4]?.url.includes("subject_identity=alice%40x.com"));
+  assert.ok(calls[4]?.url.includes("reason=gdpr-art-15"));
+  assert.ok(calls[4]?.url.includes("scope=email"));
 });
 
-test("GovernanceClient: createRule/importSigma require a purpose", async () => {
+test("GovernanceClient: createRule requires a purpose", async () => {
   const { fetch } = mockFetch({ body: {} });
   const gov = new GovernanceClient({ baseUrl: "http://x", fetch });
   await assert.rejects(() => gov.createRule({ name: "x" }), /purpose/i);
-  await assert.rejects(() => gov.importSigma("title: x"), /purpose/i);
 });
 
 test("GovernanceClient: suppressRule sends entity_id, not a bare pattern", async () => {
@@ -601,15 +593,6 @@ test("McpClient #2322/#4656: createRule sends name, condition_sql, and target_ty
   assert.equal(seen.arguments["target_type"], "Transaction");
   assert.equal(seen.arguments["severity"], "high");
   assert.equal(seen.arguments["purpose"], "security");
-});
-
-test("McpClient #2322: importSigma sends yaml key", async () => {
-  const seen = await callAndCapture((mcp) =>
-    mcp.importSigma("title: test\n"),
-  );
-  assert.equal(seen.name, "import_sigma");
-  assert.equal(seen.arguments["yaml"], "title: test\n");
-  assert.equal(seen.arguments["sigma_yaml"], undefined);
 });
 
 test("McpClient #2322: listJobs sends no args", async () => {

@@ -21,6 +21,12 @@ TypeScript is one of the three supported consumer SDKs (Python, TypeScript,
 Go). Other languages use the HTTP API and its OpenAPI reference at
 `GET /openapi.json`.
 
+The v3 SDK accepts prepared detection rules through `GovernanceClient.createRule`
+or MCP `createRule`. Raw Sigma YAML parsing/import is no longer an SDK or MCP
+server method. Use the optional `relata-connectors import-sigma` application
+workflow for YAML conversion, or convert externally and submit the prepared
+`name`, `condition_sql`, and `target_type` JSON fields through `/rules`.
+
 TypeScript is **async-native**, so every SDK method returns a `Promise`. There are no
 separate `Async*` classes — that is the idiomatic parity with the Python SDK's sync/async
 split.
@@ -438,7 +444,7 @@ const gov    = GovernanceClient.fromClient(relata);
 const mcp    = McpClient.fromClient(relata);
 const audit  = AuditClient.fromClient(relata);
 
-const rule   = await gov.createRule({ name: "big-xfer", object_type: "Transaction", condition: "amount_usd > 1000000", action: "alert" });
+const rule   = await gov.createRule({ name: "big-xfer", condition_sql: "amount_usd > 1000000", target_type: "Transaction", severity: "high" });
 const tools  = await mcp.listTools();
 const entries = await audit.entries({ purpose: "compliance", limit: 50 });
 ```

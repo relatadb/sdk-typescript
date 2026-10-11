@@ -834,17 +834,6 @@ export class McpClient extends TypedClientBase {
     return this.callTool("create_rule", args);
   }
 
-  /** `import_sigma` — import a Sigma detection rule (YAML). */
-  async importSigma(
-    sigmaYaml: string,
-    opts: { purpose?: string } = {},
-  ): Promise<Record<string, unknown>> {
-    return this.callTool("import_sigma", {
-      yaml: sigmaYaml,
-      purpose: opts.purpose ?? "security",
-    });
-  }
-
   /** `list_jobs` — list all registered detection jobs with live status. */
   async listJobs(): Promise<Record<string, unknown>> {
     return this.callTool("list_jobs", {});

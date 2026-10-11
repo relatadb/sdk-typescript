@@ -755,29 +755,22 @@ test("hawalaTrace: clamps maxHops to 10 and defaults purpose to analytics", asyn
 });
 
 // ---------------------------------------------------------------------------
-// Detection rules — createRule/importSigma require purpose; suppressRule
+// Detection rules — createRule requires purpose; suppressRule
 // sends entity_id (server contract, see crates/relata-cli/src/serve/rules.rs)
 // ---------------------------------------------------------------------------
 
 test("createRule: attaches purpose as a query param and requires one", async () => {
   const { fetch, calls } = mockFetch({ body: { id: "r1" } });
   const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "audit", fetch });
-  await relata.createRule({ name: "r1" });
+  await relata.createRule({ name: "r1", condition_sql: "age > 18", target_type: "Person" });
   assert.ok(calls[0]?.url.includes("/rules?purpose=audit"));
 
   const { fetch: fetch2 } = mockFetch({ body: {} });
   const noPurpose = new RelataClient({ baseUrl: "http://x", fetch: fetch2 });
-  await assert.rejects(() => noPurpose.createRule({ name: "r1" }), PurposeError);
-});
-
-test("importSigma: sends raw YAML body with purpose query param", async () => {
-  const { fetch, calls } = mockFetch({ body: { rules_imported: 1 } });
-  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "audit", fetch });
-  const out = await relata.importSigma("title: x\n");
-  assert.equal(out["rules_imported"], 1);
-  assert.ok(calls[0]?.url.includes("/rules/sigma?purpose=audit"));
-  assert.equal(calls[0]?.headers["content-type"], "application/x-yaml");
-  assert.equal(calls[0]?.body, "title: x\n");
+  await assert.rejects(
+    () => noPurpose.createRule({ name: "r1", condition_sql: "age > 18", target_type: "Person" }),
+    PurposeError,
+  );
 });
 
 test("suppressRule: sends entity_id, not a bare pattern", async () => {

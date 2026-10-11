@@ -796,28 +796,6 @@ export class RelataClient {
     return this.#delete(`/rules/${pathSegment(ruleId)}`);
   }
 
-  /**
-   * Import a Sigma rule (YAML string).
-   *
-   * The server (`POST /rules/sigma?purpose=<p>`) requires `purpose` as a
-   * query param and the raw YAML text as the request body — not a JSON
-   * envelope.
-   */
-  async importSigma(
-    sigmaYaml: string,
-    opts?: { purpose?: string },
-  ): Promise<Record<string, unknown>> {
-    const purpose = opts?.purpose ?? this.#defaultPurpose;
-    if (!purpose) {
-      throw new PurposeError(undefined, "purpose field is required");
-    }
-    return this.#postRaw(
-      `/rules/sigma?purpose=${encodeURIComponent(purpose)}`,
-      sigmaYaml,
-      "application/x-yaml",
-    );
-  }
-
   /** Snooze a rule for ``durationSecs``. */
   async snoozeRule(ruleId: string, durationSecs: number): Promise<Record<string, unknown>> {
     return this.#post(`/rules/${pathSegment(ruleId)}/snooze`, { duration_secs: durationSecs });
@@ -1724,50 +1702,6 @@ export class RelataClient {
   /** @internal */
   async #delete<T>(path: string, timeoutMs?: number): Promise<T> {
     return this.#send<T>("DELETE", path, undefined, timeoutMs);
-  }
-
-  /**
-   * @internal
-   * POST a raw (non-JSON) text body — e.g. Sigma YAML. No retry (the
-   * operation may not be idempotent server-side), mirroring
-   * `_typed-http.ts`'s `_sendRaw`.
-   */
-  async #postRaw<T>(
-    path: string,
-    body: string,
-    contentType: string,
-    timeoutMs?: number,
-  ): Promise<T> {
-    if (this.#destroyed) {
-      throw new ClientClosedError();
-    }
-    const url = `${this.#baseUrl}${path}`;
-    const effectiveTimeout = timeoutMs ?? this.#timeoutMs;
-    const controller = new AbortController();
-    const timer =
-      effectiveTimeout > 0
-        ? setTimeout(() => controller.abort(), effectiveTimeout)
-        : undefined;
-    try {
-      const headers = this.#buildHeaders(true);
-      headers["Content-Type"] = contentType;
-      const response = await this.#fetch(url, {
-        method: "POST",
-        headers,
-        signal: controller.signal,
-        body,
-        redirect: "manual",
-      });
-      assertNotRedirected(response, url);
-      return await this.#parseResponse<T>(response, undefined);
-    } catch (err) {
-      if (this.#isAbortError(err)) {
-        throw new TimeoutError(effectiveTimeout);
-      }
-      throw err;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
   }
 
   /**

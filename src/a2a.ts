@@ -3,14 +3,15 @@
  *
  * Wraps `/a2a/tasks` (create), `/a2a/tasks/:id` (status),
  * `/a2a/tasks/:id/stream` (SSE tail — pairs with the streaming ticket), and
- * `/a2a/checkpoints/:threadId` (LangGraph checkpointer backing store).
+ * `/a2a/checkpoints/:threadId` (process-local LangGraph checkpoint endpoints).
  */
 
 import { RelataClient } from "./client.ts";
 import { type TypedClientCtor, TypedClientBase } from "./_typed-http.ts";
 
 /**
- * A2A client — submit / poll / list tasks; manage checkpoints.
+ * A2A HTTP client. The server executes submitted tasks synchronously and
+ * retains task status/checkpoint state only in bounded, process-local stores.
  */
 export class A2AClient extends TypedClientBase {
   constructor(opts: TypedClientCtor) {
@@ -23,10 +24,11 @@ export class A2AClient extends TypedClientBase {
   }
 
   /**
-   * Submit a long-running A2A task. The `payload` matches the A2A protocol —
-   * typically `{"name": "...", "input": {...}, "skill": ...}`.
-   * Wraps `POST /a2a/tasks`. Returns the task record with its `id` and
-   * initial `status`.
+   * Submit an A2A task. The server executes it synchronously in this request.
+   * The returned record is available only while retained in the server's
+   * bounded, process-local task history; it is not a durable job receipt.
+   * Payloads typically contain `name`, `input`, and `skill`.
+   * Wraps `POST /a2a/tasks`.
    */
   async submitTask(
     payload: Record<string, unknown>,

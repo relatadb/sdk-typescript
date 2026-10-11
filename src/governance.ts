@@ -3,7 +3,7 @@
  *
  * A thin governed wrapper over the server's HTTP surface so a TypeScript
  * operator can:
- * - Define and manage detection rules (including Sigma rule ingestion).
+ * - Define and manage prepared detection rules.
  * - Place and lift legal holds; configure WORM retention per object type.
  * - Request and approve emergency HUMINT breakglass access (4h, two-person).
  * - List and ack alerts.
@@ -21,7 +21,7 @@
  *   tenant: "acme",
  * });
  * const gov = GovernanceClient.fromClient(relata);
- * const rule = await gov.createRule({ name: "big-transfer", object_type: "Transaction", condition: "amount_usd > 1000000", action: "alert" });
+ * const rule = await gov.createRule({ name: "big-transfer", condition_sql: "amount_usd > 1000000", target_type: "Transaction", severity: "high" });
  * const hold = await gov.placeLegalHold("case-42", "Person");
  * ```
  */
@@ -101,8 +101,9 @@ export class GovernanceClient extends TypedClientBase {
   }
 
   /**
-   * Create a detection rule. The `rule` shape matches the server's
-   * `RuleSpec` (`name`, `object_type`, `condition`, `action`, ...).
+   * Create a prepared detection rule. The server requires `name`,
+   * `condition_sql`, and `target_type`; it accepts optional `severity`,
+   * `mitre_technique`, `trigger`, and `action` fields.
    * Wraps `POST /rules?purpose=<p>`. Returns the created rule record
    * including its server-assigned `id`.
    *
@@ -123,27 +124,6 @@ export class GovernanceClient extends TypedClientBase {
    */
   async disableRule(ruleId: string): Promise<Record<string, unknown>> {
     return this._delete(`/rules/${encodeURIComponent(ruleId)}`);
-  }
-
-  /**
-   * Import a Sigma rule (YAML string).
-   * Wraps `POST /rules/sigma?purpose=<p>`. Returns the import summary
-   * (`rules_imported`, `rules_skipped`, `errors`).
-   *
-   * The server requires `purpose` as a query param and the raw YAML text as
-   * the request body — not a JSON envelope.
-   */
-  async importSigma(
-    sigmaYaml: string,
-    opts: { purpose?: string } = {},
-  ): Promise<Record<string, unknown>> {
-    const purpose = this.#effectivePurpose(opts.purpose);
-    return this._sendRaw(
-      "POST",
-      `/rules/sigma${qs({ purpose })}`,
-      sigmaYaml,
-      "application/x-yaml",
-    );
   }
 
   /** Temporarily disable a rule for `durationSecs` (#967). */

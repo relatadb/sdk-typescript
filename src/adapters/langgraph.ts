@@ -18,11 +18,11 @@
  * npm install @langchain/langgraph-checkpoint @langchain/core
  * ```
  *
- * Checkpoints persist via the governed A2A checkpoint door
- * (`PUT/GET /a2a/checkpoints/{thread_id}/{checkpoint_id}`,
- * `GET /a2a/checkpoints/{thread_id}`) — the server keeps an exact, lossless
- * read-back store and mirrors each write as a governed `MemoryItem` (audit +
- * provenance). Retained checkpoints FIFO-evict server-side.
+ * The A2A checkpoint endpoints (`PUT/GET /a2a/checkpoints/{thread_id}/{checkpoint_id}`,
+ * `GET /a2a/checkpoints/{thread_id}`) keep exact state in a bounded,
+ * process-local map (4096 entries, FIFO eviction). State is lost when the
+ * server restarts. Saves also attempt a governed `MemoryItem` mirror for
+ * audit/provenance, but the mirror is not an exact checkpoint recovery source.
  *
  * Unlike the Python SDK (which ships a separate sync `RelataCheckpointer`
  * and `AsyncRelataCheckpointer`, because Python needs an explicit async
@@ -372,7 +372,8 @@ export class RelataCheckpointer extends BaseCheckpointSaver {
   }
 
   /**
-   * Persist a checkpoint. `PUT /a2a/checkpoints/{thread_id}/{checkpoint_id}`
+   * Store a checkpoint in the server's process-local map.
+   * `PUT /a2a/checkpoints/{thread_id}/{checkpoint_id}`
    * stores the checkpoint + metadata verbatim; overwrites any existing
    * checkpoint for the same id (re-saves don't accumulate duplicates).
    */

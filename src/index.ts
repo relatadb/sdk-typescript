@@ -40,7 +40,12 @@
  * // Typed clients (inherit auth + tenant via fromClient)
  * import { GovernanceClient, McpClient } from "@zysec-ai/relata-sdk";
  * const gov = GovernanceClient.fromClient(relata);
- * await gov.importSigma(open("rules.yml").read());
+ * await gov.createRule({
+ *   name: "high-transfer",
+ *   condition_sql: "amount_usd > 1000000",
+ *   target_type: "Transaction",
+ *   severity: "high",
+ * });
  * ```
  *
  * **Key concepts**
