@@ -22,5 +22,8 @@ test("domain summary composes the tenant-visible type inventory locally", () => 
 test("domain summary supports all profiles and rejects invalid inventory", () => {
   equal(summarizeDomain("all", { types: [] }).summaries.length, 9);
   throws(() => summarizeDomain("other", { types: [] }), RangeError);
+  throws(() => summarizeDomain("telco", null as unknown as Record<string, unknown>), TypeError);
+  throws(() => summarizeDomain("telco", {}), TypeError);
+  throws(() => summarizeDomain("telco", { types: null }), TypeError);
   throws(() => summarizeDomain("telco", { types: [{ type: "CallRecord", rows: -1 }] }), TypeError);
 });

@@ -5,7 +5,10 @@
  * performs no network request and is not an authorization boundary.
  */
 
-export type VisibleTypeInventory = Record<string, unknown>;
+export interface VisibleTypeInventory {
+  types: unknown[];
+  [key: string]: unknown;
+}
 
 export interface DomainTypeCount {
   type: string;
@@ -92,16 +95,19 @@ const PROFILES: ReadonlyArray<DomainSummary> = [
 const VALID_DOMAINS = [...PROFILES.map((profile) => profile.domain), "all"];
 
 /** Compose the former domain-summary shape from caller-visible type metadata. */
-export function summarizeDomain(domain: string, inventory: VisibleTypeInventory): DomainSummaryResult {
+export function summarizeDomain(domain: string, inventory: unknown): DomainSummaryResult {
   if (!VALID_DOMAINS.includes(domain)) {
     throw new RangeError(`unknown domain: ${domain}. Valid: ${VALID_DOMAINS.join(", ")}`);
   }
+  if (!inventory || typeof inventory !== "object" || Array.isArray(inventory)) {
+    throw new TypeError("list_entity_types inventory must be an object with a types array");
+  }
   const counts = new Map<string, number>();
-  const rawTypes = inventory["types"];
-  if (rawTypes !== undefined && !Array.isArray(rawTypes)) {
+  const rawTypes = (inventory as VisibleTypeInventory)["types"];
+  if (!Array.isArray(rawTypes)) {
     throw new TypeError("list_entity_types inventory must contain a types array");
   }
-  for (const rawItem of (rawTypes ?? []) as unknown[]) {
+  for (const rawItem of rawTypes as unknown[]) {
     const item = rawItem as Record<string, unknown> | null;
     if (
       !item ||
