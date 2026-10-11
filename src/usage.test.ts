@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { recordUsage, type UsageObservation } from "./usage.ts";
+import { aggregateUsageEvents, recordUsage, type UsageObservation } from "./usage.ts";
 import type { EventAppendReceipt, EventAppendRequest } from "./types.ts";
 
 const receipt: EventAppendReceipt = {
@@ -58,4 +58,47 @@ test("recordUsage requires a stable key and at least one valid observation", asy
     idempotencyKey: "valid", target, feedbackScore: 1.01,
   }), /feedbackScore/);
   assert.equal(calls, 0);
+});
+
+const target = { object_type: "DocumentSource", key: "report_id", value: "report-42" } as const;
+
+test("aggregateUsageEvents deduplicates exact IDs and rebuilds former counters", () => {
+  const rows = [
+    { event_id: "evt-b", target_type: target.object_type, target_id: target.value, observed_at: 20, cited: true, retrieved: true, feedback_score: 0.4 },
+    { event_id: "evt-a", target_type: target.object_type, target_id: target.value, observed_at: 10, cited: true, retrieved: true, feedback_score: 0.8 },
+    { event_id: "evt-b", target_type: target.object_type, target_id: target.value, observed_at: 20, cited: true, retrieved: true, feedback_score: 0.4 },
+    { event_id: "evt-c", target_type: target.object_type, target_id: target.value, observed_at: 30, retrieved: true },
+  ];
+  const result = aggregateUsageEvents(rows, target);
+  assert.deepEqual(result, {
+    targetType: "DocumentSource",
+    targetId: "report-42",
+    eventCount: 3,
+    citationCount: 2,
+    retrievalCount: 3,
+    feedbackCount: 2,
+    feedbackAvg: result.feedbackAvg,
+    lastCitedAt: "20",
+  });
+  assert.ok(Math.abs((result.feedbackAvg ?? 0) - 0.6) < 1e-12);
+  assert.deepEqual(aggregateUsageEvents([...rows].reverse(), target), result);
+});
+
+test("aggregateUsageEvents rejects conflict, cross-target, missing ID, and invalid scores", () => {
+  const row = { event_id: "evt-1", target_type: target.object_type, target_id: target.value, observed_at: 10, cited: true };
+  assert.throws(() => aggregateUsageEvents([row, { ...row, cited: false }], target), /conflicting/);
+  assert.throws(() => aggregateUsageEvents([{ ...row, target_id: "other" }], target), /different target/);
+  assert.throws(() => aggregateUsageEvents([{ ...row, event_id: " " }], target), /event_id/);
+  assert.throws(() => aggregateUsageEvents([{ ...row, feedback_score: Number.POSITIVE_INFINITY }], target), /feedback_score/);
+  assert.throws(() => aggregateUsageEvents([{ ...row, feedback_score: 1.1 }], target), /feedback_score/);
+  assert.throws(() => aggregateUsageEvents([{ ...row, observed_at: Number.MAX_SAFE_INTEGER + 1 }], target), /project it as text/);
+});
+
+test("aggregateUsageEvents preserves exact modern epoch nanoseconds", () => {
+  const base = 1_791_710_000_000_000_000n;
+  const rows = [
+    { event_id: "evt-later", target_type: target.object_type, target_id: target.value, observed_at: (base + 1n).toString(), cited: true },
+    { event_id: "evt-earlier", target_type: target.object_type, target_id: target.value, observed_at: base.toString(), cited: true },
+  ];
+  assert.equal(aggregateUsageEvents(rows, target).lastCitedAt, (base + 1n).toString());
 });
