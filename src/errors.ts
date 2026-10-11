@@ -512,7 +512,7 @@ export class ClientClosedError extends RelataError {
  * Every `fetch()` call site in this SDK passes `redirect: "manual"` so a
  * request never silently follows a 3xx response and resends the bearer
  * token to a redirect target the caller did not choose — the TS-SDK
- * analogue of `crates/relata-sdk-rust`'s `redirect::Policy::none()` (#1416).
+ * equivalent HTTP transport policy used by the maintained clients (#1416).
  * A spec-compliant runtime that honors `redirect: "manual"` resolves with an
  * opaque response (`response.type === "opaqueredirect"`, `status === 0`); a
  * runtime or an injected `opts.fetch` that only partially honors it may

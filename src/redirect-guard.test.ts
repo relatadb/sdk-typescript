@@ -4,8 +4,7 @@
  * must refuse to follow a redirect response rather than silently resending
  * the `Authorization` header to whatever origin a 3xx `Location` points at.
  *
- * This is the TS-SDK analogue of the Rust SDK's
- * `redirect::Policy::none()` (#1416).
+ * This verifies the TypeScript HTTP transport's no-redirect hardening (#1416).
  */
 
 import { strict as assert } from "node:assert";

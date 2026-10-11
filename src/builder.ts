@@ -2,8 +2,7 @@
  * Typed query builder for the Relata JSON IR (v1).
  *
  * Produces JSON documents matching the schema documented in
- * `docs/api/query-ir.md`. The same logical query produced by this builder
- * and the Rust `relata_sdk_rust::builder` serialises to identical JSON.
+ * `docs/api/query-ir.md`, for submission through the HTTP query contract.
  *
  * ```ts
  * import { query, pathsBetween, lookupIdentity } from "@zysec-ai/relata-sdk/builder";

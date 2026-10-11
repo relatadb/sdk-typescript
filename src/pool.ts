@@ -1,13 +1,13 @@
 /**
  * Multi-endpoint connection pool for high-availability deployments (#2756,
- * TS parity delta #2 vs. the Rust reference).
+ * supported TypeScript client surface).
  *
  * Round-robin load balancing across N HTTP endpoints with health-aware
- * failover, mirroring `crates/relata-sdk-rust/src/pool.rs::RelataClientPool`.
+ * failover across configured HTTP endpoints.
  * When an endpoint's request fails, the pool marks it unhealthy and skips it
  * for a cooldown period, retrying on the next healthy endpoint.
  *
- * Data-plane surface only (matching the Rust pool): `query`, `search`,
+ * Data-plane surface only: `query`, `search`,
  * `version`, `health`, `stats`. Anything else (schema mutation, ingest,
  * admin) should go through a single {@link RelataClient} pointed at a
  * specific node — the pool is for read/query-side high availability, not a

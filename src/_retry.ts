@@ -26,8 +26,8 @@ export const RETRYABLE_STATUS_CODES: ReadonlySet<number> = new Set([502, 503, 50
 
 /**
  * HTTP methods that are safe to retry without risk of double-execution.
- * Parity with the Rust SDK (`post()` never retries — see
- * `crates/relata-sdk-rust/src/http.rs`) and the Go SDK's `isIdempotent`
+ * Non-idempotent POST operations are not retried, consistent with the Go
+ * SDK's `isIdempotent`
  * (`sdks/go/relata/client.go`). POST/PUT/PATCH/DELETE are NOT retried — a
  * gateway timeout after commit would otherwise double-execute irreversible
  * ops (erase_subject, fuse_identities, session_commit, #2489).

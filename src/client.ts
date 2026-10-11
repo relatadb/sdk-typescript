@@ -670,8 +670,7 @@ export class RelataClient {
   // Distinct from `schemaAlter` (online column evolution, #1307/#2476): this
   // surface governs the git-branched ontology — branch off `main`, drop a
   // stale experiment branch, and register/list edge (link) types within a
-  // branch. Mirrors the Rust flat client (`crates/relata-sdk-rust/src/http.rs`
-  // 2535–2567) and the Python client.
+  // branch. Mirrors the Python client's schema-branch methods.
   // -------------------------------------------------------------------------
 
   /**
@@ -1830,15 +1829,14 @@ export class RelataClient {
    * @internal
    * Core request dispatcher: timeout, retry, X-Request-ID, error mapping.
    *
-   * Mirrors the Python `_http._send_with_retry` loop and the Rust/Go
-   * idempotency gate (#2489):
+   * Mirrors the Python `_http._send_with_retry` loop and Go idempotency gate
+   * (#2489):
    * - Generate a per-attempt `X-Request-ID` (unless the caller pinned one in
    *   the static header bag).
    * - Retry **idempotent** verbs (`GET`/`HEAD`/`OPTIONS`) on `{502, 503, 504}`
    *   and on network errors, up to `maxRetries`. POST/PUT/PATCH/DELETE are
    *   never retried — a gateway timeout after commit would double-execute
-   *   irreversible operations (parity with `crates/relata-sdk-rust/src/http.rs`
-   *   `post()` and `sdks/go/relata/client.go::isIdempotent`).
+   *   irreversible operations (`sdks/go/relata/client.go::isIdempotent`).
    * - Exponential backoff: `retryBackoffMs * 2^attempt`.
    */
   async #send<T>(

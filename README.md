@@ -228,8 +228,8 @@ hard `NetworkError` instead of being silently followed. This is a
 code-level guarantee that the `Authorization: Bearer <token>` header is
 never resent to a redirect target — independent of whatever the bound or
 caller-injected `fetch` implementation (`RelataClientOptions.fetch`) would
-otherwise default to. It matches the hardening `crates/relata-sdk-rust`
-shipped via `redirect::Policy::none()` (#1416); see #2364.
+otherwise default to. This enforces the redirect policy required to prevent
+credentials from being forwarded to another origin (#1416, #2364).
 
 ### Logging (silent by default)
 
@@ -647,14 +647,13 @@ const ir = query()
 const paths = graph("investigation").from("alice@acme.com").to("bob@acme.com").maxHops(3).build();
 ```
 
-Serialises to the same JSON documented in `docs/api/query-ir.md` and produced by the
-Rust `relata_sdk_rust::builder` module.
+Serialises to the JSON documented in `docs/api/query-ir.md`.
 
 ## Connection pool (high availability)
 
-`ClientPool` mirrors the Rust SDK's `RelataClientPool`: round-robin load balancing
-across N HTTP endpoints with health-aware failover (a failed endpoint is skipped for a
-cooldown period, then retried). Covers the data-plane read surface only — `query`,
+`ClientPool` provides round-robin load balancing across N HTTP endpoints with
+health-aware failover (a failed endpoint is skipped for a cooldown period, then
+retried). Covers the data-plane read surface only — `query`,
 `search`, `version`, `health`, `stats`. For schema/ingest/admin operations, use a single
 `RelataClient` pointed at a specific node.
 

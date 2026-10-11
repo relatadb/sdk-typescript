@@ -384,7 +384,7 @@ test("retry: does NOT retry on 401 (non-retryable)", async () => {
 test("retry (#2489): POST is NOT retried on 503 — irreversible-op guard", async () => {
   // POST /query with a retryable 503 must surface immediately: a gateway
   // timeout after commit risks double-execution of irreversible operations.
-  // Parity with the Rust SDK (`post()` never retries) and Go `isIdempotent`.
+  // Non-idempotent requests are not retried, matching the Go SDK policy.
   const { fetch, calls } = mockFetch([
     { status: 503, body: { error: "shedding" } },
   ]);
