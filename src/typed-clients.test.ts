@@ -1255,29 +1255,6 @@ test("VectorClient: hybridSearch emits the HYBRID_SEARCH statement form + tuning
 // S3Client
 // ---------------------------------------------------------------------------
 
-test("S3Client: http() PUT/GET against the S3 door", async () => {
-  const { fetch, calls } = mockFetch([
-    { status: 200, body: "", headers: { etag: '"abc"' } }, // PUT
-    { status: 200, body: "PDF-CONTENT" }, // GET
-  ]);
-  const { S3Client } = await import("./s3.ts");
-  const s3 = new S3Client("http://x:9090", { bearerToken: "tok", tenant: "acme", fetch });
-
-  const put = await s3.putObject("bucket", "report.pdf", "data-bytes", {
-    contentType: "application/pdf",
-  });
-  assert.equal(put.status, 200);
-  assert.equal(put.headers["etag"], '"abc"');
-  assert.equal(calls[0]?.method, "PUT");
-  assert.equal(calls[0]?.url, "http://x:9090/bucket/report.pdf");
-  assert.equal(calls[0]?.headers["authorization"], "Bearer tok");
-  assert.equal(calls[0]?.headers["x-relata-tenant-id"], "acme");
-  assert.equal(calls[0]?.headers["content-type"], "application/pdf");
-
-  const got = await s3.getObject("bucket", "report.pdf");
-  assert.equal(got.status, 200);
-  assert.equal(new TextDecoder().decode(got.body), "PDF-CONTENT");
-});
 
 // ---------------------------------------------------------------------------
 // StreamingClient (smoke test: NDJSON row stream)

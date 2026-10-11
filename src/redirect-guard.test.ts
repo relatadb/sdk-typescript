@@ -16,7 +16,6 @@ import {
   Memory,
   NetworkError,
   RelataClient,
-  S3Client,
 } from "./index.ts";
 import { assertNotRedirected, isRedirectResponse } from "./errors.ts";
 
@@ -162,24 +161,6 @@ test("Memory.add: blocks a cross-origin redirect and never contacts it", async (
   });
 
   await assert.rejects(() => memory.add("Alice prefers dark mode"));
-
-  assert.equal(calls.length, 1, "must not have followed the redirect");
-  assert.equal(calls[0]?.redirect, "manual");
-  assert.equal(calls[0]?.authorization, "Bearer s3cr3t");
-});
-
-// ---------------------------------------------------------------------------
-// S3Client (s3.ts)
-// ---------------------------------------------------------------------------
-
-test("S3Client.http: blocks a cross-origin redirect and never contacts it", async () => {
-  const { fetch, calls } = mockRedirectingFetch(ATTACKER_ORIGIN);
-  const s3 = new S3Client("http://relata.local", {
-    bearerToken: "s3cr3t",
-    fetch,
-  });
-
-  await assert.rejects(() => s3.listBuckets());
 
   assert.equal(calls.length, 1, "must not have followed the redirect");
   assert.equal(calls[0]?.redirect, "manual");

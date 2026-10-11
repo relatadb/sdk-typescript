@@ -68,8 +68,6 @@ import {
 import { type Logger, NoOpLogger, SafeLogger } from "./logger.ts";
 import { Namespace } from "./namespace.ts";
 import { QueryBuilder } from "./query.ts";
-import { createArrowFlightTransport } from "./flight.ts";
-import { createGrpcQueryTransport, type GrpcQueryResult } from "./grpc-query.ts";
 import {
   RETRYABLE_STATUS_CODES,
   isIdempotentMethod,
@@ -97,7 +95,7 @@ export {
 };
 
 // ---------------------------------------------------------------------------
-// Multimedia operator + Arrow Flight builders (#2251, #2253)
+// Multimedia operator builders (#2251)
 // ---------------------------------------------------------------------------
 
 // #3211: shared SQL-building guards live in `_sql.ts` so every SQL-building
@@ -175,74 +173,6 @@ export function buildSimilarImageSql(
   sql += ")";
   return sql;
 }
-
-/**
- * Assemble an Arrow Flight `do_get` ticket from SQL + optional PURPOSE (#2253).
- *
- * The Flight door (`crates/relata-cli/src/flight_server.rs::do_get`) reads the
- * ticket as raw UTF-8 SQL and extracts the purpose from a leading
- * `PURPOSE '<id>'` SQL comment, defaulting to `"flight_query"` when absent.
- * @internal
- */
-export function buildFlightTicket(sql: string, purpose?: string): string {
-  if (!purpose) return sql;
-  return `/* PURPOSE '${purpose.replace(/'/g, "''")}' */ ${sql}`;
-}
-
-/**
- * Resolve the Arrow Flight gRPC endpoint. Defaults to
- * `grpc://<baseUrl host>:8815` (the server's default Flight port,
- * `RELATA_FLIGHT_PORT`). @internal
- */
-export function deriveFlightEndpoint(baseUrl: string, flightEndpoint?: string): string {
-  if (flightEndpoint) return flightEndpoint;
-  try {
-    const host = new URL(baseUrl).hostname || "localhost";
-    return `grpc://${host}:8815`;
-  } catch {
-    return "grpc://localhost:8815";
-  }
-}
-
-/**
- * Resolve the plain gRPC `RelataQuery` service endpoint (#4090). Defaults to
- * `grpc://<baseUrl host>:50051` — the server's default gRPC port
- * (`RELATA_GRPC_PORT`, distinct from the Flight door's 8815).
- * @internal
- */
-export function deriveGrpcQueryEndpoint(baseUrl: string, grpcEndpoint?: string): string {
-  if (grpcEndpoint) return grpcEndpoint;
-  try {
-    const host = new URL(baseUrl).hostname || "localhost";
-    return `grpc://${host}:50051`;
-  } catch {
-    return "grpc://localhost:50051";
-  }
-}
-
-/**
- * Adapter contract for `RelataClient.queryFlight()` (#2253). Performs the
- * Arrow Flight `do_get` RPC against `endpoint` using `ticketSql` (UTF-8 bytes,
- * PURPOSE comment already injected) as the ticket and `bearer` for the
- * `authorization` metadata, returning the decoded columnar result.
- *
- * `headers` (#3213) carries the tenant / acting-as / delegated-by / request-id
- * scope as gRPC metadata so the Flight door resolves the caller's tenant
- * instead of falling back to the default tenant. Transports that pre-date this
- * parameter simply ignore it (a 3-arg function is assignable to this type).
- *
- * Optional since #2492: `queryFlight()` now uses the SDK's built-in first-party
- * {@link createArrowFlightTransport} adapter by default, so most callers never
- * need to supply a `transport`. Pass one only if you operate your own Arrow
- * Flight stack (e.g. a grpc-web client for the browser, or a bespoke Arrow
- * build) and want it driven instead of the built-in gRPC + apache-arrow path.
- */
-export type FlightTransport<T = unknown> = (
-  endpoint: string,
-  ticketSql: string,
-  bearer: string | undefined,
-  headers?: Record<string, string>,
-) => Promise<T>;
 
 // ---------------------------------------------------------------------------
 // RelataClient
@@ -644,39 +574,6 @@ export class RelataClient {
     };
   }
 
-  /**
-   * Execute a GraphQL query against the governed query path (ADR-220).
-   *
-   * @param query GraphQL query string.
-   * @param variables Optional variables map. `$var` references in `limit` and
-   *   `where` are bound server-side (#3260). A referenced variable that is
-   *   missing, null, or wrong-typed is a hard server error (raised as
-   *   {@link RelataError}) — never silently dropped. String values are bound
-   *   as quoted literals, so variable content cannot inject SQL.
-   * @param operationName Optional operation name (multi-operation documents).
-   * @returns The `data` field — an array of row objects for a query, or the
-   *   `__schema` object for an introspection request.
-   * @throws {RelataError} if the server returns a non-empty `errors` array.
-   */
-  async graphql(
-    query: string,
-    variables?: Record<string, unknown>,
-    operationName?: string,
-  ): Promise<unknown> {
-    const body: Record<string, unknown> = { query };
-    if (variables !== undefined) body["variables"] = variables;
-    if (operationName !== undefined) body["operationName"] = operationName;
-    const wire = await this.#post<{ data?: unknown; errors?: { message?: string }[] }>("/graphql", body);
-    if (wire.errors && wire.errors.length > 0) {
-      const msg = wire.errors[0]?.message ?? "graphql error";
-      throw new RelataError(`graphql: ${msg}`, 200, msg);
-    }
-    return wire.data;
-  }
-
-  // -------------------------------------------------------------------------
-  // Public API — Namespace handle (T9 flagship retrieval surface, #1991/#2491)
-  // -------------------------------------------------------------------------
 
   /**
    * Bind a {@link Namespace} handle to `name` — the search-developer surface
@@ -1350,169 +1247,39 @@ export class RelataClient {
   }
 
   /**
-   * Execute a SQL query over Arrow Flight `do_get` and return the decoded
-   * columnar result — no JSON intermediate (#2253, #958, #2492).
+   * Execute a GraphQL query against the governed query path (ADR-220).
    *
-   * The Flight door is enabled server-side with `RELATA_FLIGHT_ENABLE=true`
-   * (default port 8815). The ticket is the raw UTF-8 SQL, optionally prefixed
-   * with a leading `PURPOSE '<id>'` SQL comment which the server extracts as
-   * the query purpose.
-   *
-   * **Works out of the box (#2492):** when no `transport` is supplied the SDK
-   * uses its built-in first-party {@link createArrowFlightTransport} adapter,
-   * which opens a real gRPC Flight `do_get` and decodes the stream into an
-   * `apache-arrow` `Table` — matching what the Python/Go/Rust SDKs do natively.
-   * The gRPC + Arrow runtime libraries (`@grpc/grpc-js`, `apache-arrow`) are
-   * **optional peer dependencies**: if they are not installed, the call throws
-   * a `RelataError` with install guidance. Supply a `transport` only if you
-   * operate your own Arrow Flight stack (e.g. a grpc-web client for the
-   * browser); the SDK still handles ticket/PURPOSE assembly, endpoint
-   * derivation, and bearer wiring.
-   *
-   * @param sql - SQL query string used verbatim as the Flight ticket.
-   * @param opts - `flightEndpoint` override, `purpose` (injected as a
-   *   `PURPOSE '...'` SQL comment), `bearerToken` override (defaults to the
-   *   client's token), and `transport` — an optional Flight `do_get` adapter
-   *   overriding the built-in one.
-   *
-   * @typeParam T - Decoded result type (an `apache-arrow` `Table` when the
-   *   built-in transport is used; default `unknown`).
-   *
-   * @example
-   * ```typescript
-   * // Zero-config (installs apache-arrow + @grpc/grpc-js as peers first):
-   * const table = await relata.queryFlight(
-   *   "SELECT * FROM Person LIMIT 1000",
-   *   { purpose: "analytics" },
-   * );
-   *
-   * // Caller-supplied adapter (unchanged from #2253):
-   * const table = await relata.queryFlight(
-   *   "SELECT * FROM Person LIMIT 1000",
-   *   { purpose: "analytics", transport: myFlightAdapter },
-   * );
-   * ```
+   * @param query GraphQL query string.
+   * @param variables Optional variables map. `$var` references in `limit` and
+   *   `where` are bound server-side (#3260). A referenced variable that is
+   *   missing, null, or wrong-typed is a hard server error (raised as
+   *   {@link RelataError}) — never silently dropped. String values are bound
+   *   as quoted literals, so variable content cannot inject SQL.
+   * @param operationName Optional operation name (multi-operation documents).
+   * @returns The `data` field — an array of row objects for a query, or the
+   *   `__schema` object for an introspection request.
+   * @throws {RelataError} if the server returns a non-empty `errors` array.
    */
-  async queryFlight<T = unknown>(sql: string, opts?: {
-    flightEndpoint?: string;
-    purpose?: string;
-    bearerToken?: string;
-    transport?: FlightTransport<T>;
-  }): Promise<T> {
-    const endpoint = deriveFlightEndpoint(this.#baseUrl, opts?.flightEndpoint);
-    const ticketSql = buildFlightTicket(sql, opts?.purpose);
-    const bearer = opts?.bearerToken !== undefined ? opts.bearerToken : this.#bearerToken;
-    const headers = this.#flightHeaders();
-    if (opts?.transport) {
-      return opts.transport(endpoint, ticketSql, bearer, headers);
+  async graphql(
+    query: string,
+    variables?: Record<string, unknown>,
+    operationName?: string,
+  ): Promise<unknown> {
+    const body: Record<string, unknown> = { query };
+    if (variables !== undefined) body["variables"] = variables;
+    if (operationName !== undefined) body["operationName"] = operationName;
+    const wire = await this.#post<{ data?: unknown; errors?: { message?: string }[] }>("/graphql", body);
+    if (wire.errors && wire.errors.length > 0) {
+      const msg = wire.errors[0]?.message ?? "graphql error";
+      throw new RelataError(`graphql: ${msg}`, 200, msg);
     }
-    // #2492: built-in first-party Arrow Flight adapter — works out of the box
-    // once the optional apache-arrow + @grpc/grpc-js peers are installed.
-    const flight = createArrowFlightTransport<T>({ timeoutMs: this.#timeoutMs });
-    return flight.doGet(endpoint, ticketSql, bearer, headers);
+    return wire.data;
   }
 
-  /**
-   * Execute a SQL query over the plain gRPC `RelataQuery/Execute` RPC,
-   * opting into the negotiated Arrow-IPC row encoding (#4090,
-   * `QueryRequest.wants_arrow_ipc_rows` — landed server-side in PR #4086).
-   * The server transparently answers with either `arrow_ipc_rows` or
-   * `rows_json` (an older/unsupported result falls back to JSON rows,
-   * per the proto's documented contract); this method decodes either wire
-   * shape into the same row-object array, so callers never need to know
-   * which one the server picked.
-   *
-   * The gRPC + Arrow runtime libraries (`@grpc/grpc-js`, `apache-arrow`) are
-   * **optional peer dependencies** — same as {@link queryFlight}. If they are
-   * not installed, the call throws a `RelataError` with install guidance.
-   *
-   * @param sql - SQL query string.
-   * @param opts - `grpcEndpoint` override (defaults to
-   *   `grpc://<baseUrl host>:50051`, the server's default `RELATA_GRPC_PORT`),
-   *   `purpose`, `bearerToken` override (defaults to the client's token).
-   *
-   * @example
-   * ```typescript
-   * const result = await relata.queryGrpc("SELECT * FROM Person LIMIT 1000", {
-   *   purpose: "analytics",
-   * });
-   * console.log(result.rowCount, result.rows[0]);
-   * ```
-   */
-  async queryGrpc<T = Record<string, unknown>>(
-    sql: string,
-    opts?: { grpcEndpoint?: string; purpose?: string; bearerToken?: string },
-  ): Promise<GrpcQueryResult<T>> {
-    const endpoint = deriveGrpcQueryEndpoint(this.#baseUrl, opts?.grpcEndpoint);
-    const bearer = opts?.bearerToken !== undefined ? opts.bearerToken : this.#bearerToken;
-    const headers = this.#flightHeaders();
-    const purpose = opts?.purpose ?? this.#defaultPurpose;
-    const transport = createGrpcQueryTransport({ timeoutMs: this.#timeoutMs });
-    const queryOpts: { purpose?: string; bearer?: string; headers?: Record<string, string> } = {
-      headers,
-    };
-    if (purpose !== undefined) queryOpts.purpose = purpose;
-    if (bearer !== undefined) queryOpts.bearer = bearer;
-    return transport.execute<T>(endpoint, sql, queryOpts);
-  }
+  // -------------------------------------------------------------------------
+  // Public API — Namespace handle (T9 flagship retrieval surface, #1991/#2491)
+  // -------------------------------------------------------------------------
 
-  /**
-   * Execute a SQL query over the plain gRPC `RelataQuery/ExecuteStream`
-   * server-streaming RPC (#4090 follow-up to {@link queryGrpc}), opting into
-   * the negotiated Arrow-IPC row encoding on every streamed `RowBatch`
-   * frame. Collects the stream and decodes it into the same result shape
-   * {@link queryGrpc} returns — useful for result sets large enough that the
-   * server chunks them into multiple frames (the unary `Execute` RPC
-   * `queryGrpc` uses buffers the whole response in one `QueryResponse`
-   * message instead).
-   *
-   * Same options and optional-peer-dependency contract as {@link queryGrpc}.
-   *
-   * @example
-   * ```typescript
-   * const result = await relata.queryGrpcStream("SELECT * FROM Person", {
-   *   purpose: "analytics",
-   * });
-   * console.log(result.rowCount, result.rows[0]);
-   * ```
-   */
-  async queryGrpcStream<T = Record<string, unknown>>(
-    sql: string,
-    opts?: { grpcEndpoint?: string; purpose?: string; bearerToken?: string },
-  ): Promise<GrpcQueryResult<T>> {
-    const endpoint = deriveGrpcQueryEndpoint(this.#baseUrl, opts?.grpcEndpoint);
-    const bearer = opts?.bearerToken !== undefined ? opts.bearerToken : this.#bearerToken;
-    const headers = this.#flightHeaders();
-    const purpose = opts?.purpose ?? this.#defaultPurpose;
-    const transport = createGrpcQueryTransport({ timeoutMs: this.#timeoutMs });
-    const queryOpts: { purpose?: string; bearer?: string; headers?: Record<string, string> } = {
-      headers,
-    };
-    if (purpose !== undefined) queryOpts.purpose = purpose;
-    if (bearer !== undefined) queryOpts.bearer = bearer;
-    return transport.executeStream<T>(endpoint, sql, queryOpts);
-  }
-
-  /**
-   * @internal Build the tenant / delegation / correlation headers a Flight
-   * do_get carries as gRPC metadata (#3213). A fresh X-Request-ID is generated
-   * per call unless the caller pinned one in the static header bag.
-   */
-  #flightHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {};
-    if (this.#tenant !== undefined) headers["x-relata-tenant-id"] = this.#tenant;
-    if (this.#actingAs !== undefined) headers["x-acting-as"] = this.#actingAs;
-    if (this.#delegatedBy !== undefined) headers["x-delegated-by"] = this.#delegatedBy;
-    const pinned = Object.keys(this.#extraHeaders).find(
-      (k) => k.toLowerCase() === "x-request-id",
-    );
-    if (pinned !== undefined) {
-      headers["x-request-id"] = this.#extraHeaders[pinned]!;
-    } else if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-      headers["x-request-id"] = crypto.randomUUID();
-    }
-    return headers;
-  }
 
   // -------------------------------------------------------------------------
   // Public API — fluent QueryBuilder

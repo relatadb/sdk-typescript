@@ -1,7 +1,7 @@
 {
   "name": "@zysec-ai/relata-sdk",
   "version": "2.7.1",
-  "description": "TypeScript SDK for the Relata data engine — ontology-driven, enterprise-grade workloads",
+  "description": "TypeScript SDK for the Relata data engine \u2014 ontology-driven, enterprise-grade workloads",
   "type": "module",
   "exports": {
     ".": {
@@ -55,7 +55,6 @@
     "url": "https://github.com/relatadb/sdk-typescript/issues"
   },
   "devDependencies": {
-    "@grpc/grpc-js": "^1.14.4",
     "@langchain/core": "^1.2.4",
     "@langchain/langgraph-checkpoint": "^1.1.3",
     "@types/node": "^25.9.0",
@@ -66,7 +65,6 @@
     "typescript": "^5.0.0"
   },
   "peerDependencies": {
-    "@grpc/grpc-js": "^1.10.0",
     "@langchain/core": "^1.1.48",
     "@langchain/langgraph-checkpoint": "^1.0.0",
     "apache-arrow": "^15.0.0 || ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0 || ^20.0.0 || ^21.0.0",
@@ -74,12 +72,21 @@
     "llamaindex": "^0.12.0"
   },
   "peerDependenciesMeta": {
-    "@grpc/grpc-js": { "optional": true },
-    "@langchain/core": { "optional": true },
-    "@langchain/langgraph-checkpoint": { "optional": true },
-    "apache-arrow": { "optional": true },
-    "langchain": { "optional": true },
-    "llamaindex": { "optional": true }
+    "@langchain/core": {
+      "optional": true
+    },
+    "@langchain/langgraph-checkpoint": {
+      "optional": true
+    },
+    "apache-arrow": {
+      "optional": true
+    },
+    "langchain": {
+      "optional": true
+    },
+    "llamaindex": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=18.0.0"

@@ -340,8 +340,6 @@ export { IngestClient } from "./ingest.ts";
 export { VectorClient } from "./vectors.ts";
 export type { VectorRow } from "./vectors.ts";
 
-export { S3Client } from "./s3.ts";
-export type { S3ClientOptions, S3HttpResponse } from "./s3.ts";
 
 export { SystemClient } from "./system.ts";
 export type { WorkflowRun, WorkflowStepStatus } from "./system.ts";
@@ -371,19 +369,13 @@ export { ClientPool } from "./pool.ts";
 export type { ClientPoolOptions } from "./pool.ts";
 
 // ---------------------------------------------------------------------------
-// Arrow Flight — first-party do_get transport (#2492)
 // ---------------------------------------------------------------------------
 
-export { ArrowFlightTransport, createArrowFlightTransport } from "./flight.ts";
-export type { ArrowFlightTransportOptions } from "./flight.ts";
-export type { FlightTransport } from "./client.ts";
 
 // ---------------------------------------------------------------------------
 // gRPC query — first-party Execute transport with Arrow-IPC opt-in (#4090)
 // ---------------------------------------------------------------------------
 
-export { GrpcQueryTransport, createGrpcQueryTransport } from "./grpc-query.ts";
-export type { GrpcQueryTransportOptions, GrpcQueryResult } from "./grpc-query.ts";
 
 // ---------------------------------------------------------------------------
 // Logger — pluggable diagnostic sink (silent by default)

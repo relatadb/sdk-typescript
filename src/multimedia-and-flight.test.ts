@@ -1,11 +1,4 @@
-/**
- * Tests for the multimedia ops (#2251, #2840) + Arrow Flight client (#2253).
- *
- * Uses Node's built-in `node:test` runner with an injected `fetch` mock for
- * the SQL-door multimedia ops (no live server), and pure unit tests for the
- * Flight ticket/endpoint/transport wiring (live `do_get` needs a running
- * Flight door + apache-arrow).
- */
+/** Tests for multimedia operators over native HTTP. */
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
@@ -13,10 +6,8 @@ import { test } from "node:test";
 import { RelataClient, RelataError } from "./index.ts";
 import {
   buildFaceSearchSql,
-  buildFlightTicket,
   buildMatchPdqSql,
   buildSimilarImageSql,
-  deriveFlightEndpoint,
 } from "./client.ts";
 
 // ---------------------------------------------------------------------------
@@ -170,85 +161,4 @@ test("similarImage: defaults THRESHOLD => 0.9, no INDEX, falls back to client de
   const body = JSON.parse(calls[0]!.body!);
   assert.equal(body.sql, "SIMILAR_IMAGE('media-42', THRESHOLD => 0.9)");
   assert.equal(body.purpose, "analytics");
-});
-
-// ---------------------------------------------------------------------------
-// #2253 — Flight ticket + endpoint + transport wiring
-// ---------------------------------------------------------------------------
-
-test("buildFlightTicket: injects PURPOSE comment only when purpose set", () => {
-  assert.equal(buildFlightTicket("SELECT 1"), "SELECT 1");
-  assert.equal(
-    buildFlightTicket("SELECT 1", "analytics"),
-    "/* PURPOSE 'analytics' */ SELECT 1",
-  );
-});
-
-test("buildFlightTicket: doubles embedded quotes in purpose", () => {
-  assert.equal(
-    buildFlightTicket("SELECT 1", "o'reilly"),
-    "/* PURPOSE 'o''reilly' */ SELECT 1",
-  );
-});
-
-test("deriveFlightEndpoint: derives grpc://host:8815 from baseUrl", () => {
-  assert.equal(deriveFlightEndpoint("http://localhost:9090"), "grpc://localhost:8815");
-  assert.equal(
-    deriveFlightEndpoint("https://relata.example.com"),
-    "grpc://relata.example.com:8815",
-  );
-});
-
-test("deriveFlightEndpoint: explicit override wins", () => {
-  assert.equal(
-    deriveFlightEndpoint("http://localhost:9090", "grpc://host:9999"),
-    "grpc://host:9999",
-  );
-});
-
-test("queryFlight: uses the built-in transport by default (#2492 — rejects against a closed port)", async () => {
-  // No `transport` supplied: the SDK must now drive its built-in ArrowFlight
-  // Transport (#2492) rather than throw. Pointing the default transport at a
-  // closed port proves the wiring (queryFlight → built-in adapter → gRPC) and
-  // that transport-level failure still surfaces as a RelataError. The short
-  // client timeoutMs bounds the call.
-  const relata = new RelataClient({ baseUrl: "http://localhost:9090", timeoutMs: 400 });
-  await assert.rejects(
-    () => relata.queryFlight("SELECT 1", { flightEndpoint: "grpc://127.0.0.1:1" }),
-    (err: unknown) => err instanceof RelataError,
-  );
-});
-
-test("queryFlight: invokes transport with resolved endpoint, ticket, bearer", async () => {
-  const relata = new RelataClient({
-    baseUrl: "http://localhost:9090",
-    bearerToken: "tok",
-  });
-  let captured: { endpoint: string; ticket: string; bearer: string | undefined } | null = null;
-  const result = await relata.queryFlight<{ rows: number[] }>("SELECT 1", {
-    purpose: "analytics",
-    transport: async (endpoint, ticketSql, bearer) => {
-      captured = { endpoint, ticket: ticketSql, bearer };
-      return { rows: [1, 2, 3] };
-    },
-  });
-  assert.deepEqual(result, { rows: [1, 2, 3] });
-  assert.equal(captured!.endpoint, "grpc://localhost:8815");
-  assert.equal(captured!.ticket, "/* PURPOSE 'analytics' */ SELECT 1");
-  assert.equal(captured!.bearer, "tok");
-});
-
-test("queryFlight: honours explicit flightEndpoint + bearerToken override", async () => {
-  const relata = new RelataClient({ baseUrl: "http://localhost:9090", bearerToken: "default" });
-  let captured: { endpoint: string; bearer: string | undefined } | null = null;
-  await relata.queryFlight("SELECT 1", {
-    flightEndpoint: "grpc://h:9999",
-    bearerToken: "override",
-    transport: async (endpoint, _ticket, bearer) => {
-      captured = { endpoint, bearer };
-      return null;
-    },
-  });
-  assert.equal(captured!.endpoint, "grpc://h:9999");
-  assert.equal(captured!.bearer, "override");
 });

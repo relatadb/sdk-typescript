@@ -22,7 +22,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { RelataClient } from "./client.ts";
-import { S3Client } from "./s3.ts";
 import { ObjectClient } from "./objects.ts";
 
 /** Bounded wait so a regression (a stalled body read) fails fast, not hangs. */
@@ -58,39 +57,8 @@ test("RelataClient: a 204 No Content response (null body) resolves promptly", as
 // paths; 204/205/HEAD (below) are the reachable body-less cases this fix
 // covers.
 
-test("S3Client: HEAD response (null body) resolves promptly", async () => {
-  const fetch = (async () => new Response(null, { status: 200 })) as typeof globalThis.fetch;
-  const s3 = new S3Client("http://x", { fetch });
-  const result = await withTimeout(s3.http("HEAD", "/bucket/key"), 2000, "S3Client HEAD request");
-  assert.equal(result.status, 200);
-  assert.equal(result.body.byteLength, 0);
-});
 
-test("S3Client: DELETE returning 204 (null body) resolves promptly", async () => {
-  const fetch = (async () => new Response(null, { status: 204 })) as typeof globalThis.fetch;
-  const s3 = new S3Client("http://x", { fetch });
-  const result = await withTimeout(
-    s3.deleteObject("bucket", "key"),
-    2000,
-    "S3Client DELETE request",
-  );
-  assert.equal(result.status, 204);
-  assert.equal(result.body.byteLength, 0);
-});
 
-test("S3Client: getObjectStream against a null-body response drains immediately", async () => {
-  const fetch = (async () => new Response(null, { status: 204 })) as typeof globalThis.fetch;
-  const s3 = new S3Client("http://x", { fetch });
-  const stream = await withTimeout(
-    s3.getObjectStream("bucket", "key"),
-    2000,
-    "S3Client getObjectStream request",
-  );
-  assert.equal(stream.status, 204);
-  const reader = stream.body.getReader();
-  const { done } = await withTimeout(reader.read(), 2000, "getObjectStream body read");
-  assert.equal(done, true);
-});
 
 test("typed client (ObjectClient): a 205 Reset Content response (null body) resolves promptly", async () => {
   const fetch = (async () => new Response(null, { status: 205 })) as typeof globalThis.fetch;

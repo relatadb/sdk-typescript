@@ -6,7 +6,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { RelataClient } from "./client.ts";
-import { S3Client } from "./s3.ts";
 import { ObjectClient } from "./objects.ts";
 import { ClientClosedError, ResponseTooLargeError } from "./errors.ts";
 
@@ -63,32 +62,7 @@ test("response cap: body within the cap succeeds", async () => {
   assert.equal(health.status, "ok");
 });
 
-test("S3Client: close() zeroizes the token (no Authorization sent after)", async () => {
-  const calls: Array<{ headers: Record<string, string> }> = [];
-  const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-    const headers: Record<string, string> = {};
-    if (init?.headers !== undefined) {
-      for (const [k, v] of Object.entries(init.headers as Record<string, string>)) {
-        headers[k.toLowerCase()] = v;
-      }
-    }
-    calls.push({ headers });
-    return new Response("", { status: 200 });
-  }) as typeof globalThis.fetch;
-  const s3 = new S3Client("http://x", { bearerToken: "s3cr3t", fetch });
-  await s3.listBuckets();
-  assert.equal(calls[0]?.headers["authorization"], "Bearer s3cr3t");
-  s3.close();
-  await s3.listBuckets();
-  assert.equal(calls[1]?.headers["authorization"], undefined);
-});
 
-test("S3Client: buffered http() body is capped", async () => {
-  const big = "o".repeat(1 << 20); // 1 MiB
-  const fetch = (async () => new Response(big, { status: 200 })) as typeof globalThis.fetch;
-  const s3 = new S3Client("http://x", { fetch, maxResponseBytes: 1024 });
-  await assert.rejects(() => s3.getObject("b", "k"), ResponseTooLargeError);
-});
 
 test("typed client (ObjectClient): response cap rejects oversized body via #parse", async () => {
   // #3214 parity: the typed clients read through _typed-http's #parse, which
@@ -108,21 +82,4 @@ test("typed client (ObjectClient): response cap rejects oversized body via #pars
     maxResponseBytes: 1024,
   });
   await assert.rejects(() => objects.get("Person", "p1"), ResponseTooLargeError);
-});
-
-test("S3Client: getObjectStream streams without buffering whole body", async () => {
-  const big = "o".repeat(1 << 20); // 1 MiB
-  const fetch = (async () => new Response(big, { status: 200 })) as typeof globalThis.fetch;
-  // Cap is tiny, but the streaming path must not be subject to it.
-  const s3 = new S3Client("http://x", { fetch, maxResponseBytes: 1024 });
-  const stream = await s3.getObjectStream("b", "k");
-  assert.equal(stream.status, 200);
-  let total = 0;
-  const reader = stream.body.getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value !== undefined) total += value.byteLength;
-  }
-  assert.equal(total, big.length);
 });
