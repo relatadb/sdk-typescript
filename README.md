@@ -172,7 +172,7 @@ const relata = createClient("http://localhost:9090", {
 | `.auditCount()` | `Promise<AuditCountResponse>` | `GET /audit/count` — entry count + `chainValid` |
 | `.clusterNodes()` | `Promise<ClusterNode[]>` | `GET /cluster/nodes` — list cluster members |
 | `.ingestDocument(objects, purpose?)` | `Promise<IngestDocumentResponse>` | Queues prepared mixed-type rows through `POST /ingest/bulk` (`queued: true`) and returns one process-local task receipt |
-| `.ingestDocumentStatus(taskId)` | `Promise<IngestDocumentTaskStatus>` | `GET /ingest/tasks/:task_id` — observe persisted, dropped, and pending row counts |
+| `.ingestDocumentStatus(taskId)` | `Promise<IngestDocumentTaskStatus>` | `GET /ingest/tasks/:task_id` — observe pending/complete/partial/failed state plus written/dropped row counts |
 
 `ingestDocument` accepts application-prepared governed rows (for example a
 `DocumentSource`, linked `DocumentChunk` rows, and optional evidence rows with
@@ -181,7 +181,7 @@ extractor files. Use the optional `relata-connectors prepare-document` adapter
 to turn an extractor JSONL/manifest pair into an `objects` array, then pass
 that array to this method. Queue admission returns a process-local receipt;
 it is not crash-durable, so poll `ingestDocumentStatus` and use its
-`rowsWritten`/`rowsDropped` fields to observe backend outcomes. The distinct
+`status` and row counts to distinguish complete, partial, and failed outcomes; retry the original payload only with stable row keys so upsert can converge safely. A receipt is queue admission, not durable/indexed completion. The distinct
 MCP `ingest_document(source, text, ...)` tool remains a source/text application
 workflow and is not this queued prepared-row contract.
 

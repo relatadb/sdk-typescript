@@ -280,7 +280,7 @@ test("ingestDocumentStatus preserves every server task outcome and GET path", as
     {
       body: {
         task_id: "t-1",
-        status: "complete",
+        status: "partial",
         rows_total: 4,
         rows_written: 3,
         rows_dropped: 1,
@@ -302,7 +302,7 @@ test("ingestDocumentStatus preserves every server task outcome and GET path", as
   });
   const status = await relata.ingestDocumentStatus("t-1");
   assert.equal(status.taskId, "t-1");
-  assert.equal(status.status, "complete");
+  assert.equal(status.status, "partial");
   assert.equal(status.rowsTotal, 4);
   assert.equal(status.rowsWritten, 3);
   assert.equal(status.rowsDropped, 1);

@@ -377,7 +377,7 @@ export interface IngestDocumentResponse {
 /** Generic task status from `GET /ingest/tasks/:task_id`. State is process-local. */
 export interface IngestDocumentTaskStatus {
   taskId: string;
-  /** Server-reported state (currently pending, partial, complete, or failed). */
+  /** Server-reported state: pending is nonterminal; complete, partial, and failed are terminal outcomes. */
   status: string;
   rowsTotal: number;
   rowsWritten: number;
