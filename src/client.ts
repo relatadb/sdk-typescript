@@ -1081,14 +1081,6 @@ export class RelataClient {
     return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
   }
 
-  async burnerDetect(opts?: { maxAgeDays?: number; maxCalls?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts: string[] = [];
-    if (opts?.maxAgeDays !== undefined) parts.push(`MAX_AGE => ${opts.maxAgeDays * 86_400_000_000_000}`);
-    if (opts?.maxCalls !== undefined) parts.push(`MAX_CALLS => ${opts.maxCalls}`);
-    const sql = `BURNER_DETECT(${parts.join(", ")})`;
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
-  }
-
   async cryptoTrace(entity: string, purpose?: string): Promise<Record<string, unknown>> {
     return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRYPTO_TRACE(${sqlLiteral(entity)})` });
   }
