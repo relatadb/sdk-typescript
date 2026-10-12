@@ -25,8 +25,14 @@ const CDR_ALIASES: Record<string, readonly string[]> = {
   tower: ["tower", "tower_id", "cell_id", "site", "cell"],
   type: ["type", "call_type", "record_type"],
 };
-function cdrValue(row: RelataRow, aliases: readonly string[]): unknown {
-  const values = new Map(Object.entries(row).map(([key, value]) => [key.toLowerCase(), value]));
+function cdrValues(row: RelataRow): Map<string, unknown> {
+  // Build this view once per row. Alias lookup is repeated for every canonical
+  // field and metadata key; rebuilding the same map for each lookup dominated
+  // the adapter's avoidable per-row allocation cost.
+  return new Map(Object.entries(row).map(([key, value]) => [key.toLowerCase(), value]));
+}
+
+function cdrValue(values: Map<string, unknown>, aliases: readonly string[]): unknown {
   for (const key of aliases) if (values.has(key)) return values.get(key);
   return undefined;
 }
@@ -78,12 +84,12 @@ function cdrJsonLine(row: RelataRow): string {
   return `{${fields.join(",")}}`;
 }
 
-function cdrMetadata(row: RelataRow, normalized: RelataRow): void {
+function cdrMetadata(values: Map<string, unknown>, normalized: RelataRow): void {
   for (const field of ["_pk", "id"] as const) {
-    const value = cdrValue(row, [field]);
+    const value = cdrValue(values, [field]);
     if (value !== undefined && value !== null) normalized[field] = value;
   }
-  const sourceFileId = cdrValue(row, ["source_file_id"]);
+  const sourceFileId = cdrValue(values, ["source_file_id"]);
   if (sourceFileId !== undefined && sourceFileId !== null) {
     normalized["source_file_id"] = sourceFileId;
   }
@@ -95,27 +101,28 @@ function normalizeCdrRows(rows: RelataRow[]): { rows: RelataRow[]; errors: Relat
   const nowNs = BigInt(Date.now()) * 1_000_000n;
   rows.forEach((row, index) => {
     try {
-      const callerRaw = cdrValue(row, CDR_ALIASES["caller"] ?? []);
-      const calleeRaw = cdrValue(row, CDR_ALIASES["callee"] ?? []);
+      const values = cdrValues(row);
+      const callerRaw = cdrValue(values, CDR_ALIASES["caller"] ?? []);
+      const calleeRaw = cdrValue(values, CDR_ALIASES["callee"] ?? []);
       const callerDigits = String(callerRaw ?? "").replace(/[^0-9]/g, "");
       const calleeDigits = String(calleeRaw ?? "").replace(/[^0-9]/g, "");
       if (callerDigits.length > 15) throw new Error(`caller_msisdn '${callerRaw}': too many digits (max 15 for E.164)`);
       if (calleeDigits.length > 15) throw new Error(`callee_msisdn '${calleeRaw}': too many digits (max 15 for E.164)`);
-      const start = cdrTimestamp(cdrValue(row, CDR_ALIASES["start"] ?? []), nowNs);
-      const duration = cdrInteger(cdrValue(row, CDR_ALIASES["duration"] ?? []), "duration", 0);
+      const start = cdrTimestamp(cdrValue(values, CDR_ALIASES["start"] ?? []), nowNs);
+      const duration = cdrInteger(cdrValue(values, CDR_ALIASES["duration"] ?? []), "duration", 0);
       if (duration < 0 || duration > 0xffff_ffff) throw new Error(`duration '${duration}': value out of range for u32`);
-      const type = String(cdrValue(row, CDR_ALIASES["type"] ?? []) ?? "").trim().toLowerCase();
+      const type = String(cdrValue(values, CDR_ALIASES["type"] ?? []) ?? "").trim().toLowerCase();
       const callType = ({ voice: "voice", call: "voice", "0": "voice", sms: "sms", mms: "sms", "1": "sms", data: "data", gprs: "data", "2": "data" } as Record<string, string>)[type] ?? "unknown";
       const normalizedRow: RelataRow = {
         caller_msisdn: cdrInteger(callerDigits, "caller_msisdn"),
         callee_msisdn: cdrInteger(calleeDigits, "callee_msisdn"),
         call_start_ns: start,
         duration_secs: duration,
-        tower_id: String(cdrValue(row, CDR_ALIASES["tower"] ?? []) ?? "").trim(),
+        tower_id: String(cdrValue(values, CDR_ALIASES["tower"] ?? []) ?? "").trim(),
         call_type: callType,
         source_file_id: 0,
       };
-      cdrMetadata(row, normalizedRow);
+      cdrMetadata(values, normalizedRow);
       normalized.push(normalizedRow);
     } catch (error) {
       errors.push({ row: index + 1, error: error instanceof Error ? error.message : String(error) });

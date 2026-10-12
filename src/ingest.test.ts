@@ -65,6 +65,24 @@ test("ingestCdr: normalizes aliases, reports invalid rows, and queues via generi
   assert.equal(rows[1]?.["source_file_id"], 43);
 });
 
+test("ingestCdr: case-insensitive view keeps last input key and alias precedence", async () => {
+  const { fetch, lastCall } = mockFetch({ rows_queued: 1, rows_rejected: 0, errors: [], task_id: "itsk_case" });
+  const client = new IngestClient({ baseUrl: "http://x", fetch });
+  await client.ingestCdr([{
+    CALLER: "14155550000",
+    caller: "14155551111",
+    caller_msisdn: "14155552222",
+    CALLEE: "919876543210",
+    DURATION: 9,
+    CALL_START_NS: "1700000000000000001",
+    _PK: "first",
+    _pk: "last",
+  }]);
+  const [row] = (lastCall().body ?? "").split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+  assert.equal(row?.["caller_msisdn"], 14155551111);
+  assert.equal(row?.["_pk"], "last");
+});
+
 test("ingestCdr: preserves exact nanosecond timestamps and rejects unsafe number inputs", async () => {
   const { fetch, lastCall } = mockFetch({
     rows_queued: 2,
