@@ -172,7 +172,7 @@ const relata = createClient("http://localhost:9090", {
 | `.auditCount()` | `Promise<AuditCountResponse>` | `GET /audit/count` — entry count + `chainValid` |
 | `.clusterNodes()` | `Promise<ClusterNode[]>` | `GET /cluster/nodes` — list cluster members |
 | `.ingestDocument(objects, purpose?)` | `Promise<IngestDocumentResponse>` | Queues prepared mixed-type rows through `POST /ingest/bulk` (`queued: true`) and returns one process-local task receipt |
-| `.ingestDocumentStatus(taskId)` | `Promise<IngestDocumentTaskStatus>` | `GET /ingest/tasks/:task_id` — observe pending/complete/partial/failed/uncertain state plus confirmed written/dropped row counts |
+| `.ingestDocumentStatus(taskId)` | `Promise<IngestDocumentTaskStatus>` | `GET /ingest/tasks/:task_id` — observe pending/complete/partial/failed/uncertain/incomplete state plus confirmed written/dropped row counts |
 
 `ingestDocument` accepts application-prepared governed rows (for example a
 `DocumentSource`, linked `DocumentChunk` rows, and optional evidence rows with
@@ -181,7 +181,7 @@ extractor files. Use the optional `relata-connectors prepare-document` adapter
 to turn an extractor JSONL/manifest pair into an `objects` array, then pass
 that array to this method. Queue admission returns a process-local receipt;
 it is not crash-durable, so poll `ingestDocumentStatus` and use its
-`status` and row counts to distinguish complete, partial, failed, and uncertain outcomes. `uncertain` means the server cannot confirm the final outcome; it is not completion and must not be blindly retried (`outcomeUncertain: true`, `retryable: false`). A receipt is queue admission, not durable/indexed completion. The distinct
+`status` and row counts to distinguish complete, partial, failed, uncertain, and incomplete outcomes. `code: "derived-write-incomplete"` and `derivedError` can appear while `status` is still `pending`; once all primary batches are accounted for, the status becomes `incomplete`. If the primary outcome is uncertain, `uncertain` takes precedence as the status. A recorded derived-write failure has `retryable: false` and no completion watermark. An uncertain outcome is unresolved and must not be blindly retried (`outcomeUncertain: true`, `retryable: false`). A receipt is queue admission, not durable/indexed completion. The distinct
 MCP `ingest_document(source, text, ...)` tool remains a source/text application
 workflow and is not this queued prepared-row contract.
 

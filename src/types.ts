@@ -377,7 +377,7 @@ export interface IngestDocumentResponse {
 /** Generic task status from `GET /ingest/tasks/:task_id`. State is process-local. */
 export interface IngestDocumentTaskStatus {
   taskId: string;
-  /** Server-reported state: pending is nonterminal; complete, partial, failed, and uncertain are terminal outcomes. Uncertain does not mean complete. */
+  /** Server-reported state: pending is nonterminal; complete, partial, failed, uncertain, and incomplete are terminal outcomes. Uncertain does not mean complete. */
   status: string;
   rowsTotal: number;
   rowsWritten: number;
@@ -385,7 +385,11 @@ export interface IngestDocumentTaskStatus {
   dropReasons: string[];
   /** True when the server cannot establish whether all writes took effect. */
   outcomeUncertain?: boolean;
-  /** False for an uncertain outcome; callers must not blindly retry. */
+  /** Machine-readable task error code, when present. */
+  code?: string;
+  /** Diagnostic for a recorded derived-write failure; it can appear while status is pending. */
+  derivedError?: string;
+  /** False when a derived-write failure is recorded or the primary outcome is uncertain. */
   retryable?: boolean;
   /** Fields added by newer server versions, preserved without interpretation. */
   extensions?: Record<string, unknown>;

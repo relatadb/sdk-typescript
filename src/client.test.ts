@@ -295,6 +295,8 @@ test("ingestDocumentStatus preserves every server task outcome and GET path", as
     { body: { task_id: "t-4", status: "pending" } },
     { body: { task_id: "t-5" } },
     { body: { task_id: "t-6", status: "uncertain", outcome_uncertain: true, retryable: false, rows_written: 1, rows_dropped: 0, drop_reasons: ["WAL acknowledgement lost"] } },
+    { body: { task_id: "t-7", status: "incomplete", code: "derived-write-incomplete", derived_error: "vector projection failed", retryable: false, rows_written: 2, rows_dropped: 1 } },
+    { body: { task_id: "t-8", status: "pending", code: "derived-write-incomplete", derived_error: "vector projection failed", retryable: false, rows_written: 1, rows_dropped: 0 } },
   ]);
   const relata = new RelataClient({
     baseUrl: "http://x",
@@ -324,6 +326,18 @@ test("ingestDocumentStatus preserves every server task outcome and GET path", as
   assert.equal(uncertain.rowsWritten, 1);
   assert.equal(uncertain.rowsDropped, 0);
   assert.deepEqual(uncertain.dropReasons, ["WAL acknowledgement lost"]);
+  const incomplete = await relata.ingestDocumentStatus("t-7");
+  assert.equal(incomplete.status, "incomplete");
+  assert.equal(incomplete.code, "derived-write-incomplete");
+  assert.equal(incomplete.derivedError, "vector projection failed");
+  assert.equal(incomplete.retryable, false);
+  assert.equal(incomplete.rowsWritten, 2);
+  assert.equal(incomplete.rowsDropped, 1);
+  const pendingDerived = await relata.ingestDocumentStatus("t-8");
+  assert.equal(pendingDerived.status, "pending");
+  assert.equal(pendingDerived.code, "derived-write-incomplete");
+  assert.equal(pendingDerived.derivedError, "vector projection failed");
+  assert.equal(pendingDerived.retryable, false);
   // GET path encodes the task id.
   assert.equal(calls[0]?.method, "GET");
   assert.equal(calls[0]?.url, "http://x/ingest/tasks/t-1");
