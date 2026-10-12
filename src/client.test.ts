@@ -1,4 +1,61 @@
-, async () => {
+/**
+ * Tests for `RelataClient` — transport hardening, introspection methods,
+ * QueryResult wire-shape normalisation, RFC 7807 error mapping, retry
+ * behaviour, and X-Request-ID propagation.
+ *
+ * Uses Node's built-in `node:test` runner with an injected `fetch` mock
+ * (no real HTTP).
+ */
+
+import { strict as assert } from "node:assert";
+import { test } from "node:test";
+
+import {
+  AuthError,
+  ConflictError,
+  createClient,
+  NotFoundError,
+  PurposeError,
+  RateLimitedError,
+  RelataClient,
+  RelataError,
+  ServerError,
+  ValidationError,
+} from "./index.ts";
+
+interface MockResponse {
+  status?: number;
+  headers?: Record<string, string>;
+  body?: unknown;
+  bodyText?: string;
+}
+
+function mockFetch(
+  responses: MockResponse[] | MockResponse,
+): {
+  fetch: typeof globalThis.fetch;
+  calls: Array<{ url: string; method: string; headers: Record<string, string>; body: string | undefined }>;
+} {
+  const queue = Array.isArray(responses) ? [...responses] : [responses];
+  const calls: Array<{ url: string; method: string; headers: Record<string, string>; body: string | undefined }> = [];
+  const fetch = (async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const urlString = typeof url === "string" ? url : url.toString();
+    const headers: Record<string, string> = {};
+    if (init?.headers !== undefined) {
+      for (const [k, v] of Object.entries(init.headers as Record<string, string>)) headers[k.toLowerCase()] = v;
+    }
+    calls.push({ url: urlString, method: init?.method ?? "GET", headers, body: typeof init?.body === "string" ? init.body : undefined });
+    const next = queue.shift() ?? { status: 200, body: {} };
+    const status = next.status ?? 200;
+    const headerMap = new Headers(next.headers ?? {});
+    headerMap.set("content-type", headerMap.get("content-type") ?? (status >= 400 ? "application/problem+json" : "application/json"));
+    const bodyText = next.bodyText ?? (typeof next.body === "string" ? next.body : JSON.stringify(next.body ?? {}));
+    return new Response(bodyText, { status, headers: headerMap });
+  }) as typeof globalThis.fetch;
+  return { fetch, calls };
+}
+
+test("query: normalises the legacy rows-as-int wire shape", async () => {
   // Legacy shape: rows is an int count, no data array
   const { fetch } = mockFetch({
     body: {

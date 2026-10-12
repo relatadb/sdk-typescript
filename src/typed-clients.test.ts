@@ -1,4 +1,42 @@
-, async () => {
+/**
+ * Tests for the typed v1.1 clients — verifies path/method/payload routing and
+ * the `fromClient` inheritance of auth + tenant headers.
+ */
+
+import { strict as assert } from "node:assert";
+import { test } from "node:test";
+
+import {
+  A2AClient, AuditClient, AuthError, BackupClient, createClient,
+  GovernanceClient, IdentityClient, IngestClient, LogClient, McpClient,
+  NotFoundError, RelataClient, ServerError, SystemClient, TenantAdminClient,
+  TimeoutError, TokenClient, unwrapMcp,
+} from "./index.ts";
+
+interface MockResponse { status?: number; headers?: Record<string, string>; body?: unknown; bodyText?: string; }
+function mockFetch(responses: MockResponse[] | MockResponse): {
+  fetch: typeof globalThis.fetch;
+  calls: Array<{ url: string; method: string; headers: Record<string, string>; body: string | undefined }>;
+} {
+  const queue = Array.isArray(responses) ? [...responses] : [responses];
+  const calls: Array<{ url: string; method: string; headers: Record<string, string>; body: string | undefined }> = [];
+  const fetch = (async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const urlString = typeof url === "string" ? url : url.toString();
+    const headers: Record<string, string> = {};
+    if (init?.headers !== undefined) for (const [k, v] of Object.entries(init.headers as Record<string, string>)) headers[k.toLowerCase()] = v;
+    calls.push({ url: urlString, method: init?.method ?? "GET", headers, body: typeof init?.body === "string" ? init.body : undefined });
+    const next = queue.shift() ?? { status: 200, body: {} };
+    const status = next.status ?? 200;
+    const headerMap = new Headers(next.headers ?? {});
+    headerMap.set("content-type", headerMap.get("content-type") ?? "application/json");
+    const bodyText = next.bodyText ?? (typeof next.body === "string" ? next.body : JSON.stringify(next.body ?? {}));
+    return new Response(bodyText, { status, headers: headerMap });
+  }) as typeof globalThis.fetch;
+  return { fetch, calls };
+}
+function mcpEnvelope(inner: unknown): unknown { return { content: [{ type: "text", text: JSON.stringify(inner) }], isError: false }; }
+
+test("fromClient: typed clients inherit baseUrl, bearerToken, tenant, purpose", async () => {
   const { fetch, calls } = mockFetch({ body: { rules: [] } });
   const relata = new RelataClient({
     baseUrl: "http://srv:8080/",
