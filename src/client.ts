@@ -1113,10 +1113,6 @@ export class RelataClient {
     );
   }
 
-  async crimePatternCluster(area: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRIME_PATTERN_CLUSTER(${sqlLiteral(area)})` });
-  }
-
   /**
    * Geofence — flag entities of `targetType` inside/near `fence` (#4635).
    * The server operator hard-requires `TARGET_TYPE`
