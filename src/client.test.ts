@@ -775,7 +775,7 @@ test("submitAlert preserves identity and maps durable duplicate receipt", async 
     alert_id: "alert-stable", status: "duplicate", durability: "local_wal_sync",
   }});
   const client = new RelataClient({ baseUrl: "http://x", fetch, tenant: "tenant-a" });
-  const request = { idempotency_key: "run-1", purpose: "detection", alert_type: "app-signal",
+  const request = { matched_key: "_pk", idempotency_key: "run-1", purpose: "detection", alert_type: "app-signal",
     severity: "high", matched_type: "Event", matched_row_id: "row-1", context: { count: 2 } };
   const receipt = await client.submitAlert(request);
   assert.equal(calls[0]?.url, "http://x/alerts/submit");

@@ -401,6 +401,8 @@ export interface IngestDocumentTaskStatus {
 
 /** Application-owned alert; tenant and identity are assigned by the server. */
 export interface AlertSubmitRequest {
+  /** Source key (for example _pk); omitted means a physical row UUID. */
+  matched_key?: string;
   idempotency_key: string;
   purpose: string;
   alert_type: string;
