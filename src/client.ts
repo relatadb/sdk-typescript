@@ -31,6 +31,8 @@ import {
   type ClusterNode,
   type EventAppendReceipt,
   type EventAppendRequest,
+  type AlertSubmitRequest,
+  type AlertSubmitReceipt,
   type HealthResponse,
   type IngestDocumentResponse,
   type IngestDocumentTaskStatus,
@@ -1462,6 +1464,18 @@ export class RelataClient {
           }
         : {}),
     };
+  }
+
+  /** Submit an application alert on a single persistent node.
+   * Exact retries preserve identity without replaying best-effort notifications.
+   */
+  async submitAlert(request: AlertSubmitRequest): Promise<AlertSubmitReceipt> {
+    const wire = await this.#post<{
+      alert_id: string;
+      status: "accepted" | "duplicate";
+      durability: "local_wal_sync";
+    }>("/alerts/submit", { ...request });
+    return { alertId: wire.alert_id, status: wire.status, durability: wire.durability };
   }
 
   /**

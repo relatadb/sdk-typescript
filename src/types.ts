@@ -399,6 +399,24 @@ export interface IngestDocumentTaskStatus {
   writeToken?: { wallNs: number; counter: number };
 }
 
+/** Application-owned alert; tenant and identity are assigned by the server. */
+export interface AlertSubmitRequest {
+  idempotency_key: string;
+  purpose: string;
+  alert_type: string;
+  severity: string;
+  matched_type: string;
+  matched_row_id: string;
+  context: Record<string, unknown>;
+}
+
+/** Local durable acceptance; notification delivery is best-effort. */
+export interface AlertSubmitReceipt {
+  alertId: string;
+  status: "accepted" | "duplicate";
+  durability: "local_wal_sync";
+}
+
 /** Target reference for a generic append-only event. */
 export interface EventTarget {
   object_type: string;

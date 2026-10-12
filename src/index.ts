@@ -98,6 +98,8 @@ export type {
   ClusterNodesResponse,
   EventAppendReceipt,
   EventAppendRequest,
+  AlertSubmitRequest,
+  AlertSubmitReceipt,
   EventTarget,
   HealthResponse,
   IngestDocumentResponse,

@@ -768,3 +768,18 @@ test("suppressRule: sends entity_id, not a bare pattern", async () => {
     condition: "known FP",
   });
 });
+
+
+test("submitAlert preserves identity and maps durable duplicate receipt", async () => {
+  const { fetch, calls } = mockFetch({ status: 200, body: {
+    alert_id: "alert-stable", status: "duplicate", durability: "local_wal_sync",
+  }});
+  const client = new RelataClient({ baseUrl: "http://x", fetch, tenant: "tenant-a" });
+  const request = { idempotency_key: "run-1", purpose: "detection", alert_type: "app-signal",
+    severity: "high", matched_type: "Event", matched_row_id: "row-1", context: { count: 2 } };
+  const receipt = await client.submitAlert(request);
+  assert.equal(calls[0]?.url, "http://x/alerts/submit");
+  assert.equal(calls[0]?.headers["x-relata-tenant-id"], "tenant-a");
+  assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), request);
+  assert.deepEqual(receipt, { alertId: "alert-stable", status: "duplicate", durability: "local_wal_sync" });
+});
