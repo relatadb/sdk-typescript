@@ -664,7 +664,7 @@ export class RelataClient {
     return this.#post("/types", { name, ...spec });
   }
 
-  /** Deregister a custom type. Admin token required. */
+  /** Deregister an empty custom type. Admin token required; types with history or protected data are rejected. */
   async deregisterType(name: string): Promise<Record<string, unknown>> {
     return this.#delete(`/types/${pathSegment(name)}`);
   }
