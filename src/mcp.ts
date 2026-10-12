@@ -814,12 +814,12 @@ export class McpClient extends TypedClientBase {
     return this.callTool("create_rule", args);
   }
 
-  /** `list_jobs` — list all registered detection jobs with live status. */
+  /** `list_jobs` — list detection jobs registered by this server with live status. */
   async listJobs(): Promise<Record<string, unknown>> {
     return this.callTool("list_jobs", {});
   }
 
-  /** `schedule_job` — trigger an immediate run of a named detection job. */
+  /** `schedule_job` — request an immediate run of a detection job known to this server. */
   async scheduleJob(name: string): Promise<Record<string, unknown>> {
     return this.callTool("schedule_job", { name });
   }
