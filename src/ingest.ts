@@ -123,11 +123,15 @@ function cdrTimestamp(value: unknown, fallbackNs: bigint): bigint {
   return nanoseconds < I64_MIN ? I64_MIN : nanoseconds > I64_MAX ? I64_MAX : nanoseconds;
 }
 
-function cdrJsonLine(row: RelataRow): string {
+function cdrJsonObject(row: RelataRow): string {
   const fields = Object.entries(row).map(([key, value]) =>
     `${JSON.stringify(key)}:${typeof value === "bigint" ? value.toString() : JSON.stringify(value)}`
   );
   return `{${fields.join(",")}}`;
+}
+
+function cdrJsonArray(rows: RelataRow[]): string {
+  return `[${rows.map(cdrJsonObject).join(",")}]`;
 }
 
 function cdrMetadata(values: Map<string, unknown>, normalized: RelataRow): void {
@@ -343,8 +347,8 @@ export class IngestClient extends TypedClientBase {
       ? await this._sendRaw(
         "POST",
         this.paramsPath("CdrRecord", opts.purpose),
-        normalized.rows.map(cdrJsonLine).join("\n"),
-        "application/x-ndjson",
+        cdrJsonArray(normalized.rows),
+        "application/json",
       )
       : await this._sendRaw("POST", this.paramsPath("CdrRecord", opts.purpose), "[]", "application/json");
     const serverErrors = Array.isArray(receipt["errors"]) ? receipt["errors"] : [];

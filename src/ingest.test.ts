@@ -14,12 +14,13 @@ import { RelataClient } from "./client.ts";
 /** Build a fetch mock that records the last call and returns the given body. */
 function mockFetch(body: unknown): {
   fetch: typeof globalThis.fetch;
-  lastCall: () => { url: string; method: string; body: string | undefined };
+  lastCall: () => { url: string; method: string; body: string | undefined; headers: Headers };
 } {
-  let last: { url: string; method: string; body: string | undefined } = {
+  let last: { url: string; method: string; body: string | undefined; headers: Headers } = {
     url: "",
     method: "",
     body: undefined,
+    headers: new Headers(),
   };
   const fetch = (async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const urlString = typeof url === "string" ? url : url.toString();
@@ -27,6 +28,7 @@ function mockFetch(body: unknown): {
       url: urlString,
       method: init?.method ?? "GET",
       body: typeof init?.body === "string" ? (init.body as string) : undefined,
+      headers: new Headers(init?.headers),
     };
     return new Response(JSON.stringify(body ?? {}), {
       status: 200,
@@ -53,7 +55,8 @@ test("ingestCdr: normalizes aliases, reports invalid rows, and queues via generi
   assert.equal((out["errors"] as unknown[]).length, 1);
   const call = lastCall();
   assert.equal(call.url, "http://x/ingest?object_type=CdrRecord&purpose=finint");
-  const rows = (call.body ?? "").split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+  assert.equal(call.headers.get("content-type"), "application/json");
+  const rows = JSON.parse(call.body ?? "[]") as Array<Record<string, unknown>>;
   assert.equal(rows.length, 2);
   assert.equal(rows[0]?.["caller_msisdn"], 911234567890);
   assert.equal(rows[0]?.["call_type"], "voice");
@@ -74,7 +77,7 @@ test("ingestCdr: rejects case-only collisions and preserves distinct alias prece
   ]);
   assert.equal(out["rows_rejected"], 1);
   assert.match(String((out["errors"] as Array<Record<string, unknown>>)[0]?.["error"]), /ambiguous case-insensitive field 'caller'/);
-  const [row] = (lastCall().body ?? "").split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+  const [row] = JSON.parse(lastCall().body ?? "[]") as Array<Record<string, unknown>>;
   assert.equal(row?.["caller_msisdn"], 14155551111);
   assert.equal(row?.["_pk"], "stable");
 });
@@ -83,7 +86,7 @@ test("ingestCdr: field folding is ASCII-only", async () => {
   const { fetch, lastCall } = mockFetch({ rows_queued: 1, rows_rejected: 0, errors: [], task_id: "itsk_ascii" });
   const client = new IngestClient({ baseUrl: "http://x", fetch });
   await client.ingestCdr([{ caller: "111", callee: "222", "İD": "unicode-alias" }]);
-  const row = JSON.parse((lastCall().body ?? "").split("\n")[0] ?? "{}") as Record<string, unknown>;
+  const row = (JSON.parse(lastCall().body ?? "[]") as Array<Record<string, unknown>>)[0] ?? {};
   assert.equal("id" in row, false);
 });
 
@@ -107,7 +110,7 @@ test("ingestCdr: RFC3339 offsets normalize exactly and invalid precision/date/ov
   assert.match(String(errors[3]?.["error"]), /invalid RFC3339 offset/);
   assert.match(String(errors[4]?.["error"]), /invalid RFC3339 offset/);
   const body = lastCall().body ?? "";
-  assert.equal(body.split("\n").length, 1);
+  assert.equal((JSON.parse(body) as unknown[]).length, 1);
   // Parsing an i64-scale JSON number as a JS Number would itself round it;
   // check the exact bytes the adapter puts on the wire.
   assert.match(body, /"call_start_ns":1704065523123456789/);
@@ -147,10 +150,11 @@ test("ingestCdr: preserves exact nanosecond timestamps and rejects unsafe number
   assert.equal(out["rows_queued"], 2);
   assert.equal(out["rows_rejected"], 1);
   assert.match(String((out["errors"] as Array<Record<string, unknown>>)[0]?.["error"]), /string or bigint/);
-  const ndjsonRows = (lastCall().body ?? "").split("\n");
-  assert.equal(ndjsonRows.length, 2);
-  assert.match(ndjsonRows[0] ?? "", /"call_start_ns":1700000000000000001/);
-  assert.match(ndjsonRows[1] ?? "", /"call_start_ns":1700000000000000003/);
+  const body = lastCall().body ?? "";
+  const jsonRows = JSON.parse(body) as Array<Record<string, unknown>>;
+  assert.equal(jsonRows.length, 2);
+  assert.match(body, /"call_start_ns":1700000000000000001/);
+  assert.match(body, /"call_start_ns":1700000000000000003/);
 });
 
 test("ingestCdr: matches legacy i64 validation and saturating seconds conversion", async () => {
@@ -190,11 +194,12 @@ test("ingestCdr: matches legacy i64 validation and saturating seconds conversion
 
   assert.equal(out["rows_queued"], 3);
   assert.equal(out["rows_rejected"], 1);
-  const ndjsonRows = (lastCall().body ?? "").split("\n");
-  assert.equal(ndjsonRows.length, 3);
-  assert.match(ndjsonRows[0] ?? "", /"call_start_ns":9223372036854775807/);
-  assert.match(ndjsonRows[1] ?? "", /"call_start_ns":-9223372036854775808/);
-  assert.match(ndjsonRows[2] ?? "", /"call_start_ns":10000000000000/);
+  const body = lastCall().body ?? "";
+  const jsonRows = JSON.parse(body) as Array<Record<string, unknown>>;
+  assert.equal(jsonRows.length, 3);
+  assert.match(body, /"call_start_ns":9223372036854775807/);
+  assert.match(body, /"call_start_ns":-9223372036854775808/);
+  assert.match(body, /"call_start_ns":10000000000000/);
   assert.match(String((out["errors"] as Array<Record<string, unknown>>)[0]?.["error"]), /out of range for i64/);
 });
 
