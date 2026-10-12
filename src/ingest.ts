@@ -29,7 +29,15 @@ function cdrValues(row: RelataRow): Map<string, unknown> {
   // Build this view once per row. Alias lookup is repeated for every canonical
   // field and metadata key; rebuilding the same map for each lookup dominated
   // the adapter's avoidable per-row allocation cost.
-  return new Map(Object.entries(row).map(([key, value]) => [key.toLowerCase(), value]));
+  const values = new Map<string, unknown>();
+  for (const [key, value] of Object.entries(row)) {
+    // CDR aliases are ASCII identifiers; match Python/Go without Unicode
+    // case-folding differences.
+    const folded = key.replace(/[A-Z]/g, (letter) => String.fromCharCode(letter.charCodeAt(0) + 32));
+    if (values.has(folded)) throw new Error(`ambiguous case-insensitive field '${folded}'`);
+    values.set(folded, value);
+  }
+  return values;
 }
 
 function cdrValue(values: Map<string, unknown>, aliases: readonly string[]): unknown {
@@ -49,6 +57,46 @@ function cdrInteger(value: unknown, name: string, fallback?: number): number {
   return result;
 }
 
+const I64_MIN = -(1n << 63n);
+const I64_MAX = (1n << 63n) - 1n;
+
+function rfc3339TimestampNs(text: string): bigint {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/.exec(text);
+  if (!match) throw new Error(`call_start '${text}': expected integer epoch or RFC3339 timestamp`);
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, fraction, zone] = match;
+  const offset = zone ?? "";
+  const year = Number(yearText), month = Number(monthText), day = Number(dayText);
+  const hour = Number(hourText), minute = Number(minuteText), second = Number(secondText);
+  if (fraction !== undefined && fraction.length > 9) {
+    throw new Error("call_start RFC3339 fraction exceeds nanosecond precision");
+  }
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > (monthDays[month - 1] ?? 0)
+      || hour > 23 || minute > 59 || second > 59) {
+    throw new Error(`call_start '${text}': invalid RFC3339 date or time`);
+  }
+  let offsetSeconds = 0;
+  if (offset !== "Z") {
+    if (offset === "-00:00") throw new Error("call_start RFC3339 -00:00 offset is unknown, not UTC");
+    const offsetHour = Number(offset.slice(1, 3)), offsetMinute = Number(offset.slice(4, 6));
+    if (offsetHour > 23 || offsetMinute > 59) throw new Error(`call_start '${text}': invalid RFC3339 offset`);
+    offsetSeconds = (offsetHour * 60 + offsetMinute) * 60 * (offset[0] === "-" ? -1 : 1);
+  }
+  // Howard Hinnant's civil-date conversion, evaluated exactly for four-digit years.
+  const adjustedYear = year - (month <= 2 ? 1 : 0);
+  const era = Math.floor(adjustedYear / 400);
+  const yearOfEra = adjustedYear - era * 400;
+  const shiftedMonth = month + (month > 2 ? -3 : 9);
+  const dayOfYear = Math.floor((153 * shiftedMonth + 2) / 5) + day - 1;
+  const dayOfEra = yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
+  const epochDays = era * 146097 + dayOfEra - 719468;
+  const epochSeconds = BigInt(epochDays * 86400 + hour * 3600 + minute * 60 + second - offsetSeconds);
+  const nanos = epochSeconds * 1_000_000_000n + BigInt((fraction ?? "").padEnd(9, "0") || "0");
+  if (nanos < I64_MIN || nanos > I64_MAX) throw new Error("call_start RFC3339 value is outside i64 nanosecond range");
+  return nanos;
+}
+
 function cdrTimestamp(value: unknown, fallbackNs: bigint): bigint {
   let raw: bigint;
   if (value === undefined || value === null) {
@@ -64,17 +112,15 @@ function cdrTimestamp(value: unknown, fallbackNs: bigint): bigint {
     raw = value;
   } else {
     const text = String(value).trim();
-    if (!/^[+-]?\d+$/.test(text)) throw new Error(`call_start '${text}' is not an integer`);
-    raw = BigInt(text);
+    if (/^[+-]?\d+$/.test(text)) raw = BigInt(text);
+    else return rfc3339TimestampNs(text);
   }
-  const minI64 = -(1n << 63n);
-  const maxI64 = (1n << 63n) - 1n;
-  if (raw < minI64 || raw > maxI64) {
+  if (raw < I64_MIN || raw > I64_MAX) {
     throw new Error(`call_start '${raw}': value out of range for i64`);
   }
   if (raw >= 10_000_000_000_000n) return raw;
   const nanoseconds = raw * 1_000_000_000n;
-  return nanoseconds < minI64 ? minI64 : nanoseconds > maxI64 ? maxI64 : nanoseconds;
+  return nanoseconds < I64_MIN ? I64_MIN : nanoseconds > I64_MAX ? I64_MAX : nanoseconds;
 }
 
 function cdrJsonLine(row: RelataRow): string {
@@ -282,9 +328,11 @@ export class IngestClient extends TypedClientBase {
    * `POST /ingest?object_type=CdrRecord`. Invalid rows are returned in
    * `errors`; poll the returned `task_id` for writer completion. Pass
    * nanosecond timestamps as decimal strings or `bigint`; unsafe JavaScript
-   * numeric timestamps are rejected instead of silently rounded. Inputs must
-   * fit i64 before unit detection; epoch-second conversion then saturates to
-   * the i64 nanosecond bounds, matching Python, Go, and the legacy parser.
+   * numeric timestamps are rejected instead of silently rounded. Strict
+   * RFC3339 timestamps with an explicit offset are normalized exactly to UTC
+   * nanoseconds (at most nine fractional digits). Inputs must fit i64 before
+   * unit detection; epoch-second conversion then saturates to the i64
+   * nanosecond bounds, matching Python and Go.
    */
   async ingestCdr(
     rows: RelataRow[],

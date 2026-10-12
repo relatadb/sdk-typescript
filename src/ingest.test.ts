@@ -65,22 +65,52 @@ test("ingestCdr: normalizes aliases, reports invalid rows, and queues via generi
   assert.equal(rows[1]?.["source_file_id"], 43);
 });
 
-test("ingestCdr: case-insensitive view keeps last input key and alias precedence", async () => {
+test("ingestCdr: rejects case-only collisions and preserves distinct alias precedence", async () => {
   const { fetch, lastCall } = mockFetch({ rows_queued: 1, rows_rejected: 0, errors: [], task_id: "itsk_case" });
   const client = new IngestClient({ baseUrl: "http://x", fetch });
-  await client.ingestCdr([{
-    CALLER: "14155550000",
-    caller: "14155551111",
-    caller_msisdn: "14155552222",
-    CALLEE: "919876543210",
-    DURATION: 9,
-    CALL_START_NS: "1700000000000000001",
-    _PK: "first",
-    _pk: "last",
-  }]);
+  const out = await client.ingestCdr([
+    { CALLER: "14155550000", caller: "14155551111", callee: "919876543210" },
+    { caller: "14155551111", caller_msisdn: "14155552222", callee: "919876543210", _pk: "stable" },
+  ]);
+  assert.equal(out["rows_rejected"], 1);
+  assert.match(String((out["errors"] as Array<Record<string, unknown>>)[0]?.["error"]), /ambiguous case-insensitive field 'caller'/);
   const [row] = (lastCall().body ?? "").split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
   assert.equal(row?.["caller_msisdn"], 14155551111);
-  assert.equal(row?.["_pk"], "last");
+  assert.equal(row?.["_pk"], "stable");
+});
+
+test("ingestCdr: field folding is ASCII-only", async () => {
+  const { fetch, lastCall } = mockFetch({ rows_queued: 1, rows_rejected: 0, errors: [], task_id: "itsk_ascii" });
+  const client = new IngestClient({ baseUrl: "http://x", fetch });
+  await client.ingestCdr([{ caller: "111", callee: "222", "İD": "unicode-alias" }]);
+  const row = JSON.parse((lastCall().body ?? "").split("\n")[0] ?? "{}") as Record<string, unknown>;
+  assert.equal("id" in row, false);
+});
+
+test("ingestCdr: RFC3339 offsets normalize exactly and invalid precision/date/overflow reject", async () => {
+  const { fetch, lastCall } = mockFetch({ rows_queued: 1, rows_rejected: 0, errors: [], task_id: "itsk_rfc3339" });
+  const client = new IngestClient({ baseUrl: "http://x", fetch });
+  const out = await client.ingestCdr([
+    { caller: "111", callee: "222", timestamp: "2024-01-01T01:02:03.123456789+01:30" },
+    { caller: "111", callee: "222", timestamp: "2023-02-29T00:00:00Z" },
+    { caller: "111", callee: "222", timestamp: "2024-01-01T00:00:00.1234567891Z" },
+    { caller: "111", callee: "222", timestamp: "2500-01-01T00:00:00Z" },
+    { caller: "111", callee: "222", timestamp: "2024-01-01T00:00:00+24:00" },
+    { caller: "111", callee: "222", timestamp: "2024-01-01T00:00:00+01:60" },
+  ]);
+  assert.equal(out["rows_rejected"], 5);
+  const errors = out["errors"] as Array<Record<string, unknown>>;
+  assert.deepEqual(errors.map((error) => error["row"]), [2, 3, 4, 5, 6]);
+  assert.match(String(errors[0]?.["error"]), /invalid RFC3339 date or time/);
+  assert.match(String(errors[1]?.["error"]), /exceeds nanosecond precision/);
+  assert.match(String(errors[2]?.["error"]), /outside i64 nanosecond range/);
+  assert.match(String(errors[3]?.["error"]), /invalid RFC3339 offset/);
+  assert.match(String(errors[4]?.["error"]), /invalid RFC3339 offset/);
+  const body = lastCall().body ?? "";
+  assert.equal(body.split("\n").length, 1);
+  // Parsing an i64-scale JSON number as a JS Number would itself round it;
+  // check the exact bytes the adapter puts on the wire.
+  assert.match(body, /"call_start_ns":1704065523123456789/);
 });
 
 test("ingestCdr: preserves exact nanosecond timestamps and rejects unsafe number inputs", async () => {
