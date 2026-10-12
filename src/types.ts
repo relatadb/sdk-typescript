@@ -42,6 +42,12 @@ export interface QueryResult<T = Record<string, unknown>> {
   rowCount: number;
   /** Column names in projection order, when the server sends them. */
   columns: string[];
+  /** Opaque keyset cursor for a following `LIMIT n AFTER` page, when present. */
+  nextCursor?: string | null;
+  /** Whether the server truncated the returned rows. */
+  truncated?: boolean;
+  /** Whether a fan-out query returned an HTTP 206 partial result. */
+  partial?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -371,7 +377,8 @@ export interface IngestDocumentResponse {
 /** Generic task status from `GET /ingest/tasks/:task_id`. State is process-local. */
 export interface IngestDocumentTaskStatus {
   taskId: string;
-  status: "pending" | "complete";
+  /** Server-reported state (currently pending, partial, complete, or failed). */
+  status: string;
   rowsTotal: number;
   rowsWritten: number;
   rowsDropped: number;
@@ -473,6 +480,9 @@ export interface WireQueryResponse {
   elapsed_ms?: number;
   /** Server-side processing time in ms (#1252). Falls back to elapsed_ms. */
   processing_time_ms?: number;
+  next_cursor?: string | null;
+  truncated?: boolean;
+  partial?: boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -68,6 +68,8 @@
 // ---------------------------------------------------------------------------
 
 export { RelataClient } from "./client.ts";
+export { analyzeDnsTunnelRows, dnsTunnelDetect } from "./dns-tunnel.ts";
+export type { DnsTunnelFinding, DnsTunnelOptions, DnsTunnelResult } from "./dns-tunnel.ts";
 export type { RelataClientOptions } from "./types.ts";
 export { queryInNaturalLanguage, summariseMemory } from "./natural-language.ts";
 export type {

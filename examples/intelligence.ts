@@ -6,7 +6,7 @@
  *   - beneficialOwnershipChain    — trace to ultimate beneficial owner (UBO)
  *   - cryptoTrace                 — follow cryptocurrency fund flow
  *   - convoyDetect                — find entities travelling together
- *   - dnsTunnelDetect             — exfiltration over DNS
+ *   - dnsTunnelDetect             — local triage over governed query pages
  *
  * Each maps to an intelligence TVF documented in
  * `docs/src/end-users/sql-grammar.md` (ADRs 109–115). Each call goes through
@@ -74,13 +74,13 @@ async function main(): Promise<void> {
     out(`  convoy_id=${row.convoy_id ?? "?"}  members=${row.members}  first_seen=${row.first_seen}`);
   }
 
-  step("5. DNS_TUNNEL_DETECT");
-  const dns = (await relata.dnsTunnelDetect({ purpose: "investigation" })) as { rows?: Row[] } | undefined;
+  step("5. DNS tunnel triage");
+  const dns = await relata.dnsTunnelDetect({ purpose: "investigation" });
   const dRows = dns?.rows ?? [];
-  out(`${dRows.length} anomalous DNS pattern(s)`);
+  out(`${dRows.length} anomalous DNS pattern(s); complete=${dns.complete} rows_scanned=${dns.rows_scanned}`);
   for (const row of dRows.slice(0, 5)) {
     out(
-      `  domain=${String(row.domain ?? "?").padEnd(30)} entropy=${row.entropy} bytes=${row.bytes_exchanged}`,
+      `  domain=${String(row.domain ?? "?").padEnd(30)} entropy=${row.avg_entropy} queries=${row.query_count} max_label_len=${row.max_label_len} confidence=${row.confidence}`,
     );
   }
 }

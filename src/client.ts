@@ -104,6 +104,7 @@ export {
 // string-literal escaper without a runtime circular import.
 import { escapeSqlString, injectMatcherHint, sqlLiteral } from "./_sql.ts";
 import { bodyOrClosedStream } from "./_body.ts";
+import { dnsTunnelDetect as runDnsTunnelDetect, type DnsTunnelOptions } from "./dns-tunnel.ts";
 
 /**
  * Percent-encode `s` for safe interpolation into a single URL path segment
@@ -383,6 +384,9 @@ export class RelataClient {
       ...(wire.processing_time_ms !== undefined ? { processingTimeMs: wire.processing_time_ms } : wire.elapsed_ms !== undefined ? { processingTimeMs: wire.elapsed_ms } : {}),
       rowCount: rows.length,
       columns,
+      ...(Object.hasOwn(wire, "next_cursor") ? { nextCursor: wire.next_cursor ?? null } : {}),
+      ...(typeof wire.truncated === "boolean" ? { truncated: wire.truncated } : {}),
+      ...(typeof wire.partial === "boolean" ? { partial: wire.partial } : {}),
     };
   }
 
@@ -438,6 +442,9 @@ export class RelataClient {
       ...(wire.processing_time_ms !== undefined ? { processingTimeMs: wire.processing_time_ms } : wire.elapsed_ms !== undefined ? { processingTimeMs: wire.elapsed_ms } : {}),
       rowCount: rows.length,
       columns,
+      ...(Object.hasOwn(wire, "next_cursor") ? { nextCursor: wire.next_cursor ?? null } : {}),
+      ...(typeof wire.truncated === "boolean" ? { truncated: wire.truncated } : {}),
+      ...(typeof wire.partial === "boolean" ? { partial: wire.partial } : {}),
     };
   }
 
@@ -1105,12 +1112,13 @@ export class RelataClient {
    * named `MIN_ENTROPY`/`MIN_QUERIES` tunables over the whole `DnsLog`
    * table — so this method takes those, not a misleading `entity` filter.
    */
-  async dnsTunnelDetect(opts?: { minEntropy?: number; minQueries?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts: string[] = [];
-    if (opts?.minEntropy !== undefined) parts.push(`MIN_ENTROPY => ${opts.minEntropy}`);
-    if (opts?.minQueries !== undefined) parts.push(`MIN_QUERIES => ${opts.minQueries}`);
-    const sql = `DNS_TUNNEL_DETECT(${parts.join(", ")})`;
-    return this.#post("/query", { purpose: opts?.purpose ?? "security", sql });
+  async dnsTunnelDetect(opts?: DnsTunnelOptions) {
+    const purpose = opts?.purpose ?? "security";
+    return runDnsTunnelDetect(
+      async (selectedPurpose) => this.querySchema(selectedPurpose),
+      (sql, queryOptions) => this.query(sql, queryOptions),
+      { ...opts, purpose },
+    );
   }
 
   async crimePatternCluster(area: string, purpose?: string): Promise<Record<string, unknown>> {
@@ -1459,7 +1467,9 @@ export class RelataClient {
     );
     return {
       taskId: wire.task_id ?? taskId,
-      status: wire.status === "complete" ? "complete" : "pending",
+      // Preserve partial/failed (and future server states); only absent status
+      // falls back for older servers.
+      status: wire.status ?? "pending",
       rowsTotal: wire.rows_total ?? 0,
       rowsWritten: wire.rows_written ?? 0,
       rowsDropped: wire.rows_dropped ?? 0,

@@ -125,6 +125,8 @@ test("query: normalises the rich data-array wire shape", async () => {
       columns: ["id", "name"],
       query_id: "q-2",
       elapsed_ms: 7,
+      next_cursor: "100:row-id",
+      truncated: false,
     },
   });
   const relata = new RelataClient({
@@ -139,6 +141,8 @@ test("query: normalises the rich data-array wire shape", async () => {
   assert.equal(result.rows[0]?.name, "Alice");
   assert.equal(result.rows[1]?.id, "p2");
   assert.deepEqual(result.columns, ["id", "name"]);
+  assert.equal(result.nextCursor, "100:row-id");
+  assert.equal(result.truncated, false);
 });
 
 test("query: throws PurposeError before hitting the wire when no purpose is set", async () => {
@@ -271,18 +275,24 @@ test("stats / version / ready / ingestDocument: map wire shapes", async () => {
   });
 });
 
-test("ingestDocumentStatus: maps the task-status wire shape and GET path", async () => {
-  const { fetch, calls } = mockFetch({
-    body: {
-      task_id: "t-1",
-      status: "complete",
-      rows_total: 4,
-      rows_written: 3,
-      rows_dropped: 1,
-      drop_reasons: ["write-failed"],
-      _relata_write_token: { wall_ns: 123, counter: 0 },
+test("ingestDocumentStatus preserves every server task outcome and GET path", async () => {
+  const { fetch, calls } = mockFetch([
+    {
+      body: {
+        task_id: "t-1",
+        status: "complete",
+        rows_total: 4,
+        rows_written: 3,
+        rows_dropped: 1,
+        drop_reasons: ["write-failed"],
+        _relata_write_token: { wall_ns: 123, counter: 0 },
+      },
     },
-  });
+    { body: { task_id: "t-2", status: "partial" } },
+    { body: { task_id: "t-3", status: "failed" } },
+    { body: { task_id: "t-4", status: "pending" } },
+    { body: { task_id: "t-5" } },
+  ]);
   const relata = new RelataClient({
     baseUrl: "http://x",
     defaultPurpose: "analytics",
@@ -296,11 +306,10 @@ test("ingestDocumentStatus: maps the task-status wire shape and GET path", async
   assert.equal(status.rowsDropped, 1);
   assert.deepEqual(status.dropReasons, ["write-failed"]);
   assert.deepEqual(status.writeToken, { wallNs: 123, counter: 0 });
-  // Unknown status normalises to "pending" rather than leaking arbitrary server text.
-  const { fetch: fetch2 } = mockFetch({ body: { task_id: "t-2", status: "weird" } });
-  const relata2 = new RelataClient({ baseUrl: "http://x", fetch: fetch2 });
-  const pending = await relata2.ingestDocumentStatus("t-2");
-  assert.equal(pending.status, "pending");
+  assert.equal((await relata.ingestDocumentStatus("t-2")).status, "partial");
+  assert.equal((await relata.ingestDocumentStatus("t-3")).status, "failed");
+  assert.equal((await relata.ingestDocumentStatus("t-4")).status, "pending");
+  assert.equal((await relata.ingestDocumentStatus("t-5")).status, "pending");
   // GET path encodes the task id.
   assert.equal(calls[0]?.method, "GET");
   assert.equal(calls[0]?.url, "http://x/ingest/tasks/t-1");
