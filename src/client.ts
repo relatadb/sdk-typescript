@@ -1491,8 +1491,15 @@ export class RelataClient {
 
   /**
    * Stream rows from an async iterable into batched `POST /ingest` calls
-   * with backpressure. Memory is O(batchSize), not O(totalRows). Returns
-   * the total number of rows successfully ingested. Stops on first error.
+   * with backpressure. Memory is O(batchSize), not O(totalRows). Returns the
+   * number of input rows in batches whose request returned without throwing.
+   * `/ingest` is queued, so this is not a writer-confirmed count. The helper
+   * discards batch receipts/task IDs and does not inspect row-level errors in
+   * a successful response. Call `IngestClient.bulk` per batch and poll each
+   * task when completion or per-row error accounting is required. Stops when
+   * a request throws. Python helpers likewise raise on a failed request; Go
+   * returns the count from earlier completed calls with the error, excluding
+   * the failing batch.
    *
    * ```ts
    * async function* gen() { yield { name: "Alice" }; yield { name: "Bob" }; }
