@@ -1437,15 +1437,15 @@ export class RelataClient {
     objects: Array<Record<string, unknown>>,
     purpose?: string,
   ): Promise<IngestDocumentResponse> {
-    const wire = await this.#post<WireIngestDocumentResponse>(
-      "/ingest/bulk",
-      {
-        objects,
-        queued: true,
-        ...(purpose ?? this.#defaultPurpose
-          ? { purpose: purpose ?? this.#defaultPurpose }
-          : {}),
-      },
+    const body = {
+      objects,
+      queued: true,
+      ...(purpose ?? this.#defaultPurpose
+        ? { purpose: purpose ?? this.#defaultPurpose }
+        : {}),
+    };
+    const wire = await this.#send<WireIngestDocumentResponse>(
+      "POST", "/ingest/bulk", body, undefined, undefined, stringifyIngestBody(body),
     );
     return {
       taskId: wire.task_id ?? "",
@@ -1465,6 +1465,13 @@ export class RelataClient {
     const wire = await this.#get<WireIngestDocumentTaskStatus>(
       `/ingest/tasks/${encodeURIComponent(taskId)}`,
     );
+    const known = new Set([
+      "task_id", "status", "rows_total", "rows_written", "rows_dropped",
+      "drop_reasons", "_relata_write_token",
+    ]);
+    const extensions = Object.fromEntries(
+      Object.entries(wire).filter(([key]) => !known.has(key)),
+    );
     return {
       taskId: wire.task_id ?? taskId,
       // Preserve partial/failed (and future server states); only absent status
@@ -1474,6 +1481,7 @@ export class RelataClient {
       rowsWritten: wire.rows_written ?? 0,
       rowsDropped: wire.rows_dropped ?? 0,
       dropReasons: Array.isArray(wire.drop_reasons) ? wire.drop_reasons : [],
+      ...(Object.keys(extensions).length > 0 ? { extensions } : {}),
       ...(wire._relata_write_token
         ? {
             writeToken: {
@@ -1748,6 +1756,7 @@ export class RelataClient {
     body: Record<string, unknown> | undefined,
     timeoutMs: number | undefined,
     callHeaders?: Record<string, string>,
+    serializedBody?: string,
   ): Promise<T> {
     if (this.#destroyed) {
       throw new ClientClosedError();
@@ -1786,7 +1795,7 @@ export class RelataClient {
           redirect: "manual",
         };
         if (method !== "GET" && method !== "DELETE") {
-          (init as RequestInit & { body: string }).body = JSON.stringify(body);
+          (init as RequestInit & { body: string }).body = serializedBody ?? JSON.stringify(body);
         }
         const response = await this.#fetch(url, init);
         assertNotRedirected(response, url);
@@ -2045,6 +2054,36 @@ interface WireIngestDocumentTaskStatus {
   rows_dropped?: number;
   drop_reasons?: string[];
   _relata_write_token?: { wall_ns: number; counter: number };
+}
+
+/** Serialize prepared rows with exact JSON integer tokens for JavaScript bigint values. */
+function stringifyIngestBody(value: unknown, ancestors = new Set<object>()): string {
+  if (typeof value === "bigint") return value.toString();
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("ingest JSON numbers must be finite");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    if (ancestors.has(value)) throw new TypeError("ingest payload must not contain a cycle");
+    ancestors.add(value);
+    const result = `[${value.map((item) => item === undefined ? "null" : stringifyIngestBody(item, ancestors)).join(",")}]`;
+    ancestors.delete(value);
+    return result;
+  }
+  if (typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    if (ancestors.has(object)) throw new TypeError("ingest payload must not contain a cycle");
+    ancestors.add(object);
+    const fields = Object.entries(object)
+      .filter(([, item]) => item !== undefined && typeof item !== "function" && typeof item !== "symbol")
+      .map(([key, item]) => `${JSON.stringify(key)}:${stringifyIngestBody(item, ancestors)}`);
+    ancestors.delete(object);
+    return `{${fields.join(",")}}`;
+  }
+  throw new TypeError(`unsupported ingest JSON value: ${typeof value}`);
 }
 
 /** @internal Wire shape for `POST /events/append`. */

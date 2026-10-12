@@ -285,6 +285,8 @@ test("ingestDocumentStatus preserves every server task outcome and GET path", as
         rows_written: 3,
         rows_dropped: 1,
         drop_reasons: ["write-failed"],
+        error: { code: "partial_write", retryable: false },
+        partial_result: { accepted_ids: ["chunk-1"] },
         _relata_write_token: { wall_ns: 123, counter: 0 },
       },
     },
@@ -304,6 +306,10 @@ test("ingestDocumentStatus preserves every server task outcome and GET path", as
   assert.equal(status.rowsTotal, 4);
   assert.equal(status.rowsWritten, 3);
   assert.equal(status.rowsDropped, 1);
+  assert.deepEqual(status.extensions, {
+    error: { code: "partial_write", retryable: false },
+    partial_result: { accepted_ids: ["chunk-1"] },
+  });
   assert.deepEqual(status.dropReasons, ["write-failed"]);
   assert.deepEqual(status.writeToken, { wallNs: 123, counter: 0 });
   assert.equal((await relata.ingestDocumentStatus("t-2")).status, "partial");
@@ -313,6 +319,19 @@ test("ingestDocumentStatus preserves every server task outcome and GET path", as
   // GET path encodes the task id.
   assert.equal(calls[0]?.method, "GET");
   assert.equal(calls[0]?.url, "http://x/ingest/tasks/t-1");
+});
+
+test("ingestDocument encodes bigint fields as exact JSON integers", async () => {
+  const { fetch, calls } = mockFetch({
+    body: { task_id: "exact-int", rows_queued: 1, rows_rejected: 0, errors: [], queue_depth: 1 },
+  });
+  const client = new RelataClient({ baseUrl: "http://x", fetch });
+  await client.ingestDocument([{
+    _type: "StructuredRecord",
+    _pk: "exact-int",
+    exact_int64: 9_007_199_254_740_993n,
+  }]);
+  assert.match(calls[0]!.body as string, /"exact_int64":9007199254740993/);
 });
 
 test("transport: auto-generates X-Request-ID per request", async () => {

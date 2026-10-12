@@ -383,6 +383,8 @@ export interface IngestDocumentTaskStatus {
   rowsWritten: number;
   rowsDropped: number;
   dropReasons: string[];
+  /** Fields added by newer server versions, preserved without interpretation. */
+  extensions?: Record<string, unknown>;
   /** Optional cluster write watermark after task completion. */
   writeToken?: { wallNs: number; counter: number };
 }
