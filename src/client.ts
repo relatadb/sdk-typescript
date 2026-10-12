@@ -776,6 +776,13 @@ export class RelataClient {
     });
   }
 
+  /** Close matching current native edges in the caller's tenant; preserves history. */
+  async deleteLink(params: { linkName: string; sourceId: string; targetId: string }): Promise<Record<string, unknown>> {
+    return this.#send("DELETE", "/links", {
+      link_name: params.linkName, source_id: params.sourceId, target_id: params.targetId,
+    }, undefined);
+  }
+
   /** List detection rules. */
   async listRules(): Promise<Record<string, unknown>> {
     return this.#get("/rules");
@@ -1786,7 +1793,7 @@ export class RelataClient {
           signal,
           redirect: "manual",
         };
-        if (method !== "GET" && method !== "DELETE") {
+        if (method !== "GET" && body !== undefined) {
           (init as RequestInit & { body: string }).body = serializedBody ?? JSON.stringify(body);
         }
         const response = await this.#fetch(url, init);

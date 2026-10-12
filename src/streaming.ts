@@ -4,7 +4,8 @@
  * The server ships streaming surfaces at:
  * - `POST /query/arrow` → Arrow IPC stream (columnar).
  * - `POST /query` with `Accept: text/event-stream` (or NDJSON body) → row stream.
- * - `GET /watch/stream` → SSE — pushes `RowsAppended` events on commits.
+ * - `GET /watch/stream` → finite SSE polls — emits governed query-result
+ *   notifications from the server's bounded background evaluator.
  * - `GET /alerts/stream` → SSE — pushes alerts to subscribed principals.
  * - `GET /a2a/tasks/:id/stream` → SSE — A2A task lifecycle events.
  *
@@ -131,8 +132,12 @@ export class StreamingClient {
   // -------------------------------------------------------------------------
 
   /**
-   * SSE consumer for `GET /watch/stream`. Yields `RowsAppended` events as
-   * commits matching the watch SQL land.
+   * SSE poll consumer for `GET /watch/stream`. The server emits
+   * `result_changed` hashes, `gap`, and `evaluation_failed` notifications;
+   * it does not stream changed row contents. Reconnects poll the same
+   * consumptive queue for this authenticated principal, so concurrent polls
+   * with the same principal share delivery. Registrations are in-memory and
+   * must be re-established after a server restart.
    *
    * Reconnects with exponential backoff until the caller breaks out of the
    * `for await` loop.
