@@ -294,6 +294,7 @@ test("ingestDocumentStatus preserves every server task outcome and GET path", as
     { body: { task_id: "t-3", status: "failed" } },
     { body: { task_id: "t-4", status: "pending" } },
     { body: { task_id: "t-5" } },
+    { body: { task_id: "t-6", status: "uncertain", outcome_uncertain: true, retryable: false, rows_written: 1, rows_dropped: 0, drop_reasons: ["WAL acknowledgement lost"] } },
   ]);
   const relata = new RelataClient({
     baseUrl: "http://x",
@@ -316,6 +317,13 @@ test("ingestDocumentStatus preserves every server task outcome and GET path", as
   assert.equal((await relata.ingestDocumentStatus("t-3")).status, "failed");
   assert.equal((await relata.ingestDocumentStatus("t-4")).status, "pending");
   assert.equal((await relata.ingestDocumentStatus("t-5")).status, "pending");
+  const uncertain = await relata.ingestDocumentStatus("t-6");
+  assert.equal(uncertain.status, "uncertain");
+  assert.equal(uncertain.outcomeUncertain, true);
+  assert.equal(uncertain.retryable, false);
+  assert.equal(uncertain.rowsWritten, 1);
+  assert.equal(uncertain.rowsDropped, 0);
+  assert.deepEqual(uncertain.dropReasons, ["WAL acknowledgement lost"]);
   // GET path encodes the task id.
   assert.equal(calls[0]?.method, "GET");
   assert.equal(calls[0]?.url, "http://x/ingest/tasks/t-1");

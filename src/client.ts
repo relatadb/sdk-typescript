@@ -1455,7 +1455,7 @@ export class RelataClient {
     );
     const known = new Set([
       "task_id", "status", "rows_total", "rows_written", "rows_dropped",
-      "drop_reasons", "_relata_write_token",
+      "drop_reasons", "outcome_uncertain", "retryable", "_relata_write_token",
     ]);
     const extensions = Object.fromEntries(
       Object.entries(wire).filter(([key]) => !known.has(key)),
@@ -1469,6 +1469,8 @@ export class RelataClient {
       rowsWritten: wire.rows_written ?? 0,
       rowsDropped: wire.rows_dropped ?? 0,
       dropReasons: Array.isArray(wire.drop_reasons) ? wire.drop_reasons : [],
+      ...(wire.outcome_uncertain !== undefined ? { outcomeUncertain: wire.outcome_uncertain } : {}),
+      ...(wire.retryable !== undefined ? { retryable: wire.retryable } : {}),
       ...(Object.keys(extensions).length > 0 ? { extensions } : {}),
       ...(wire._relata_write_token
         ? {
@@ -2041,6 +2043,8 @@ interface WireIngestDocumentTaskStatus {
   rows_written?: number;
   rows_dropped?: number;
   drop_reasons?: string[];
+  outcome_uncertain?: boolean;
+  retryable?: boolean;
   _relata_write_token?: { wall_ns: number; counter: number };
 }
 
