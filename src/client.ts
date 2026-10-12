@@ -1067,20 +1067,6 @@ export class RelataClient {
 
   // ── Intelligence operators (#967) ────────────────────────────────────────
 
-  async beneficialOwnershipChain(party: string, opts?: { maxDepth?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts = [`BENEFICIAL_OWNERSHIP_CHAIN(${sqlLiteral(party)}`];
-    if (opts?.maxDepth !== undefined) parts.push(`, MAX_DEPTH => ${opts.maxDepth}`);
-    parts.push(")");
-    return this.#post("/query", { purpose: opts?.purpose ?? "compliance", sql: parts.join("") });
-  }
-
-  async sanctionsScreen(party: string, opts?: { threshold?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts = [`SANCTIONS_SCREEN(${sqlLiteral(party)}`];
-    if (opts?.threshold !== undefined) parts.push(`, THRESHOLD => ${opts.threshold}`);
-    parts.push(")");
-    return this.#post("/query", { purpose: opts?.purpose ?? "compliance", sql: parts.join("") });
-  }
-
   async convoyDetect(opts?: { radiusM?: number; timeTolSecs?: number; minPoints?: number; purpose?: string }): Promise<Record<string, unknown>> {
     const parts: string[] = [];
     if (opts?.radiusM !== undefined) parts.push(`RADIUS => ${opts.radiusM}`);
@@ -1088,22 +1074,6 @@ export class RelataClient {
     if (opts?.minPoints !== undefined) parts.push(`MIN_POINTS => ${opts.minPoints}`);
     const sql = `CONVOY(${parts.join(", ")})`;
     return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
-  }
-
-  async cryptoTrace(entity: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `CRYPTO_TRACE(${sqlLiteral(entity)})` });
-  }
-
-  async wireReconstruction(account: string, opts?: { tolerancePct?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const parts = [`WIRE_RECONSTRUCTION(${sqlLiteral(account)}`];
-    if (opts?.tolerancePct !== undefined) parts.push(`, TOLERANCE_PCT => ${opts.tolerancePct}`);
-    parts.push(")");
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
-  }
-
-  async hawalaTrace(seed: string, opts?: { maxHops?: number; purpose?: string }): Promise<Record<string, unknown>> {
-    const maxHops = opts?.maxHops === undefined ? 5 : Math.min(10, Math.max(1, Math.trunc(opts.maxHops)));
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: `HAWALA_TRACE(${sqlLiteral(seed)}, MAX_HOPS => ${maxHops})` });
   }
 
   /**

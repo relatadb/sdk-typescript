@@ -47,26 +47,6 @@ export function unwrapMcp(
   return resp;
 }
 
-function financialPurpose(value: string): string {
-  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(value)) {
-    throw new TypeError("purpose must be 1-64 ASCII letters, digits, '_' or '-'");
-  }
-  return value;
-}
-
-function financialLiteral(value: string, name: string): string {
-  if (typeof value !== "string" || value.length === 0) throw new TypeError(`${name} is required`);
-  if (value.includes("'") || value.includes("\\")) {
-    throw new TypeError(`${name} cannot contain SQL quote or backslash characters`);
-  }
-  return value;
-}
-
-function boundedUnsigned(value: number | undefined, fallback: number, min: number, max: number): number {
-  const parsed = value !== undefined && Number.isInteger(value) && value >= 0 ? value : fallback;
-  return Math.max(min, Math.min(max, parsed));
-}
-
 // ---------------------------------------------------------------------------
 // McpClient
 // ---------------------------------------------------------------------------
@@ -844,63 +824,6 @@ export class McpClient extends TypedClientBase {
     return this.callTool("schedule_job", { name });
   }
 
-  /** Build the former financial MCP query through the generic governed `query` tool. */
-  async traceCrypto(
-    address: string,
-    opts: { maxHops?: number; minAmount?: number; purpose?: string } = {},
-  ): Promise<Record<string, unknown>> {
-    const purpose = financialPurpose(opts.purpose ?? "analytics");
-    const target = financialLiteral(address, "address");
-    const maxHops = boundedUnsigned(opts.maxHops, 5, 1, 10);
-    const minAmount = Number.isFinite(opts.minAmount) ? opts.minAmount! : 0;
-    return this.callTool("query", {
-      sql: `PURPOSE '${purpose}' CRYPTO_TRACE('${target}', MAX_HOPS => ${maxHops}, MIN_AMOUNT => ${minAmount})`,
-      purpose,
-    });
-  }
-
-  /** `beneficial_ownership` — trace the beneficial ownership chain for a party. */
-  async beneficialOwnership(
-    party: string,
-    opts: { maxDepth?: number; purpose?: string } = {},
-  ): Promise<Record<string, unknown>> {
-    const purpose = financialPurpose(opts.purpose ?? "analytics");
-    const target = financialLiteral(party, "party");
-    const maxDepth = boundedUnsigned(opts.maxDepth, 6, 1, 8);
-    return this.callTool("query", {
-      sql: `PURPOSE '${purpose}' BENEFICIAL_OWNERSHIP_CHAIN('${target}', MAX_DEPTH => ${maxDepth})`,
-      purpose,
-    });
-  }
-
-  /** `reconstruct_wire` — reconstruct a wire-transfer chain for an account. */
-  async reconstructWire(
-    account: string,
-    opts: { tolerancePct?: number; purpose?: string } = {},
-  ): Promise<Record<string, unknown>> {
-    const purpose = financialPurpose(opts.purpose ?? "analytics");
-    const target = financialLiteral(account, "account");
-    const tolerance = Number.isFinite(opts.tolerancePct) ? opts.tolerancePct! : 5.0;
-    return this.callTool("query", {
-      sql: `PURPOSE '${purpose}' WIRE_RECONSTRUCTION('${target}', TOLERANCE_PCT => ${tolerance})`,
-      purpose,
-    });
-  }
-
-  /** `trace_hawala` — trace informal hawala value-transfer networks. */
-  async traceHawala(
-    seed: string,
-    opts: { maxHops?: number; purpose?: string } = {},
-  ): Promise<Record<string, unknown>> {
-    const purpose = financialPurpose(opts.purpose ?? "analytics");
-    const target = financialLiteral(seed, "seed");
-    const maxHops = boundedUnsigned(opts.maxHops, 5, 1, 10);
-    return this.callTool("query", {
-      sql: `PURPOSE '${purpose}' HAWALA_TRACE('${target}', MAX_HOPS => ${maxHops})`,
-      purpose,
-    });
-  }
-
   /** `geofence` — spatial fence query over a circular area. */
   async geofence(
     lat: number,
@@ -998,23 +921,6 @@ export class McpClient extends TypedClientBase {
     return this.callTool("find_scc", {
       entity_type: entityType,
       purpose: opts.purpose ?? "analytics",
-    });
-  }
-
-  /** `screen_sanctions` — screen a name/entity against sanctions lists. */
-  async screenSanctions(
-    name: string,
-    opts: { threshold?: number; purpose?: string } = {},
-  ): Promise<Record<string, unknown>> {
-    const purpose = financialPurpose(opts.purpose ?? "compliance_review");
-    const target = financialLiteral(name, "name");
-    const threshold = opts.threshold;
-    const thresholdSql = threshold !== undefined && Number.isFinite(threshold)
-      ? `, THRESHOLD => ${threshold}`
-      : "";
-    return this.callTool("query", {
-      sql: `PURPOSE '${purpose}' SANCTIONS_SCREEN('${target}'${thresholdSql})`,
-      purpose,
     });
   }
 

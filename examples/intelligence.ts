@@ -1,16 +1,14 @@
 /**
  * intelligence.ts — chained KYC / sanctions sweep (#967).
  *
- * Demonstrates the typed intelligence operators on the TS client:
- *   - sanctionsScreen             — fuzzy-match a party against sanction lists
- *   - beneficialOwnershipChain    — trace to ultimate beneficial owner (UBO)
- *   - cryptoTrace                 — follow cryptocurrency fund flow
+ * Demonstrates governed-query source retrieval and retained intelligence helpers:
+ *   - OwnershipEdge and TransactionGraph rows — caller-owned analysis inputs
  *   - convoyDetect                — find entities travelling together
  *   - dnsTunnelDetect             — local triage over governed query pages
  *
- * Each maps to an intelligence TVF documented in
- * `docs/src/end-users/sql-grammar.md` (ADRs 109–115). Each call goes through
- * the governed query path — purpose is audited and ACLs apply.
+ * Ownership and transaction queries retrieve source rows only; this example does
+ * not reproduce their retired graph analyses. Sanctions matching and review
+ * remain application responsibilities.
  *
  * Run:
  *   RELATA_TOKEN=secret TARGET_PARTY="Acme Holdings Ltd" \
@@ -30,36 +28,39 @@ const relata = createClient(url, {
 interface Row { [k: string]: unknown }
 
 async function main(): Promise<void> {
-  banner(`1. SANCTIONS_SCREEN: ${target} (threshold=0.85)`);
-  const hits = (await relata.sanctionsScreen(target, { threshold: 0.85, purpose: "investigation" })) as
-    | { rows?: Row[] }
-    | undefined;
-  const hitRows = hits?.rows ?? [];
-  out(`${hitRows.length} potential hit(s)`);
-  for (const row of hitRows.slice(0, 5)) {
-    out(`  list=${String(row.list ?? "?").padEnd(20)} score=${row.score}  match=${row.matched_name ?? "?"}`);
+  banner("1. Sanctions reference data (application matching policy required)");
+  const people = await relata.queryWithParams<Row>(
+    "SELECT id, name, dob FROM Person WHERE name = $1 LIMIT 100",
+    [target],
+    { purpose: "compliance" },
+  );
+  const entries = await relata.query<Row>(
+    "SELECT name, aliases, dob, list_name, program FROM SanctionEntry LIMIT 10000",
+    { purpose: "compliance" },
+  );
+  out(`fetched ${people.rows.length} Person row(s) and ${entries.rows.length} sanctions reference row(s)`);
+  out("apply your approved application-owned matching, list-version, and review policy; no built-in screen is provided");
+  if (people.truncated || entries.truncated || people.next_cursor || entries.next_cursor) {
+    out("source results are incomplete; do not treat them as a negative screen");
   }
 
-  step(`2. BENEFICIAL_OWNERSHIP_CHAIN: ${target} (max_depth=5)`);
-  const chain = (await relata.beneficialOwnershipChain(target, { maxDepth: 5, purpose: "investigation" })) as
-    | { rows?: Row[]; layers?: Row[] }
-    | undefined;
-  const layers = chain?.rows ?? chain?.layers ?? [];
-  out(`${layers.length} layer(s) to UBO:`);
-  layers.forEach((layer, i) => {
-    const share = typeof layer.share === "number" ? layer.share * 100 : 0;
-    out(
-      `  ${i + 1}. ${String(layer.entity ?? "?").padEnd(30)} owns ${share.toFixed(2)}%  via ${layer.instrument ?? "?"}`,
-    );
-  });
+  step("2. OwnershipEdge source rows (application analysis required)");
+  const ownership = await relata.query<Row>(
+    "SELECT subject, predicate, object, ownership_pct, jurisdiction FROM OwnershipEdge LIMIT 1000",
+    { purpose: "investigation" },
+  );
+  out(`fetched ${ownership.rows.length} ownership source row(s)`);
+  if (ownership.truncated || ownership.nextCursor) out("source result is incomplete; do not treat it as a complete ownership chain");
+  out("apply documented ownership traversal and legal review outside this SDK");
 
-  step(`3. CRYPTO_TRACE: ${target}`);
-  const trace = (await relata.cryptoTrace(target, "investigation")) as { rows?: Row[] } | undefined;
-  const hops = trace?.rows ?? [];
-  out(`${hops.length} hop(s) in fund-flow graph`);
-  hops.slice(0, 10).forEach((hop, i) => {
-    out(`  ${String(i + 1).padStart(2)}. ${hop.from ?? "?"} → ${hop.to ?? "?"}  amount=${hop.amount}`);
-  });
+  step(`3. TransactionGraph source rows for ${target} (retrieval only)`);
+  const transactions = await relata.query<Row>(
+    "SELECT from_wallet, to_wallet, amount, asset, chain, is_mixer FROM TransactionGraph LIMIT 1000",
+    { purpose: "investigation" },
+  );
+  out(`fetched ${transactions.rows.length} transaction source row(s)`);
+  if (transactions.truncated || transactions.nextCursor) out("source result is incomplete; do not treat it as a complete transaction trace");
+  out("apply approved graph-walk and attribution policy outside this SDK");
 
   step("4. CONVOY_DETECT: radius=200m, time_tol=300s, min_points=2");
   const convoys = (await relata.convoyDetect({

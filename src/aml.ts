@@ -1,17 +1,12 @@
 /**
  * Typed decoders for AML / financial-intelligence result shapes (#2255).
  *
- * The server's AML operators (`SANCTIONS_SCREEN`,
- * `BENEFICIAL_OWNERSHIP_CHAIN`, `CRYPTO_TRACE`, `WIRE_RECONSTRUCTION`,
- * `HAWALA_TRACE`, `RESOLVE_IDENTITY`, and the shortest-path / Dijkstra path
- * operators) return generic query-result rows (objects of column → JSON
- * value). This module declares typed interfaces for each result shape and
- * provides a decoder that maps the generic rows into those typed objects, so
- * callers can work with strongly-typed objects instead of untyped records.
+ * These decoders map caller-selected generic query-result rows (objects of
+ * column → JSON value) into typed interfaces. They do not invoke or imply a
+ * built-in sanctions-screening operation.
  *
- * Field names mirror the exact column names emitted by the server operators
- * (see `crates/relata-query/src/finint_operators.rs` and
- * `investigation_ops.rs`).
+ * Field names mirror the corresponding row shapes; callers choose and alias
+ * their own generic query projections.
  *
  * Scope
  * -----
@@ -48,7 +43,7 @@ const getInt = (row: Row, key: string): number | undefined => {
 
 // ── SanctionsHit ─────────────────────────────────────────────────────────────
 
-/** A single sanctions-list match from `SANCTIONS_SCREEN`. */
+/** A sanctions-list row decoded from a caller's governed generic query. */
 export interface SanctionsHit {
   /** Sanctions list that produced the hit (e.g. `"OFAC"`, `"EU"`). */
   list_name: string;
@@ -82,7 +77,7 @@ export function decodeSanctionsHits(rows: Row[]): SanctionsHit[] {
 
 // ── BeneficialOwner ──────────────────────────────────────────────────────────
 
-/** One hop in a beneficial-ownership chain from `BENEFICIAL_OWNERSHIP_CHAIN`. */
+/** Legacy ownership-chain row shape, decoded from caller-fetched generic query rows. */
 export interface BeneficialOwner {
   /** BFS depth from the seed entity (1-based). */
   depth: number;
@@ -127,7 +122,7 @@ export function decodeBeneficialOwners(rows: Row[]): BeneficialOwner[] {
 
 // ── CryptoTraceHop ───────────────────────────────────────────────────────────
 
-/** One hop in a cryptocurrency fund-flow trace from `CRYPTO_TRACE`. */
+/** Legacy crypto-trace row shape, decoded from caller-fetched generic query rows. */
 export interface CryptoTraceHop {
   /** 1-based hop index (the server emits `-1` for the terminal summary row). */
   hop: number;
@@ -163,7 +158,7 @@ export function decodeCryptoTrace(rows: Row[]): CryptoTraceHop[] {
 
 // ── WireHop ──────────────────────────────────────────────────────────────────
 
-/** One leg of a reconstructed wire-transfer chain from `WIRE_RECONSTRUCTION`. */
+/** Legacy wire-reconstruction row shape, decoded from caller-fetched generic query rows. */
 export interface WireHop {
   /** 0-based step index (the server emits `-1` for the chain summary row). */
   step: number;
@@ -199,7 +194,7 @@ export function decodeWireHops(rows: Row[]): WireHop[] {
 
 // ── HawalaPair ───────────────────────────────────────────────────────────────
 
-/** A matched informal-value-transfer pair from `HAWALA_TRACE`. */
+/** Legacy hawala-trace row shape, decoded from caller-fetched generic query rows. */
 export interface HawalaPair {
   /** Sender identifier. */
   sender: string;

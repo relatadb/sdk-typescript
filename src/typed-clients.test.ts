@@ -1,107 +1,4 @@
-/**
- * Tests for the typed v1.1 clients — verifies path/method/payload routing for
- * a representative sample (GovernanceClient, McpClient, A2AClient,
- * TokenClient, LogClient, AuditClient, BackupClient, TenantAdminClient,
- * IdentityClient, VectorClient) plus the `fromClient` inheritance of auth +
- * tenant headers.
- *
- * Uses Node's built-in `node:test` runner with an injected `fetch` mock.
- */
-
-import { strict as assert } from "node:assert";
-import { test } from "node:test";
-
-import {
-  A2AClient,
-  AuditClient,
-  AuthError,
-  BackupClient,
-  createClient,
-  GovernanceClient,
-  IdentityClient,
-  IngestClient,
-  LogClient,
-  McpClient,
-  NotFoundError,
-  RelataClient,
-  ServerError,
-  SystemClient,
-  TenantAdminClient,
-  TimeoutError,
-  TokenClient,
-  unwrapMcp,
-} from "./index.ts";
-
-// ---------------------------------------------------------------------------
-// Mock fetch
-// ---------------------------------------------------------------------------
-
-interface MockResponse {
-  status?: number;
-  headers?: Record<string, string>;
-  body?: unknown;
-  bodyText?: string;
-}
-
-function mockFetch(
-  responses: MockResponse[] | MockResponse,
-): {
-  fetch: typeof globalThis.fetch;
-  calls: Array<{
-    url: string;
-    method: string;
-    headers: Record<string, string>;
-    body: string | undefined;
-  }>;
-} {
-  const queue = Array.isArray(responses) ? [...responses] : [responses];
-  const calls: Array<{
-    url: string;
-    method: string;
-    headers: Record<string, string>;
-    body: string | undefined;
-  }> = [];
-  const fetch = (async (
-    url: string | URL | Request,
-    init?: RequestInit,
-  ): Promise<Response> => {
-    const urlString = typeof url === "string" ? url : url.toString();
-    const headers: Record<string, string> = {};
-    if (init?.headers !== undefined) {
-      const h = init.headers as Record<string, string>;
-      for (const [k, v] of Object.entries(h)) headers[k.toLowerCase()] = v;
-    }
-    calls.push({
-      url: urlString,
-      method: init?.method ?? "GET",
-      headers,
-      body: typeof init?.body === "string" ? (init.body as string) : undefined,
-    });
-    const next = queue.shift() ?? { status: 200, body: {} };
-    const status = next.status ?? 200;
-    const headerMap = new Headers();
-    for (const [k, v] of Object.entries(next.headers ?? {})) headerMap.set(k, v);
-    headerMap.set("content-type", headerMap.get("content-type") ?? "application/json");
-    const bodyText =
-      next.bodyText ??
-      (typeof next.body === "string" ? next.body : JSON.stringify(next.body ?? {}));
-    return new Response(bodyText, { status, headers: headerMap });
-  }) as typeof globalThis.fetch;
-  return { fetch, calls };
-}
-
-function mcpEnvelope(inner: unknown): unknown {
-  return {
-    content: [{ type: "text", text: JSON.stringify(inner) }],
-    isError: false,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// fromClient inheritance
-// ---------------------------------------------------------------------------
-
-test("fromClient: typed clients inherit baseUrl, bearerToken, tenant, purpose", async () => {
+, async () => {
   const { fetch, calls } = mockFetch({ body: { rules: [] } });
   const relata = new RelataClient({
     baseUrl: "http://srv:8080/",
@@ -608,39 +505,6 @@ test("McpClient #2322: scheduleJob sends name", async () => {
   assert.equal(seen.arguments["name"], "transaction_ring");
 });
 
-test("McpClient financial helper: traceCrypto builds governed SQL", async () => {
-  const seen = await callAndCapture((mcp) =>
-    mcp.traceCrypto("bc1qxyz", { maxHops: 30, minAmount: 1.25, purpose: "audit" }),
-  );
-  assert.equal(seen.name, "query");
-  assert.deepEqual(seen.arguments, {
-    sql: "PURPOSE 'audit' CRYPTO_TRACE('bc1qxyz', MAX_HOPS => 10, MIN_AMOUNT => 1.25)",
-    purpose: "audit",
-  });
-});
-
-test("McpClient financial helper: beneficialOwnership defaults and rejects unsafe literals", async () => {
-  const seen = await callAndCapture((mcp) =>
-    mcp.beneficialOwnership("Acme Holdings"),
-  );
-  assert.equal(seen.name, "query");
-  assert.equal(seen.arguments["sql"], "PURPOSE 'analytics' BENEFICIAL_OWNERSHIP_CHAIN('Acme Holdings', MAX_DEPTH => 6)");
-});
-
-test("McpClient financial helper: reconstructWire builds governed SQL", async () => {
-  const seen = await callAndCapture((mcp) =>
-    mcp.reconstructWire("IE12BOFI90000112345678", { tolerancePct: 2.5 }),
-  );
-  assert.equal(seen.name, "query");
-  assert.equal(seen.arguments["sql"], "PURPOSE 'analytics' WIRE_RECONSTRUCTION('IE12BOFI90000112345678', TOLERANCE_PCT => 2.5)");
-});
-
-test("McpClient financial helper: traceHawala preserves lower clamp", async () => {
-  const seen = await callAndCapture((mcp) => mcp.traceHawala("actor-1", { maxHops: 0 }));
-  assert.equal(seen.name, "query");
-  assert.equal(seen.arguments["sql"], "PURPOSE 'analytics' HAWALA_TRACE('actor-1', MAX_HOPS => 1)");
-});
-
 test("McpClient #2322: geofence sends lat/lon", async () => {
   const seen = await callAndCapture((mcp) =>
     mcp.geofence(53.35, -6.26, { radiusM: 500 }),
@@ -700,23 +564,8 @@ test("McpClient #2322: findScc sends entity_type", async () => {
   assert.equal(seen.arguments["entity_type"], "Person");
 });
 
-test("McpClient financial helper: screenSanctions builds governed SQL", async () => {
-  const seen = await callAndCapture((mcp) =>
-    mcp.screenSanctions("John Doe", { threshold: 0.9 }),
-  );
-  assert.equal(seen.name, "query");
-  assert.deepEqual(seen.arguments, {
-    sql: "PURPOSE 'compliance_review' SANCTIONS_SCREEN('John Doe', THRESHOLD => 0.9)",
-    purpose: "compliance_review",
-  });
-});
-
-test("McpClient financial helper rejects SQL literal and purpose injection", async () => {
-  const { fetch, calls } = mockFetch({ body: mcpEnvelope({ ok: true }) });
-  const mcp = new McpClient({ baseUrl: "http://x", fetch });
-  await assert.rejects(() => mcp.traceCrypto("x'); SELECT * FROM Person; --"));
-  await assert.rejects(() => mcp.traceCrypto("address", { purpose: "audit' SELECT" }));
-  assert.equal(calls.length, 0);
+test("retired sanctions MCP convenience method is absent", () => {
+  assert.equal("screenSanctions" in McpClient.prototype, false);
 });
 
 test("McpClient #2322: aggregateStats sends entity_type", async () => {
