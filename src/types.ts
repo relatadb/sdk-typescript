@@ -44,6 +44,8 @@ export interface QueryResult<T = Record<string, unknown>> {
   columns: string[];
   /** Opaque keyset cursor for a following `LIMIT n AFTER` page, when present. */
   nextCursor?: string | null;
+  /** Opaque process-local equality token for row-backed graph analytics. */
+  graphVersion?: string;
   /** Whether the server truncated the returned rows. */
   truncated?: boolean;
   /** Whether a fan-out query returned an HTTP 206 partial result. */
@@ -491,6 +493,7 @@ export interface WireQueryResponse {
   /** Server-side processing time in ms (#1252). Falls back to elapsed_ms. */
   processing_time_ms?: number;
   next_cursor?: string | null;
+  graph_version?: string;
   truncated?: boolean;
   partial?: boolean;
 }
