@@ -1,11 +1,10 @@
 /**
- * Governance SDK — rules, retention, breakglass, alerts, DSAR (#74).
+ * Governance SDK — rules, retention, alerts, DSAR (#74).
  *
  * A thin governed wrapper over the server's HTTP surface so a TypeScript
  * operator can:
  * - Define and manage prepared detection rules.
  * - Place and lift legal holds; configure WORM retention per object type.
- * - Request and approve emergency HUMINT breakglass access (4h, two-person).
  * - List and ack alerts.
  * - File a GDPR Data Subject Access Request.
  *
@@ -41,7 +40,7 @@ export interface GovernanceClientCtor extends TypedClientCtor {
 }
 
 /**
- * Governance surface — rules / retention / breakglass / alerts / DSAR.
+ * Governance surface — rules / retention / alerts / DSAR.
  * Construct via `GovernanceClient.fromClient(relata)` to inherit the parent
  * client's auth + tenant context.
  */
@@ -264,76 +263,6 @@ export class GovernanceClient extends TypedClientBase {
     return this._post(
       `/retention/worm/${encodeURIComponent(objectType)}`,
       { retention_secs: retentionSecs },
-    );
-  }
-
-  // -------------------------------------------------------------------------
-  // Breakglass (#74)
-  // -------------------------------------------------------------------------
-
-  /**
-   * Request emergency HUMINT breakglass access (fixed 4h window).
-   * Wraps `POST /humint/breakglass/request`. Returns the request record
-   * including `request_id` and `status`. Approval requires two distinct
-   * officers ({@link approveBreakglass}).
-   *
-   * @param sourceId Masked source ID being unmasked (e.g. `"SRC-0042"`).
-   * @param purpose Declared query purpose; server defaults to
-   *   `"humint_unmask"` when omitted.
-   * @param justification Free-text justification for the emergency access,
-   *   captured for audit.
-   * @param officer Delegated/on-behalf-of human officer identity (#5276).
-   *   Set this when a service principal (e.g. a BFF holding one shared
-   *   bearer token) is mediating for a human officer, so the two-officer
-   *   rule can tell two officers behind the same token apart — otherwise
-   *   every request/approve pair through a shared token collapses to one
-   *   identity and approval is structurally impossible.
-   */
-  async requestBreakglass(
-    sourceId: string,
-    opts: {
-      purpose?: string;
-      justification?: string;
-      officer?: string;
-    } = {},
-  ): Promise<Record<string, unknown>> {
-    const payload: Record<string, unknown> = { source_id: sourceId };
-    if (opts.purpose !== undefined) payload["purpose"] = opts.purpose;
-    if (opts.justification !== undefined) payload["justification"] = opts.justification;
-    if (opts.officer !== undefined) payload["officer"] = opts.officer;
-    return this._post("/humint/breakglass/request", payload);
-  }
-
-  /**
-   * Approve a breakglass request (second-officer sign-off).
-   * Wraps `POST /humint/breakglass/approve`. The server enforces: requester
-   * cannot approve their own request, the approver must belong to the same
-   * tenant, and two distinct approvals are required before access is granted.
-   *
-   * @param opts.officer Delegated/on-behalf-of human officer identity
-   *   (#5276) — see {@link requestBreakglass}'s `officer` doc for the full
-   *   rationale. Pass the approving officer here when this call is made
-   *   through a shared service-principal bearer token.
-   */
-  async approveBreakglass(
-    requestId: string,
-    opts: { approverNote?: string; officer?: string } = {},
-  ): Promise<Record<string, unknown>> {
-    const payload: Record<string, unknown> = { request_id: requestId };
-    if (opts.approverNote !== undefined) payload["note"] = opts.approverNote;
-    if (opts.officer !== undefined) payload["officer"] = opts.officer;
-    return this._post("/humint/breakglass/approve", payload);
-  }
-
-  /**
-   * Look up the status of a breakglass request.
-   * Wraps `GET /humint/breakglass/status/:requestId`.
-   */
-  async breakglassStatus(
-    requestId: string,
-  ): Promise<Record<string, unknown>> {
-    return this._get(
-      `/humint/breakglass/status/${encodeURIComponent(requestId)}`,
     );
   }
 

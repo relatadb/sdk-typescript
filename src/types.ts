@@ -376,7 +376,7 @@ export interface IngestDocumentResponse {
   queueDepth: number;
 }
 
-/** Generic task status from `GET /ingest/tasks/:task_id`. State is process-local. */
+/** Generic task status from `GET /ingest/tasks/:task_id`. Persistent local receipts survive restart; volatile profiles remain process-local. */
 export interface IngestDocumentTaskStatus {
   taskId: string;
   /** Server-reported state: pending is nonterminal; complete, partial, failed, uncertain, and incomplete are terminal outcomes. Uncertain does not mean complete. */

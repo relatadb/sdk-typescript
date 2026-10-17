@@ -322,3 +322,76 @@ test("Memory: percent-encodes memoryId in path segments", async () => {
   // The encoded path should contain %2F and %20
   assert.ok(calls[0]?.url.includes("/memory/forget/m%2Fwith%20space?"));
 });
+
+
+test("memory errors retain required problem and Retry-After metadata", async () => {
+  const { MemoryHttpError } = await import("./memory.ts");
+  const problem = { detail: "quota exceeded", code: "quota", type: "urn:relata:quota",
+    retryable: true, query_id: "memory-query" };
+  const memory = new Memory("http://x", { purpose: "p",
+    fetch: (async () => new Response(JSON.stringify(problem), { status: 429,
+      headers: { "content-type": "application/problem+json", "Retry-After": "11",
+        "x-request-id": "memory-request" } })) as typeof globalThis.fetch });
+  await assert.rejects(() => memory.add("payload"), (error: unknown) => {
+    assert.ok(error instanceof MemoryHttpError);
+    assert.equal(error.statusCode, 429);
+    assert.equal(error.retryAfterSeconds, 11);
+    assert.equal(error.retryable, true);
+    assert.equal(error.code, "quota");
+    assert.equal(error.typeUrl, "urn:relata:quota");
+    assert.equal(error.queryId, "memory-query");
+    assert.equal(error.requestId, "memory-request");
+    assert.deepEqual(error.body, problem);
+    return true;
+  });
+  await memory.close();
+});
+
+test("memory non-object and malformed HTTP errors preserve status and header metadata", async () => {
+  const { MemoryHttpError } = await import("./memory.ts");
+  for (const body of ["null", "[]", "42", '"proxy error"', "{broken"]) {
+    let calls = 0;
+    const response = new Response(body, { status: 503, headers: {
+      "content-type": "application/problem+json", "Retry-After": "7", "x-request-id": "proxy-request",
+    } });
+    const memory = new Memory("http://x", { purpose: "p", fetch: (async () => {
+      calls++;
+      return response;
+    }) as typeof globalThis.fetch });
+    await assert.rejects(() => memory.add("private source"), (error: unknown) => {
+      assert.ok(error instanceof MemoryHttpError);
+      assert.equal(error.statusCode, 503);
+      assert.equal(error.retryAfterSeconds, 7);
+      assert.equal(error.requestId, "proxy-request");
+      assert.deepEqual(error.body, {});
+      return true;
+    });
+    assert.equal(calls, 1, "uncertain memory writes must not retry");
+    assert.equal(response.bodyUsed, true);
+    await memory.close();
+  }
+});
+
+test("memory HTTP error reads once and enforces configured body cap with cancellation", async () => {
+  const { ResponseTooLargeError } = await import("./errors.ts");
+  let cancelled = 0;
+  let sent = false;
+  const response = new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (!sent) {
+        sent = true;
+        controller.enqueue(new TextEncoder().encode("x".repeat(65)));
+      }
+    },
+    cancel() { cancelled++; },
+  }), { status: 503, headers: { "content-type": "text/plain" } });
+  // The shared reader must consume the stream directly, never call an
+  // unbounded convenience method or attempt a second body read.
+  response.text = async () => { throw new Error("unexpected response.text read"); };
+  response.json = async () => { throw new Error("unexpected response.json read"); };
+  const memory = new Memory("http://x", { purpose: "p", maxResponseBytes: 64,
+    fetch: (async () => response) as typeof globalThis.fetch });
+  await assert.rejects(() => memory.add("private source"), ResponseTooLargeError);
+  assert.equal(cancelled, 1);
+  await memory.close();
+});

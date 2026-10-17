@@ -25,10 +25,15 @@
 
 import {
   assertNotRedirected,
+  httpProblemMetadata,
+  RelataError,
   NetworkError,
   PurposeError,
   TimeoutError,
+  ResponseTooLargeError,
 } from "./errors.ts";
+import { readCappedResponseBody } from "./_body.ts";
+import { DEFAULT_MAX_RESPONSE_BYTES } from "./client.ts";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -49,6 +54,8 @@ export interface MemoryOptions {
   sessionId?: string;
   /** Per-request timeout in milliseconds. `0` means no timeout (default). */
   timeoutMs?: number;
+  /** Maximum buffered HTTP error body bytes; default 64 MiB. Positive overrides only. */
+  maxResponseBytes?: number;
   /** Optional caller-supplied headers overlaid on every request. */
   headers?: Record<string, string>;
   /** Override `fetch` (testing / observability). Defaults to `globalThis.fetch`. */
@@ -183,6 +190,7 @@ export class Memory {
   readonly #purpose: string;
   readonly #sessionId: string;
   readonly #timeoutMs: number;
+  readonly #maxResponseBytes: number;
   readonly #fetch: typeof globalThis.fetch;
   readonly #extraHeaders: Record<string, string>;
 
@@ -206,6 +214,9 @@ export class Memory {
     this.#purpose = options.purpose;
     this.#sessionId = options.sessionId ?? "";
     this.#timeoutMs = options.timeoutMs ?? 0;
+    this.#maxResponseBytes = options.maxResponseBytes !== undefined
+      && Number.isSafeInteger(options.maxResponseBytes) && options.maxResponseBytes > 0
+      ? options.maxResponseBytes : DEFAULT_MAX_RESPONSE_BYTES;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#extraHeaders = options.headers ?? {};
   }
@@ -545,12 +556,19 @@ export class Memory {
       const isJson =
         contentType.includes("application/json") ||
         contentType.includes("application/problem+json");
-      const payload: unknown = isJson
-        ? await response.json()
-        : { error: await response.text() };
-
       if (!response.ok) {
-        const err = payload as Record<string, unknown>;
+        // Read once under the same bound as other SDK HTTP error paths. A
+        // proxy's JSON null/scalar/array or malformed body must not erase the
+        // actual HTTP status, request ID or Retry-After header.
+        const text = new TextDecoder().decode(
+          await readCappedResponseBody(response, this.#maxResponseBytes),
+        );
+        let payload: unknown = { error: text };
+        if (isJson) {
+          try { payload = JSON.parse(text); } catch { payload = {}; }
+        }
+        const err = payload !== null && typeof payload === "object" && !Array.isArray(payload)
+          ? payload as Record<string, unknown> : {};
         const serverMessage =
           typeof err["detail"] === "string"
             ? err["detail"]
@@ -559,18 +577,22 @@ export class Memory {
               : typeof err["message"] === "string"
                 ? err["message"]
                 : `HTTP ${response.status}`;
-        // Surface the server message via a thrown Error subclass. Reuse
-        // NetworkError for non-2xx so callers get a typed RelataError.
+        // Preserve HTTP problem/header metadata in the existing typed error;
+        // this path never automatically retries a potentially committed write.
         throw new MemoryHttpError(
           response.status,
           serverMessage,
           err,
           response.headers.get("x-request-id") ?? undefined,
+          response.headers,
         );
       }
+      const payload: unknown = isJson
+        ? await response.json()
+        : { error: await response.text() };
       return (payload ?? {}) as Record<string, unknown>;
     } catch (err) {
-      if (err instanceof MemoryHttpError) throw err;
+      if (err instanceof MemoryHttpError || err instanceof ResponseTooLargeError) throw err;
       if (err instanceof NetworkError) throw err;
       if (err instanceof Error && this.#isAbortError(err)) {
         throw new TimeoutError(this.#timeoutMs);
@@ -604,22 +626,22 @@ export class Memory {
  * inspect `code`, `retryable`, `requestId`, etc. without depending on the
  * core `mapHttpError` dispatcher.
  */
-export class MemoryHttpError extends Error {
-  readonly statusCode: number;
+export class MemoryHttpError extends RelataError {
   readonly body: Record<string, unknown>;
-  readonly requestId: string | undefined;
 
   constructor(
     statusCode: number,
     message: string,
     body: Record<string, unknown>,
     requestId: string | undefined,
+    headers?: Headers,
   ) {
-    super(`[HTTP ${statusCode}] ${message}`);
+    const metadata = httpProblemMetadata(body, headers);
+    super(`[HTTP ${statusCode}] ${message}`, statusCode, message, metadata.queryId, {
+      ...metadata, requestId: metadata.requestId ?? requestId,
+    });
     this.name = "MemoryHttpError";
-    this.statusCode = statusCode;
     this.body = body;
-    this.requestId = requestId;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }

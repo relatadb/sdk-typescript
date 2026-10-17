@@ -458,6 +458,7 @@ const entries = await audit.entries({ purpose: "compliance", limit: 50 });
 | `identity.ts` | `IdentityClient` | Identity label/uncertainty + lookup tables + `ERASE SUBJECT` |
 | `objects.ts` | `ObjectClient` | Typed upsert + batch via `/ingest?object_type=` |
 | `ingest.ts` | `IngestClient` | Bulk NDJSON + CSV + media task status; it does not upload raw media bytes |
+| `files.ts` | `FilesClient` | Buffered governed Files `put`/`get`/`delete` for opaque bytes and representation metadata |
 | `vectors.ts` | `VectorClient` | KNN + hybrid search + similar-to (SQL-backed) |
 | `system.ts` | `SystemClient` | Generic jobs and operator surfaces; no feed broker routing |
 | `feed-broker.ts` | `FeedBrokerClient` | Optional RIFN broker health, channels, signed-entry publishing at an explicit broker URL |
@@ -558,6 +559,41 @@ console.log(`Received ${totalBytes} Arrow IPC bytes`);
 `IngestClient` exposes media task status, and `McpClient.ingestMedia()` calls
 the MCP media tool with its documented payload. There is no raw byte upload
 method for `/ingest/media` in this TypeScript SDK.
+
+### Governed Files client — v3.0 candidate, SDK 2.7.1
+
+For the v3.0 candidate (engine source `57e11676c`), version-aligned SDK source
+`8924d6ce8` (TypeScript test-only fixture correction `5212045`) builds cleanly
+and the TypeScript suite passes 515/515. The five-lane Files fixture passes in
+10.020s; the prepared-document matrix passes in 37.110s across raw HTTP and
+official TypeScript, Python sync/async, and Go queries. It checks synthetic
+DataGrep and Unstructured JSON citation anchors, bounded ingest receipts,
+auth/tenant behavior and a persistent single-node restart. Citation comparison
+waits for stable index visibility: TypeScript and Python required two
+before/after stabilization attempts for DataGrep, so this does not promise
+immediate parity. See the [Files result](../../scripts/qualification/followup_pr5786_sdk_files_common_live.json)
+and [prepared result](../../scripts/qualification/followup_pr5786_sdk_files_prepared_live.json).
+This candidate-source evidence does not claim package publication, PDF/OCR or
+provider extraction, replicas, throughput, interrupted-task resumption, or
+server-side cancellation. Prepared receipts describe historical local task
+outcomes; volatile profiles remain process-local.
+
+`FilesClient.fromClient(client)` borrows the parent's authentication, tenant,
+timeout and response cap. `put(key, bytes, { bucket, contentType })` returns
+current-file metadata; `get(key, { bucket })` returns buffered `Uint8Array`
+bytes plus ETag, content type and size; `delete(key, { bucket })` acknowledges
+an exact-key deletion. An omitted bucket uses the authenticated tenant's
+default. The server upload ceiling is 128 MiB; GET is subject to the inherited
+response cap (64 MiB by default). PUT and DELETE are not automatically retried,
+so reconcile uncertain outcomes before retrying. The client does not expose
+immutable versions, conditional writes, range requests, physical/global-copy
+deletion guarantees, or `/ingest/media` processing.
+The inherited request timeout bounds the client request, and abort/stream
+cleanup applies to the client request; neither promises that server work
+already accepted by the engine is aborted or rolled back. See
+the [HTTP Files contract](../../docs/src/specs/files-api.md) for server
+behavior. This client wraps only `/files/content`, not the Files list or
+folder operations.
 
 ## Response models
 
@@ -778,3 +814,24 @@ bearer token (defaults: `relata` / `relata-test`).
 ## License
 
 AGPL-3.0-only — see the root `LICENSE` file.
+
+`StreamingClient.queryRows()` uses `/query/stream` NDJSON and yields data rows,
+not the reserved leading/terminal metadata frames. Treat the answer as complete
+only after the iterator finishes normally: missing, malformed, truncated or
+inconsistent terminal metadata raises `IncompleteQueryStreamError`, carrying
+`queryId` and `rowsReceived`. Rows already yielded are a partial answer on failure;
+the SDK does not automatically retry them. Breaking out of iteration cancels the
+underlying reader and does not establish completion. A scalar `_meta` result
+column remains ordinary row data. HTTP failures retain `StreamingHttpError`,
+including status, raw body, parsed problem fields and retry guidance.
+For `queryRows`, the existing `maxResponseBytes` option (default 64 MiB) bounds
+**each NDJSON frame**, measured as UTF-8 bytes before parsing; it does not cap the
+whole long-running stream. Oversized frames raise `ResponseTooLargeError` and
+cancel the reader. Streaming HTTP error bodies use the same capped buffered
+reader before parsing error details; no new size option is required.
+Buffered and specialized HTTP errors preserve typed `RelataError` metadata:
+`statusCode`, `queryId`, `requestId`, `code`, `typeUrl`, `retryable`, and
+`retryAfterSeconds` when supplied. A valid `Retry-After` delta or HTTP date takes
+precedence over a finite nonnegative `retry_after` problem extension. This is
+server guidance, not permission to replay a write; the SDK does not automatically
+retry POST/PUT/PATCH/DELETE requests after an uncertain response.

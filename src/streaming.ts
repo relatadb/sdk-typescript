@@ -3,7 +3,7 @@
  *
  * The server ships streaming surfaces at:
  * - `POST /query/arrow` → Arrow IPC stream (columnar).
- * - `POST /query` with `Accept: text/event-stream` (or NDJSON body) → row stream.
+ * - `POST /query/stream` with `Accept: text/event-stream` (or application/x-ndjson) → row stream.
  * - `GET /watch/stream` → finite SSE polls — emits governed query-result
  *   notifications from the server's bounded background evaluator.
  * - `GET /alerts/stream` → SSE — pushes alerts to subscribed principals.
@@ -16,8 +16,8 @@
  */
 
 import { RelataClient } from "./client.ts";
-import { assertNotRedirected, PurposeError } from "./errors.ts";
-import { bodyOrClosedStream } from "./_body.ts";
+import { assertNotRedirected, httpProblemMetadata, PurposeError, RelataError, ResponseTooLargeError } from "./errors.ts";
+import { bodyOrClosedStream, readCappedResponseBody } from "./_body.ts";
 
 /** Streaming client — async iterators over every streaming surface. */
 export class StreamingClient {
@@ -43,16 +43,16 @@ export class StreamingClient {
 
   /** @internal Build the parent client's header bag for a streaming call. */
   #headers(extra?: Record<string, string>): Record<string, string> {
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      ...this.#client.extraHeaders,
-    };
+    const merged = new Headers({ Accept: "application/json" });
+    for (const [key, value] of Object.entries(this.#client.extraHeaders)) merged.set(key, value);
     if (this.#client.internalBearerToken !== undefined) {
-      headers["Authorization"] = `Bearer ${this.#client.internalBearerToken}`;
+      merged.set("Authorization", `Bearer ${this.#client.internalBearerToken}`);
     }
     if (extra !== undefined) {
-      for (const [k, v] of Object.entries(extra)) headers[k] = v;
+      for (const [key, value] of Object.entries(extra)) merged.set(key, value);
     }
+    const headers: Record<string, string> = {};
+    merged.forEach((value, key) => { headers[key] = value; });
     return headers;
   }
 
@@ -70,19 +70,19 @@ export class StreamingClient {
     opts: { purpose?: string } = {},
   ): AsyncIterable<Record<string, unknown>> {
     const purpose = this.#purpose(opts.purpose);
-    const url = `${this.#client.baseUrl}/query`;
+    const url = `${this.#client.baseUrl}/query/stream`;
     const response = await this.#client.fetchImpl(url, {
       method: "POST",
-      headers: this.#headers({ "Content-Type": "application/json" }),
+      headers: this.#headers({ "Content-Type": "application/json", Accept: "application/x-ndjson" }),
       body: JSON.stringify({ purpose, sql }),
       redirect: "manual",
     });
     assertNotRedirected(response, url);
     if (!response.ok) {
-      const text = await response.text();
-      throw new StreamingHttpError(response.status, text);
+      const text = new TextDecoder().decode(await readCappedResponseBody(response, this.#client.maxResponseBytes));
+      throw new StreamingHttpError(response.status, text, response.headers);
     }
-    yield* ndjsonStream<Record<string, unknown>>(response);
+    yield* queryRowStream(response, this.#client.maxResponseBytes);
   }
 
   // -------------------------------------------------------------------------
@@ -108,8 +108,7 @@ export class StreamingClient {
     });
     assertNotRedirected(response, url);
     if (!response.ok) {
-      await drainBody(response);
-      throw new StreamingHttpError(response.status, await response.text());
+      throw new StreamingHttpError(response.status, new TextDecoder().decode(await readCappedResponseBody(response, this.#client.maxResponseBytes)), response.headers);
     }
     const reader = bodyOrClosedStream(response).getReader();
     try {
@@ -191,7 +190,7 @@ export class StreamingClient {
         continue;
       }
       if (!response.ok) {
-        await drainBody(response);
+        await readCappedResponseBody(response, this.#client.maxResponseBytes);
         if (!reconnect || retries >= maxRetries) return;
         await sleep(baseBackoffMs * 2 ** Math.min(retries, 5));
         retries++;
@@ -224,16 +223,99 @@ export class StreamingClient {
 // ---------------------------------------------------------------------------
 
 /** Error thrown by streaming helpers when the server returns a non-2xx status. */
-export class StreamingHttpError extends Error {
-  readonly statusCode: number;
+export class StreamingHttpError extends RelataError {
   readonly bodyText: string;
+  readonly body: Record<string, unknown>;
 
-  constructor(statusCode: number, bodyText: string) {
-    super(`[HTTP ${statusCode}] ${bodyText.slice(0, 200)}`);
+  constructor(statusCode: number, bodyText: string, headers?: Headers) {
+    let body: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = JSON.parse(bodyText);
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        body = parsed as Record<string, unknown>;
+      }
+    } catch { /* Proxy/plain-text errors retain their exact bodyText. */ }
+    const metadata = httpProblemMetadata(body, headers);
+    const message = typeof body["detail"] === "string" ? body["detail"]
+      : typeof body["error"] === "string" ? body["error"] : bodyText.slice(0, 200);
+    super(`[HTTP ${statusCode}] ${message}`, statusCode, message, metadata.queryId, metadata);
     this.name = "StreamingHttpError";
-    this.statusCode = statusCode;
     this.bodyText = bodyText;
+    this.body = body;
     Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/** A status-200 stream ended without a verified complete answer. Never auto-retry
+ * after partial rows; callers must discard or explicitly reconcile that answer. */
+export class IncompleteQueryStreamError extends RelataError {
+  readonly rowsReceived: number;
+
+  constructor(
+    message: string,
+    queryId: string | undefined,
+    rowsReceived: number,
+  ) {
+    super(message, 200, message, queryId, { retryable: false });
+    this.name = "IncompleteQueryStreamError";
+    this.rowsReceived = rowsReceived;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+async function* queryRowStream(response: Response, frameCap: number): AsyncIterable<Record<string, unknown>> {
+  let queryId: string | undefined;
+  let rows = 0;
+  let started = false;
+  let terminal = false;
+  const fail = (message: string): never => {
+    throw new IncompleteQueryStreamError(message, queryId, rows);
+  };
+  const known = new Set(["query_id", "started_at", "columns", "processing_time_ms", "row_count", "truncated", "error"]);
+  const unsigned = (value: unknown): boolean => typeof value === "number"
+    && Number.isSafeInteger(value) && value >= 0;
+  try {
+    for await (const frame of ndjsonStream<unknown>(response, frameCap)) {
+      if (frame === null || typeof frame !== "object" || Array.isArray(frame)) {
+        fail("Query stream contains a non-object frame");
+      }
+      const row = frame as Record<string, unknown>;
+      const value = row["_meta"];
+      const meta = Object.keys(row).length === 1 && value !== null
+        && typeof value === "object" && !Array.isArray(value)
+        && Object.keys(value).some(key => known.has(key))
+        ? value as Record<string, unknown> : undefined;
+      if (terminal) fail("Query stream contains data after its terminal frame");
+      if (meta !== undefined) {
+        if (!started) {
+          if (typeof meta["query_id"] !== "string" || !unsigned(meta["started_at"])
+              || !Array.isArray(meta["columns"]) || !meta["columns"].every(c => typeof c === "string")) {
+            fail("Query stream has a malformed leading metadata frame");
+          }
+          queryId = meta["query_id"] as string;
+          started = true;
+          continue;
+        }
+        if (!unsigned(meta["processing_time_ms"]) || !unsigned(meta["row_count"])
+            || typeof meta["truncated"] !== "boolean"
+            || (meta["error"] !== undefined && typeof meta["error"] !== "string")) {
+          fail("Query stream has a malformed terminal metadata frame");
+        }
+        if (meta["truncated"] === true || meta["error"] !== undefined) {
+          fail("Query stream reports an incomplete answer");
+        }
+        if (meta["row_count"] !== rows) fail("Query stream terminal row count does not match received rows");
+        terminal = true;
+        continue;
+      }
+      if (!started) fail("Query stream is missing its leading metadata frame");
+      rows++;
+      yield row;
+    }
+    if (!terminal) fail("Query stream ended without a terminal completion frame");
+  } catch (error) {
+    if (error instanceof IncompleteQueryStreamError || error instanceof ResponseTooLargeError) throw error;
+    fail("Query stream framing or transport failed before verified completion");
   }
 }
 
@@ -244,26 +326,36 @@ export class StreamingHttpError extends Error {
 /** @internal Walk a `Response.body` ReadableStream and yield parsed NDJSON rows. */
 async function* ndjsonStream<T>(
   response: Response,
+  frameCap: number,
 ): AsyncIterable<T> {
   const body = bodyOrClosedStream(response);
   const reader = body.getReader();
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   let buffer = "";
+  let frameBytes = 0;
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       if (value === undefined) continue;
-      buffer += decoder.decode(value, { stream: true });
-      let nl: number;
-      while ((nl = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, nl).trim();
-        buffer = buffer.slice(nl + 1);
-        if (line.length > 0) {
-          yield JSON.parse(line) as T;
+      let start = 0;
+      for (let end = 0; end <= value.byteLength; end++) {
+        if (end !== value.byteLength && value[end] !== 10) continue;
+        const bytes = end - start;
+        if (bytes > frameCap - frameBytes) throw new ResponseTooLargeError(frameCap);
+        frameBytes += bytes;
+        buffer += decoder.decode(value.subarray(start, end), { stream: true });
+        if (end !== value.byteLength) {
+          buffer += decoder.decode();
+          const line = buffer.trim();
+          if (line.length > 0) yield JSON.parse(line) as T;
+          buffer = "";
+          frameBytes = 0;
         }
+        start = end + 1;
       }
     }
+    buffer += decoder.decode();
     const tail = buffer.trim();
     if (tail.length > 0) yield JSON.parse(tail) as T;
   } finally {
@@ -321,15 +413,6 @@ async function* sseEvents(
     } catch {
       // ignore
     }
-  }
-}
-
-/** @internal Drain a response body so the connection can be reused. */
-async function drainBody(response: Response): Promise<void> {
-  try {
-    await response.arrayBuffer();
-  } catch {
-    // ignore
   }
 }
 

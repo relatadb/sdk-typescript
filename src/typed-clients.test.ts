@@ -183,12 +183,11 @@ test("#2731: non-idempotent POST is NOT retried on 503 (double-execution guard, 
 // GovernanceClient
 // ---------------------------------------------------------------------------
 
-test("GovernanceClient: listRules, createRule, placeLegalHold, requestBreakglass, submitDsar", async () => {
+test("GovernanceClient: listRules, createRule, placeLegalHold, submitDsar", async () => {
   const queue: MockResponse[] = [
     { body: { rules: [{ id: "r1" }] } }, // listRules
     { body: { id: "r2", name: "big-xfer" } }, // createRule
     { body: { case_id: "c1", object_type: "Person" } }, // placeLegalHold
-    { body: { request_id: "bg1", status: "pending" } }, // requestBreakglass
     { body: { dsar_id: "d1" } }, // submitDsar
   ];
   const { fetch, calls } = mockFetch(queue);
@@ -212,19 +211,12 @@ test("GovernanceClient: listRules, createRule, placeLegalHold, requestBreakglass
     value: "prod",
   });
 
-  const bg = await gov.requestBreakglass("SRC-0042", { justification: "urgent triage" });
-  assert.equal(bg["request_id"], "bg1");
-  assert.deepEqual(JSON.parse(calls[3]?.body ?? "{}"), {
-    source_id: "SRC-0042",
-    justification: "urgent triage",
-  });
-
   const dsar = await gov.submitDsar("alice@x.com", "gdpr-art-15", { scope: "email" });
   assert.equal(dsar["dsar_id"], "d1");
-  assert.ok(calls[4]?.url.includes("/gdpr/dsar?"));
-  assert.ok(calls[4]?.url.includes("subject_identity=alice%40x.com"));
-  assert.ok(calls[4]?.url.includes("reason=gdpr-art-15"));
-  assert.ok(calls[4]?.url.includes("scope=email"));
+  assert.ok(calls[3]?.url.includes("/gdpr/dsar?"));
+  assert.ok(calls[3]?.url.includes("subject_identity=alice%40x.com"));
+  assert.ok(calls[3]?.url.includes("reason=gdpr-art-15"));
+  assert.ok(calls[3]?.url.includes("scope=email"));
 });
 
 test("GovernanceClient: createRule requires a purpose", async () => {
@@ -1049,21 +1041,30 @@ test("VectorClient: hybridSearch emits the HYBRID_SEARCH statement form + tuning
 
 test("StreamingClient: queryRows yields parsed NDJSON rows", async () => {
   // Build a Response with a ReadableStream body — one NDJSON line per chunk.
-  const ndjson = `{"id":"r1"}\n{"id":"r2"}\n{"id":"r3"}\n`;
+  const ndjson = `{"_meta":{"query_id":"q1","started_at":0,"columns":["id"]}}\n{"id":"r1"}\n{"id":"r2"}\n{"id":"r3"}\n{"_meta":{"processing_time_ms":1,"row_count":3,"truncated":false}}\n`;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(new TextEncoder().encode(ndjson));
       controller.close();
     },
   });
-  const fetch = (async (_url: string | URL | Request, _init?: RequestInit) =>
-    new Response(stream, {
+  const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    assert.equal(String(url), "http://x/query/stream");
+    assert.equal(init?.method, "POST");
+    assert.equal(new Headers(init?.headers).get("Accept"), "application/x-ndjson");
+    assert.equal(new Headers(init?.headers).get("x-tenant-id"), "tenant-a");
+    assert.deepEqual(JSON.parse(String(init?.body)), {
+      purpose: "analytics", sql: "SELECT * FROM Person",
+    });
+    return new Response(stream, {
       status: 200,
       headers: { "content-type": "application/x-ndjson" },
-    })) as typeof globalThis.fetch;
+    });
+  }) as typeof globalThis.fetch;
   const relata = new RelataClient({
     baseUrl: "http://x",
     defaultPurpose: "analytics",
+    headers: { accept: "text/event-stream", "x-tenant-id": "tenant-a" },
     fetch,
   });
   const { StreamingClient } = await import("./streaming.ts");
@@ -1075,4 +1076,168 @@ test("StreamingClient: queryRows yields parsed NDJSON rows", async () => {
   assert.equal(rows.length, 3);
   assert.equal(rows[0]?.["id"], "r1");
   assert.equal(rows[2]?.["id"], "r3");
+});
+
+test("retired report/HUMINT methods are absent without removing generic audit/holds", () => {
+  for (const name of ["signReceipt", "exportPdf"]) assert.equal(name in AuditClient.prototype, false);
+  for (const name of ["requestBreakglass", "approveBreakglass", "breakglassStatus"]) assert.equal(name in GovernanceClient.prototype, false);
+  assert.equal("entries" in AuditClient.prototype, true);
+  assert.equal("placeLegalHold" in GovernanceClient.prototype, true);
+});
+
+
+test("streaming failures preserve problem metadata and consume Arrow body once", async () => {
+  const { StreamingClient, StreamingHttpError } = await import("./streaming.ts");
+  for (const arrow of [false, true]) {
+    let reads = 0;
+    const problem = { detail: "durability unavailable", code: "write-pending",
+      type: "urn:relata:pending", retryable: false, query_id: "query-7" };
+    const response = new Response(JSON.stringify(problem), { status: 503,
+      headers: { "content-type": "application/problem+json", "Retry-After": "7",
+        "x-request-id": "request-9" } });
+    assert.ok(response.body);
+    const originalReader = response.body.getReader.bind(response.body);
+    Object.defineProperty(response.body, "getReader", { value: () => {
+      reads++;
+      return originalReader();
+    } });
+    const client = new StreamingClient(new RelataClient({ baseUrl: "http://x",
+      defaultPurpose: "analytics", fetch: (async () => response) as typeof globalThis.fetch }));
+    await assert.rejects(async () => {
+      const rows = arrow ? client.queryArrowRaw("SELECT 1") : client.queryRows("SELECT 1");
+      for await (const _ of rows) assert.fail("failed response must yield no data");
+    }, (error: unknown) => {
+      assert.ok(error instanceof StreamingHttpError);
+      assert.equal(error.statusCode, 503);
+      assert.equal(error.code, "write-pending");
+      assert.equal(error.typeUrl, "urn:relata:pending");
+      assert.equal(error.queryId, "query-7");
+      assert.equal(error.requestId, "request-9");
+      assert.equal(error.retryAfterSeconds, 7);
+      assert.equal(error.retryable, false);
+      assert.deepEqual(error.body, problem);
+      assert.equal(error.bodyText, JSON.stringify(problem));
+      return true;
+    });
+    assert.equal(reads, 1);
+  }
+});
+
+test("queryRows verifies completion while preserving scalar _meta and split UTF-8", async () => {
+  const { StreamingClient } = await import("./streaming.ts");
+  const wire = new TextEncoder().encode([
+    { _meta: { query_id: "utf8", started_at: 0, columns: ["_meta", "text"], future_extension: true } },
+    { _meta: "legitimate column", text: "héllo 🌍" },
+    { _meta: { processing_time_ms: 1, row_count: 1, truncated: false, future_extension: { value: 1 } } },
+  ].map(frame => JSON.stringify(frame)).join("\n"));
+  const response = new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const byte of wire) controller.enqueue(Uint8Array.of(byte));
+      controller.close();
+    },
+  }));
+  const client = new StreamingClient(new RelataClient({ baseUrl: "http://x", defaultPurpose: "p",
+    fetch: (async () => response) as typeof globalThis.fetch }));
+  const rows = [];
+  for await (const row of client.queryRows("SELECT _meta, text FROM T")) rows.push(row);
+  assert.deepEqual(rows, [{ _meta: "legitimate column", text: "héllo 🌍" }]);
+});
+
+test("queryRows refuses absent, failed, mismatched and malformed completion", async () => {
+  const { StreamingClient, IncompleteQueryStreamError } = await import("./streaming.ts");
+  const { RelataError } = await import("./errors.ts");
+  const start = { _meta: { query_id: "q-partial", started_at: 1, columns: ["id"] } };
+  const row = { id: "r1" };
+  const end = { _meta: { processing_time_ms: 2, row_count: 1, truncated: false } };
+  const cases = [
+    [row], [start, row],
+    [start, row, { _meta: { processing_time_ms: 2, row_count: 1, truncated: true, error: "failed" } }],
+    [start, row, { _meta: { processing_time_ms: 2, row_count: 2, truncated: false } }],
+    [start, row, { _meta: { row_count: 1, truncated: false } }],
+    [start, row, end, end], [start, row, end, row],
+  ];
+  for (const frames of cases) {
+    const client = new StreamingClient(new RelataClient({ baseUrl: "http://x", defaultPurpose: "p",
+      fetch: (async () => new Response(frames.map(frame => JSON.stringify(frame)).join("\n"))) as typeof globalThis.fetch }));
+    let received = 0;
+    await assert.rejects(async () => {
+      for await (const _ of client.queryRows("SELECT id FROM T")) received++;
+    }, (error: unknown) => {
+      assert.ok(error instanceof IncompleteQueryStreamError);
+      assert.ok(error instanceof RelataError);
+      assert.equal(error.statusCode, 200);
+      assert.equal(error.retryable, false);
+      assert.equal(error.rowsReceived, received);
+      assert.equal(error.queryId, frames[0] === start ? "q-partial" : undefined);
+      return true;
+    });
+  }
+});
+
+test("queryRows early consumer cancellation cancels the underlying reader", async () => {
+  const { StreamingClient } = await import("./streaming.ts");
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(
+        '{"_meta":{"query_id":"cancel","started_at":1,"columns":["id"]}}\n{"id":"r1"}\n'));
+    },
+    cancel() { cancelled = true; },
+  });
+  const client = new StreamingClient(new RelataClient({ baseUrl: "http://x", defaultPurpose: "p",
+    fetch: (async () => new Response(body)) as typeof globalThis.fetch }));
+  for await (const row of client.queryRows("SELECT id FROM T")) {
+    assert.equal(row["id"], "r1");
+    break;
+  }
+  assert.equal(cancelled, true);
+});
+
+
+test("queryRows applies response cap per frame, not per long stream", async () => {
+  const { StreamingClient } = await import("./streaming.ts");
+  const frames: unknown[] = [{ _meta: { query_id: "many", started_at: 0, columns: ["text"] } }];
+  for (let i = 0; i < 30; i++) frames.push({ text: "é".repeat(30) });
+  frames.push({ _meta: { processing_time_ms: 1, row_count: 30, truncated: false } });
+  const client = new StreamingClient(new RelataClient({ baseUrl: "http://x", defaultPurpose: "p",
+    maxResponseBytes: 128, fetch: (async () => new Response(frames.map(f => JSON.stringify(f)).join("\n"))) as typeof globalThis.fetch }));
+  let count = 0;
+  for await (const _ of client.queryRows("SELECT text FROM T")) count++;
+  assert.equal(count, 30);
+});
+
+test("queryRows caps actual UTF-8 frame bytes and cancels oversized frames", async () => {
+  const { StreamingClient } = await import("./streaming.ts");
+  const { ResponseTooLargeError } = await import("./errors.ts");
+  let cancelled = false;
+  const wire = new TextEncoder().encode(
+    '{"_meta":{"query_id":"large","started_at":0,"columns":["text"]}}\n'
+    + JSON.stringify({ text: "é".repeat(100) }));
+  let index = 0;
+  const response = new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index < wire.length) controller.enqueue(wire.subarray(index, ++index));
+      else controller.close();
+    },
+    cancel() { cancelled = true; },
+  }));
+  const client = new StreamingClient(new RelataClient({ baseUrl: "http://x", defaultPurpose: "p",
+    maxResponseBytes: 128, fetch: (async () => response) as typeof globalThis.fetch }));
+  await assert.rejects(async () => {
+    for await (const _ of client.queryRows("SELECT text FROM T")) assert.fail("oversized row cannot publish");
+  }, ResponseTooLargeError);
+  assert.equal(cancelled, true);
+});
+
+test("streaming HTTP error bodies obey the existing response cap", async () => {
+  const { StreamingClient } = await import("./streaming.ts");
+  const { ResponseTooLargeError } = await import("./errors.ts");
+  for (const arrow of [false, true]) {
+    const client = new StreamingClient(new RelataClient({ baseUrl: "http://x", defaultPurpose: "p",
+      maxResponseBytes: 32, fetch: (async () => new Response("x".repeat(33), { status: 503 })) as typeof globalThis.fetch }));
+    await assert.rejects(async () => {
+      const iterator = arrow ? client.queryArrowRaw("SELECT 1") : client.queryRows("SELECT 1");
+      for await (const _ of iterator) assert.fail("HTTP failure cannot yield data");
+    }, ResponseTooLargeError);
+  }
 });

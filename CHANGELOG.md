@@ -28,9 +28,8 @@ workspace `Cargo.toml`'s `[workspace.package].version`, mirrored into
   on retryable status codes and network errors. `POST`/`PUT`/`PATCH`/`DELETE`
   are never retried — a gateway timeout after commit would otherwise risk
   double-execution of irreversible operations (`erase_subject`,
-  `fuse_identities`, `session_commit`). Parity with the Rust SDK
-  (`crates/relata-sdk-rust/src/http.rs::post` never retries) and the Go SDK's
-  `isIdempotent`. If you were relying on POST retries, set `maxRetries: 0`
+  `fuse_identities`, `session_commit`). This matches the Python and Go SDKs'
+  idempotent-verb retry policy. If you were relying on POST retries, set `maxRetries: 0`
   (the new effective behaviour for non-idempotent verbs) or issue the request
   through an idempotent door.
 

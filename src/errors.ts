@@ -68,6 +68,8 @@ export class RelataError extends Error {
   readonly retryable: boolean;
   /** The `X-Request-ID` from the response, when available. */
   readonly requestId: string | undefined;
+  /** Server retry delay in seconds, when supplied; not permission to replay. */
+  readonly retryAfterSeconds: number | undefined;
 
   constructor(
     message: string,
@@ -79,6 +81,7 @@ export class RelataError extends Error {
       typeUrl?: string | undefined;
       retryable?: boolean | undefined;
       requestId?: string | undefined;
+      retryAfterSeconds?: number | undefined;
     } = {},
   ) {
     super(message);
@@ -90,6 +93,7 @@ export class RelataError extends Error {
     this.typeUrl = extras.typeUrl ?? undefined;
     this.retryable = extras.retryable ?? false;
     this.requestId = extras.requestId ?? undefined;
+    this.retryAfterSeconds = extras.retryAfterSeconds;
 
     // Maintain proper prototype chain in TypeScript/transpiled environments.
     Object.setPrototypeOf(this, new.target.prototype);
@@ -123,6 +127,7 @@ export class PurposeError extends RelataError {
     purpose: string | undefined,
     serverMessage: string,
     queryId?: string,
+    extras: ConstructorParameters<typeof RelataError>[4] = {},
   ) {
     const what = purpose
       ? `Purpose "${purpose}" is not registered in the tenant's PurposeRegistry`
@@ -134,6 +139,7 @@ export class PurposeError extends RelataError {
       400,
       serverMessage,
       queryId,
+      extras,
     );
     this.name = "PurposeError";
     this.purpose = purpose;
@@ -145,12 +151,13 @@ export class PurposeError extends RelataError {
  * purpose (e.g. syntax error in the SQL, invalid `AS OF` timestamp, etc.).
  */
 export class BadRequestError extends RelataError {
-  constructor(serverMessage: string, queryId?: string) {
+  constructor(serverMessage: string, queryId?: string, extras: ConstructorParameters<typeof RelataError>[4] = {}) {
     super(
       `Bad request: ${serverMessage}`,
       400,
       serverMessage,
       queryId,
+      extras,
     );
     this.name = "BadRequestError";
   }
@@ -170,13 +177,15 @@ export class BadRequestError extends RelataError {
  * ```
  */
 export class AuthError extends RelataError {
-  constructor(serverMessage: string) {
+  constructor(serverMessage: string, extras: NonNullable<ConstructorParameters<typeof RelataError>[4]> & { queryId?: string | undefined } = {}) {
     super(
       `Authentication failed: ${serverMessage}. ` +
         `Provide a valid bearer token via RelataClientOptions.bearerToken or ` +
         `the RELATA_TOKEN environment variable.`,
       401,
       serverMessage,
+      extras.queryId,
+      extras,
     );
     this.name = "AuthError";
   }
@@ -199,6 +208,7 @@ export class ForbiddenError extends RelataError {
       typeUrl?: string | undefined;
       retryable?: boolean | undefined;
       requestId?: string | undefined;
+      retryAfterSeconds?: number | undefined;
     } = {},
   ) {
     super(
@@ -229,6 +239,7 @@ export class NotFoundError extends RelataError {
       typeUrl?: string | undefined;
       retryable?: boolean | undefined;
       requestId?: string | undefined;
+      retryAfterSeconds?: number | undefined;
     } = {},
   ) {
     super(
@@ -254,6 +265,7 @@ export class ConflictError extends RelataError {
       typeUrl?: string | undefined;
       retryable?: boolean | undefined;
       requestId?: string | undefined;
+      retryAfterSeconds?: number | undefined;
     } = {},
   ) {
     super(
@@ -280,6 +292,7 @@ export class ValidationError extends RelataError {
       typeUrl?: string | undefined;
       retryable?: boolean | undefined;
       requestId?: string | undefined;
+      retryAfterSeconds?: number | undefined;
     } = {},
   ) {
     super(
@@ -312,8 +325,6 @@ export class ValidationError extends RelataError {
 export class QuotaError extends RelataError {
   /** Cost units consumed by the query that hit the cap (if reported). */
   readonly costUnits: number | undefined;
-  /** Seconds until the quota window resets (if the server sends `Retry-After`). */
-  readonly retryAfterSeconds: number | undefined;
 
   constructor(
     serverMessage: string,
@@ -325,6 +336,7 @@ export class QuotaError extends RelataError {
       typeUrl?: string | undefined;
       retryable?: boolean | undefined;
       requestId?: string | undefined;
+      retryAfterSeconds?: number | undefined;
     } = {},
   ) {
     super(
@@ -335,11 +347,10 @@ export class QuotaError extends RelataError {
       429,
       serverMessage,
       queryId,
-      extras,
+      { ...extras, retryAfterSeconds: retryAfterSeconds ?? extras.retryAfterSeconds },
     );
     this.name = "QuotaError";
     this.costUnits = costUnits;
-    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -367,6 +378,7 @@ export class RateLimitedError extends QuotaError {
       typeUrl?: string | undefined;
       retryable?: boolean | undefined;
       requestId?: string | undefined;
+      retryAfterSeconds?: number | undefined;
       rateLimitLimit?: number | undefined;
       rateLimitRemaining?: number | undefined;
       rateLimitReset?: number | undefined;
@@ -385,6 +397,7 @@ export class RateLimitedError extends QuotaError {
         typeUrl: extras.typeUrl,
         retryable: extras.retryable,
         requestId: extras.requestId,
+        retryAfterSeconds: extras.retryAfterSeconds,
       },
     );
     this.name = "RateLimitedError";
@@ -411,6 +424,7 @@ export class ServerError extends RelataError {
       typeUrl?: string | undefined;
       retryable?: boolean | undefined;
       requestId?: string | undefined;
+      retryAfterSeconds?: number | undefined;
     } = {},
   ) {
     super(
@@ -591,7 +605,7 @@ export function mapHttpError(
     rateLimitReset,
   } = extras;
   // Shared RFC 7807 bag handed to every subclass constructor below.
-  const rfc7807 = { code, typeUrl, retryable, requestId };
+  const rfc7807 = { code, typeUrl, retryable, requestId, retryAfterSeconds };
 
   switch (status) {
     case 400: {
@@ -603,12 +617,12 @@ export function mapHttpError(
         lc.includes("purpose");
       if (isPurpose) {
         // PurposeError retains its narrower constructor for back-compat.
-        return new PurposeError(purpose, serverMessage, queryId);
+        return new PurposeError(purpose, serverMessage, queryId, rfc7807);
       }
-      return new BadRequestError(serverMessage, queryId);
+      return new BadRequestError(serverMessage, queryId, rfc7807);
     }
     case 401:
-      return new AuthError(serverMessage);
+      return new AuthError(serverMessage, { queryId, ...rfc7807 });
     case 403:
       return new ForbiddenError(serverMessage, queryId, rfc7807);
     case 404:
@@ -638,4 +652,45 @@ export function mapHttpError(
         rfc7807,
       );
   }
+}
+
+/** @internal Shared problem/header metadata for specialized HTTP clients. */
+export function httpProblemMetadata(
+  body: Record<string, unknown>,
+  headers?: Headers,
+): {
+  code: string | undefined;
+  typeUrl: string | undefined;
+  queryId: string | undefined;
+  requestId: string | undefined;
+  retryable: boolean;
+  retryAfterSeconds: number | undefined;
+} {
+  const retry = headers?.get("Retry-After");
+  let retryAfterSeconds: number | undefined;
+  if (retry !== null && retry !== undefined) {
+    if (/^\d+$/.test(retry.trim())) {
+      const seconds = Number(retry);
+      if (Number.isSafeInteger(seconds)) retryAfterSeconds = seconds;
+    } else if (/^[A-Za-z]{3}/.test(retry.trim())) {
+      const timestamp = Date.parse(retry);
+      if (Number.isFinite(timestamp)) {
+        retryAfterSeconds = Math.max(0, Math.ceil((timestamp - Date.now()) / 1000));
+      }
+    }
+  }
+  if (retryAfterSeconds === undefined && typeof body["retry_after"] === "number"
+      && Number.isFinite(body["retry_after"]) && body["retry_after"] >= 0
+      && body["retry_after"] <= Number.MAX_SAFE_INTEGER) {
+    retryAfterSeconds = body["retry_after"];
+  }
+  return {
+    code: typeof body["code"] === "string" ? body["code"] : undefined,
+    typeUrl: typeof body["type"] === "string" ? body["type"] : undefined,
+    queryId: typeof body["query_id"] === "string" ? body["query_id"] : undefined,
+    requestId: typeof body["request_id"] === "string" ? body["request_id"]
+      : headers?.get("x-request-id") ?? undefined,
+    retryable: body["retryable"] === true,
+    retryAfterSeconds,
+  };
 }

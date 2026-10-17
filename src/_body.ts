@@ -16,11 +16,13 @@
  * timeout cannot rescue it either (#5278; same null-body shape IntOps#4977
  * fixed at the S3 door).
  *
- * Kept in its own dependency-free leaf module (mirrors `_retry.ts`) so every
+ * Kept in its own leaf module (mirrors `_retry.ts`) so every
  * body-reading call site — `client.ts`, `_typed-http.ts`, `s3.ts`,
  * `streaming.ts`, `observability.ts` — can import it without risking an ESM
  * circular-import cycle back through `client.ts`.
  */
+
+import { ResponseTooLargeError } from "./errors.ts";
 
 /**
  * Return `response.body` unchanged when present, otherwise a genuinely
@@ -34,4 +36,27 @@ export function bodyOrClosedStream(response: Response): ReadableStream<Uint8Arra
       controller.close();
     },
   });
+}
+
+/** @internal Shared capped buffered reader; always attempts stream cancellation. */
+export async function readCappedResponseBody(response: Response, cap: number): Promise<Uint8Array> {
+  const reader = bodyOrClosedStream(response).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value === undefined) continue;
+      total += value.byteLength;
+      if (total > cap) throw new ResponseTooLargeError(cap);
+      chunks.push(value);
+    }
+  } finally {
+    try { await reader.cancel(); } catch { /* cancellation is best effort */ }
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.byteLength; }
+  return out;
 }

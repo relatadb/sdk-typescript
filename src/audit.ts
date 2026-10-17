@@ -1,14 +1,14 @@
 /**
  * Audit + provenance SDK (#78).
  *
- * Wraps `/audit/count`, `/audit/entries`, `/report/sign`, `/report/pdf`.
+ * Wraps `/audit/count`, `/audit/entries`.
  */
 
 import { RelataClient } from "./client.ts";
 import { type TypedClientCtor, TypedClientBase, qs } from "./_typed-http.ts";
 
 /**
- * Audit + provenance client — entry listing, signed receipts, PDF export.
+ * Audit + provenance client — entry listing and query correlation.
  */
 export class AuditClient extends TypedClientBase {
   constructor(opts: TypedClientCtor) {
@@ -83,50 +83,4 @@ export class AuditClient extends TypedClientBase {
     return null;
   }
 
-  // -------------------------------------------------------------------------
-  // Reports (#78)
-  // -------------------------------------------------------------------------
-
-  /**
-   * Sign an Art. 17 / evidence receipt. Wraps `POST /report/sign`. Returns
-   * the signed receipt with the server's HMAC signature.
-   */
-  async signReceipt(
-    payload: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    return this._post("/report/sign", payload);
-  }
-
-  /**
-   * Export a court-grade PDF report for `caseId`.
-   * Wraps `POST /report/pdf`. Returns the raw PDF bytes; write to disk with
-   * `fs.writeFile("case.pdf", bytes)` or stream to the client.
-   *
-   * Note: the server returns styled HTML by default (printable); the PDF
-   * rendering is via the host browser's print-to-pdf. The SDK surfaces
-   * whatever bytes the server returns.
-   *
-   * @returns The response body as raw bytes (`Uint8Array`).
-   */
-  async exportPdf(
-    caseId: string,
-    opts: { template?: string } = {},
-  ): Promise<Uint8Array> {
-    // The base class routes this through its raw-bytes path so we still get
-    // auth, X-Request-ID, and typed-error classification for free.
-    const payload: Record<string, unknown> = {
-      case_id: caseId,
-      template: opts.template ?? "default",
-    };
-    return this._sendJsonExpectBytes("/report/pdf", payload);
-  }
 }
-
-// Note: the audit client routes everything through the typed-client base,
-// which now (#2731) inherits the parent RelataClient's timeout/retry
-// behaviour and classifies non-2xx responses via mapHttpError() — so a
-// failed `exportPdf` throws the same typed hierarchy (`AuthError`,
-// `NotFoundError`, `ServerError`, ...) as the rest of the SDK, not a generic
-// `TypedHttpError`. `NetworkError`/`TimeoutError` and the typed error
-// classes are exported from the index barrel for callers who want to catch
-// them around `exportPdf`.

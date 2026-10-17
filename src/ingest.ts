@@ -185,29 +185,34 @@ function normalizeCdrRows(rows: RelataRow[]): { rows: RelataRow[]; errors: Relat
 export interface IngestClientCtor extends TypedClientCtor {
   /** Default purpose attached to ingest calls when not overridden per-call. */
   purpose?: string;
-  /** Tenant / `X-Relata-Tenant-Id`. */
+  /** Tenant / `X-Relata-Tenant-Id`; overrides extraHeaders case-insensitively. */
   tenant?: string;
 }
 
 /** Bulk-ingest client. */
 export class IngestClient extends TypedClientBase {
   readonly #purpose: string | undefined;
-  readonly #tenant: string | undefined;
 
   constructor(opts: IngestClientCtor) {
-    super(opts);
+    // Canonicalize casing on a copy: the explicit tenant option owns scope,
+    // without adding a second differently-cased header or mutating the caller.
+    const headers = new Headers(opts.extraHeaders);
+    if (opts.tenant !== undefined) headers.set("X-Relata-Tenant-Id", opts.tenant);
+    const extraHeaders: Record<string, string> = {};
+    headers.forEach((value, key) => { extraHeaders[key] = value; });
+    super({ ...opts, extraHeaders });
     this.#purpose = opts.purpose;
-    this.#tenant = opts.tenant;
   }
 
-  /** Inherit the parent client's auth, purpose, tenant, and headers. */
+  /** Inherit parent auth, purpose and effective headers, including tenant overrides. */
   static fromClient(client: RelataClient): IngestClient {
     const ctor = TypedClientBase.clientToCtor(client);
     const ingestCtor: IngestClientCtor = { ...ctor };
     if (client.defaultPurpose !== undefined) {
       ingestCtor.purpose = client.defaultPurpose;
     }
-    if (client.tenant !== undefined) ingestCtor.tenant = client.tenant;
+    // clientToCtor already carries the parent's effective tenant header. Do
+    // not reinterpret its declared tenant option over an explicit header override.
     return new IngestClient(ingestCtor);
   }
 
@@ -259,7 +264,9 @@ export class IngestClient extends TypedClientBase {
   ): Promise<Record<string, unknown>> {
     if (opts.onConflict !== undefined) {
       // Route to /ingest/bulk so on_conflict + tenant_id take effect.
-      const objects = rows.map((r) => ({ _type: objectType, ...r }));
+      // Match Python/Go: the explicit target type owns routing. A row's
+      // stale _type annotation must not redirect this single-type method.
+      const objects = rows.map((r) => ({ ...r, _type: objectType }));
       const body: Record<string, unknown> = {
         objects,
         on_conflict: opts.onConflict,

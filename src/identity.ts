@@ -126,13 +126,13 @@ export class IdentityClient extends TypedClientBase {
    * keyword, and the server refuses the erasure with
    * "CERTIFY keyword required to confirm irreversible erasure" — matching the
    * engine's own safety rail. Only an explicit `certify: true` confirms the
-   * irreversible crypto-shred. (Historically the omitted default was `true`,
+   * erasure request with explicit incomplete local receipts. (Historically the omitted default was `true`,
    * which silently confirmed destruction for callers that never considered
    * the flag.)
    *
    * Pairs with #61 — today the server does governed-tombstone only (the DEK
    * survives). Once #61 ships the per-subject DEK destroy, this same call
-   * will produce crypto-shred semantics.
+   * must be inspected for actual local acknowledgments; provider/all-copy completion remains unverified.
    */
   async eraseSubject(
     subjectIdentity: string,

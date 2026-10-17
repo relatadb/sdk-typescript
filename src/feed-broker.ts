@@ -48,7 +48,10 @@ export class FeedBrokerClient extends TypedClientBase {
     return this._get<Record<string, unknown>[]>("/feed/channels");
   }
 
-  /** Publish a signed entry to the broker with its authenticated publisher DID. */
+  /** Publish a signed candidate; durable mode acknowledges manifest selection.
+   * Exact replay preserves its original stamp; changed metadata conflicts.
+   * Storage failures can be uncertain. This POST is not automatically retried.
+   */
   async publish(
     publisherDid: string,
     entry: FeedEntry,

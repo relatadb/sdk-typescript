@@ -68,6 +68,8 @@
 // ---------------------------------------------------------------------------
 
 export { RelataClient } from "./client.ts";
+export { decodeDeletionProgress, decodeDeletionProgressResponse } from "./deletion-receipt.ts";
+export type { ExactDeletionProgress, ExactReceiptValue } from "./deletion-receipt.ts";
 export { analyzeDnsTunnelRows, dnsTunnelDetect } from "./dns-tunnel.ts";
 export type { DnsTunnelFinding, DnsTunnelOptions, DnsTunnelResult } from "./dns-tunnel.ts";
 export type { RelataClientOptions } from "./types.ts";
@@ -371,7 +373,7 @@ export { FeedBrokerClient } from "./feed-broker.ts";
 export type { FeedEntry, FeedBrokerClientOptions } from "./feed-broker.ts";
 
 export { StreamingClient } from "./streaming.ts";
-export { StreamingHttpError } from "./streaming.ts";
+export { StreamingHttpError, IncompleteQueryStreamError } from "./streaming.ts";
 
 export { TenantAdminClient } from "./tenants.ts";
 
@@ -449,6 +451,9 @@ export type {
 // ---------------------------------------------------------------------------
 // Convenience factory
 // ---------------------------------------------------------------------------
+
+export { FilesClient } from "./files.ts";
+export type { FilesOptions, FilePutOptions, FileMetadata, FileContent } from "./files.ts";
 
 import { RelataClient } from "./client.ts";
 import type { RelataClientOptions } from "./types.ts";

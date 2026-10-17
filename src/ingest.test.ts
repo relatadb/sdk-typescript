@@ -219,3 +219,62 @@ test("otlpTraces/Logs/Metrics: POST JSON to the right /v1 door", async () => {
   await client.otlpMetrics({ resourceMetrics: [] }, { purpose: "otel" });
   assert.equal(lastCall().url, "http://x/v1/metrics?purpose=otel");
 });
+
+test("bulk explicit object type wins over row annotation without changing typed values or input", async () => {
+  const receipt = { inserted: 1, on_conflict: "upsert" };
+  const { fetch, lastCall } = mockFetch(receipt);
+  const client = new IngestClient({ baseUrl: "http://x", purpose: "analytics", tenant: "tenant-a", fetch });
+  const row = Object.freeze({ _type: "WrongTarget", id: "source:key", _pk: "source:key",
+    count: 42, exact_decimal: "9007199254740993", decimal: "12345678901234567890.123456789",
+    event_time: "2026-10-12T14:37:59.123456789+05:30", optional_note: null });
+  const result = await client.bulk("StructuredRecord", [row], { onConflict: "upsert", tenantId: "tenant-a" });
+  const call = lastCall();
+  assert.equal(call.url, "http://x/ingest/bulk");
+  assert.equal(call.headers.get("X-Relata-Tenant-Id"), "tenant-a");
+  assert.deepEqual(JSON.parse(call.body ?? "{}"), {
+    objects: [{ ...row, _type: "StructuredRecord" }], on_conflict: "upsert", purpose: "analytics", tenant_id: "tenant-a",
+  });
+  assert.equal(row._type, "WrongTarget", "caller annotation is not mutated");
+  assert.deepEqual(result, receipt, "receipt is not promoted to an invented durability state");
+});
+
+test("standalone ingest tenant overrides header casing on an immutable copy", async () => {
+  const { fetch, lastCall } = mockFetch({ rows_queued: 1 });
+  const headers = Object.freeze({ "x-ReLaTa-TeNaNt-Id": "stale-tenant", "X-Custom": "retained" });
+  const client = new IngestClient({ baseUrl: "http://x", purpose: "analytics", tenant: "explicit-tenant", extraHeaders: headers, fetch });
+  await client.bulk("StructuredRecord", [{ id: "key", optional: null }]);
+  const call = lastCall();
+  assert.equal(call.headers.get("X-Relata-Tenant-Id"), "explicit-tenant");
+  assert.equal(call.headers.get("X-Custom"), "retained");
+  assert.equal(headers["x-ReLaTa-TeNaNt-Id"], "stale-tenant");
+  let tenantHeaders = 0;
+  call.headers.forEach((_value, key) => { if (key.toLowerCase() === "x-relata-tenant-id") tenantHeaders++; });
+  assert.equal(tenantHeaders, 1);
+});
+
+test("ingest fromClient retains parent tenant and purpose without modifying parent headers", async () => {
+  const { fetch, lastCall } = mockFetch({ rows_queued: 1 });
+  const parent = new RelataClient({ baseUrl: "http://x", tenant: "parent-tenant", defaultPurpose: "analytics", headers: { "X-Custom": "retained" }, fetch });
+  try {
+    const before = { ...parent.extraHeaders };
+    await IngestClient.fromClient(parent).bulk("StructuredRecord", [{ id: "key" }]);
+    assert.equal(lastCall().headers.get("X-Relata-Tenant-Id"), "parent-tenant");
+    assert.equal(lastCall().headers.get("X-Custom"), "retained");
+    assert.ok(lastCall().url.includes("purpose=analytics"));
+    assert.deepEqual(parent.extraHeaders, before);
+  } finally {
+    parent.close();
+  }
+});
+
+
+test("ingest fromClient preserves effective parent tenant header override", async () => {
+  const { fetch, lastCall } = mockFetch({ rows_queued: 1 });
+  const parent = new RelataClient({ baseUrl: "http://x", tenant: "declared-tenant", defaultPurpose: "analytics", headers: { "X-Relata-Tenant-Id": "effective-tenant" }, fetch });
+  try {
+    await IngestClient.fromClient(parent).bulk("StructuredRecord", [{ id: "key" }]);
+    assert.equal(lastCall().headers.get("X-Relata-Tenant-Id"), "effective-tenant");
+  } finally {
+    parent.close();
+  }
+});

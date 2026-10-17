@@ -52,7 +52,6 @@ import {
   type VersionInfo,
   type WireAuditCountResponse,
   type WireClusterNodesResponse,
-  type WireErrorResponse,
   type WireHealthResponse,
   type WireQueryResponse,
   type WireSearchResponse,
@@ -62,6 +61,7 @@ import {
   assertNotRedirected,
   ClientClosedError,
   mapHttpError,
+  httpProblemMetadata,
   NetworkError,
   PurposeError,
   RelataError,
@@ -105,7 +105,7 @@ export {
 // module shares one identifier allowlist, one metric allowlist, and one
 // string-literal escaper without a runtime circular import.
 import { escapeSqlString, injectMatcherHint, sqlLiteral } from "./_sql.ts";
-import { bodyOrClosedStream } from "./_body.ts";
+import { readCappedResponseBody } from "./_body.ts";
 import { dnsTunnelDetect as runDnsTunnelDetect, type DnsTunnelOptions } from "./dns-tunnel.ts";
 
 /**
@@ -870,7 +870,7 @@ export class RelataClient {
     return this.#post("/query", { purpose: purpose ?? "analytics", sql });
   }
 
-  /** GDPR Art. 17 erasure — irreversible crypto-shred of a subject's data. */
+  /** Request scoped GDPR erasure. Controller access revocation is not certified cryptographic erasure; inspect receipt_scope and incomplete copy states. */
   async eraseSubject(subject: string, reason?: string): Promise<Record<string, unknown>> {
     const s = escapeSqlString(subject);
     const r = escapeSqlString(reason ?? "gdpr-art17-request");
@@ -1397,10 +1397,13 @@ export class RelataClient {
    *
    * The batch should include its `DocumentSource`, `DocumentChunk` rows and
    * any linked evidence rows, each with `_type` and stable `_pk` identity.
-   * The server admits all object types together under one process-local task
+   * The server admits all object types together under one local task
    * receipt and applies normal auth, tenant, purpose, validation and write
-   * governance. Queue acceptance is not crash-durable; poll the task endpoint
-   * to observe rows written and dropped.
+   * governance. Queued source payloads remain volatile. Configured local
+   * authority records durable intent and confirmed progress; explicit volatile
+   * profiles retain RAM-only status. Poll the originating node with the same
+   * authenticated tenant. Recovered unfinished work is uncertain and never
+   * automatically reingested; local receipts do not certify indexing or replication.
    */
   async ingestDocument(
     objects: Array<Record<string, unknown>>,
@@ -1427,8 +1430,10 @@ export class RelataClient {
 
   /**
    * Poll generic mixed-type ingest task progress at `/ingest/tasks/:task_id`.
-   * Task state is process-local; `rows_written`/`rows_dropped` are the
-   * server-confirmed outcomes, not queue acceptance.
+   * Persistent local receipts survive restart; unresolved work becomes uncertain
+   * without automatic reingestion. Volatile profiles remain process-local.
+   * Inspect receipt_durability/recovered in extensions; counters are confirmed
+   * outcomes, not queue acceptance or global index/replica completion.
    */
   async ingestDocumentStatus(taskId: string): Promise<IngestDocumentTaskStatus> {
     const wire = await this.#get<WireIngestDocumentTaskStatus>(
@@ -1902,25 +1907,22 @@ export class RelataClient {
       contentType.includes("application/json") ||
       contentType.includes("application/problem+json")
     ) {
-      body = text ? JSON.parse(text) : {};
+      try { body = text ? JSON.parse(text) : {}; }
+      catch (error) {
+        if (response.ok) throw error;
+        body = { error: text };
+      }
     } else {
       // Non-JSON bodies (e.g., plain text errors from reverse proxies)
       body = text ? { error: text } : {};
     }
 
     if (!response.ok) {
-      const err = body as Partial<WireErrorResponse>;
-      const serverMessage =
-        err?.detail ?? err?.error ?? err?.message ?? `HTTP ${response.status}`;
-      const queryId = err?.query_id;
-      const code = err?.code;
-      const typeUrl = err?.type;
-      const retryable = err?.retryable ?? false;
-      // X-Request-ID can be echoed in the body or only in the header.
-      const requestId =
-        err?.request_id ?? response.headers.get("x-request-id") ?? undefined;
-      const retryAfter = response.headers.get("Retry-After");
-      const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : undefined;
+      const err: Record<string, unknown> = body !== null && typeof body === "object" && !Array.isArray(body)
+        ? body as Record<string, unknown> : { error: typeof body === "string" ? body : `HTTP ${response.status}` };
+      const serverMessage = [err["detail"], err["error"], err["message"]]
+        .find((value): value is string => typeof value === "string" && value.length > 0) ?? `HTTP ${response.status}`;
+      const metadata = httpProblemMetadata(err, response.headers);
       // #1321: surface the X-RateLimit-* quota headers to the caller.
       const parseRateLimit = (h: string): number | undefined => {
         const v = response.headers.get(h);
@@ -1936,13 +1938,8 @@ export class RelataClient {
 
       throw mapHttpError(response.status, serverMessage, {
         purpose,
-        queryId,
-        retryAfterSeconds,
+        ...metadata,
         costUnits,
-        code,
-        typeUrl,
-        retryable,
-        requestId,
         rateLimitLimit,
         rateLimitRemaining,
         rateLimitReset,
@@ -1985,36 +1982,7 @@ export class RelataClient {
    * instead of being buffered into memory.
    */
   async #readCappedBody(response: Response): Promise<Uint8Array> {
-    const cap = this.#maxResponseBytes;
-    const body = bodyOrClosedStream(response);
-    const reader = body.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value === undefined) continue;
-        total += value.byteLength;
-        if (total > cap) {
-          throw new ResponseTooLargeError(cap);
-        }
-        chunks.push(value);
-      }
-    } finally {
-      try {
-        await reader.cancel();
-      } catch {
-        // ignore cancel errors
-      }
-    }
-    const out = new Uint8Array(total);
-    let off = 0;
-    for (const c of chunks) {
-      out.set(c, off);
-      off += c.byteLength;
-    }
-    return out;
+    return readCappedResponseBody(response, this.#maxResponseBytes);
   }
 
   /** @internal Promise-based sleep for the retry backoff. */

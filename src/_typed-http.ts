@@ -20,6 +20,7 @@
 import {
   assertNotRedirected,
   mapHttpError,
+  httpProblemMetadata,
   NetworkError,
   RelataError,
   ResponseTooLargeError,
@@ -30,7 +31,7 @@ import {
   isIdempotentMethod,
   RETRYABLE_STATUS_CODES,
 } from "./_retry.ts";
-import { bodyOrClosedStream } from "./_body.ts";
+import { readCappedResponseBody } from "./_body.ts";
 // `import type` only — erased at runtime (`--experimental-strip-types`), so
 // this does NOT create a runtime dependency edge back to `client.ts`. That
 // edge (importing the retry constants above as *values* from `client.ts`)
@@ -270,6 +271,33 @@ export class TypedClientBase {
     return this.#send<T>("DELETE", path, undefined);
   }
 
+  /** @internal Binary Files responses use the same capped, authenticated dispatcher. */
+  protected async _sendBytes(
+    method: "GET" | "PUT" | "DELETE",
+    path: string,
+    body?: Uint8Array,
+    contentType = "application/octet-stream",
+  ): Promise<{ data: Uint8Array; status: number; headers: Headers }> {
+    const headers = this.#buildHeaders();
+    headers["Accept"] = method === "GET" ? "application/octet-stream" : "application/json";
+    const init: RequestInit = { method, headers, redirect: "manual" };
+    if (body !== undefined) {
+      headers["Content-Type"] = contentType;
+      // Own an ArrayBuffer: callers may supply a view into a larger/shared buffer.
+      init.body = Uint8Array.from(body).buffer;
+    }
+    let result: { data: Uint8Array; status: number; headers: Headers } | undefined;
+    await this.#dispatch(method, `${this.#resolveBaseUrl(path)}${path}`, init, async response => {
+      if (!response.ok) await this.#parse(response, path);
+      result = {
+        data: await this.#readCappedBody(response),
+        status: response.status,
+        headers: response.headers,
+      };
+    });
+    return result!;
+  }
+
   /** @internal Send a raw NDJSON / CSV / bytes body. Returns parsed JSON. */
   protected async _sendRaw<T = Record<string, unknown>>(
     method: "POST" | "PUT",
@@ -301,7 +329,7 @@ export class TypedClientBase {
   /**
    * @internal
    * Send a JSON POST and return the **raw response bytes** (used by
-   * `AuditClient.exportPdf` for PDF bodies that are not JSON-decodable).
+   * retained binary object bodies that are not JSON-decodable).
    * Error responses are still classified into `RelataError` subclasses.
    */
   protected async _sendJsonExpectBytes(
@@ -368,7 +396,12 @@ export class TypedClientBase {
    * caller to decode/classify; only timeouts and exhausted network errors
    * throw from here.
    */
-  async #dispatch(method: string, url: string, init: RequestInit): Promise<Response> {
+  async #dispatch(
+    method: string,
+    url: string,
+    init: RequestInit,
+    consume?: (response: Response) => Promise<void>,
+  ): Promise<Response> {
     const maxAttempts = Math.max(1, this.#maxRetries + 1);
     let lastError: unknown;
 
@@ -390,9 +423,14 @@ export class TypedClientBase {
           isIdempotentMethod(method) &&
           RETRYABLE_STATUS_CODES.has(response.status);
         if (canRetryStatus && attempt + 1 < maxAttempts) {
+          // Release the unread response before another attempt owns a socket.
+          try { await response.body?.cancel(); } catch { /* best effort */ }
           await this.#sleep(this.#retryBackoffMs * 2 ** attempt);
           continue;
         }
+        // Files consumes its capped body before clearing the abort timer, so a
+        // server that sends headers and then stalls is bounded too.
+        if (consume) await consume(response);
         return response;
       } catch (err) {
         if (err instanceof Error && this.#isAbortError(err)) {
@@ -430,36 +468,7 @@ export class TypedClientBase {
    * were unbounded and could OOM on a malicious/buggy server response.
    */
   async #readCappedBody(response: Response): Promise<Uint8Array> {
-    const cap = this.#maxResponseBytes;
-    const body = bodyOrClosedStream(response);
-    const reader = body.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value === undefined) continue;
-        total += value.byteLength;
-        if (total > cap) {
-          throw new ResponseTooLargeError(cap);
-        }
-        chunks.push(value);
-      }
-    } finally {
-      try {
-        await reader.cancel();
-      } catch {
-        // ignore cancel errors
-      }
-    }
-    const out = new Uint8Array(total);
-    let off = 0;
-    for (const c of chunks) {
-      out.set(c, off);
-      off += c.byteLength;
-    }
-    return out;
+    return readCappedResponseBody(response, this.#maxResponseBytes);
   }
 
   /**
@@ -478,7 +487,14 @@ export class TypedClientBase {
     // buffering unbounded into memory.
     const bytes = await this.#readCappedBody(response);
     const text = new TextDecoder().decode(bytes);
-    const body: unknown = isJson ? (text ? JSON.parse(text) : {}) : text;
+    let body: unknown = text;
+    if (isJson) {
+      try { body = text ? JSON.parse(text) : {}; }
+      catch (error) {
+        if (response.ok) throw error;
+        body = { error: text };
+      }
+    }
 
     if (!response.ok) {
       throw this.#classify(response.status, path, isJson, body, response.headers);
@@ -505,7 +521,7 @@ export class TypedClientBase {
     headers: Headers,
   ): RelataError {
     const err =
-      typeof body === "object" && body !== null
+      typeof body === "object" && body !== null && !Array.isArray(body)
         ? (body as Record<string, unknown>)
         : { error: typeof body === "string" ? body : "empty response" };
     let serverMessage =
@@ -521,9 +537,7 @@ export class TypedClientBase {
     if (status === 404 && isAdminOnlyPath(path) && responseDetailIsBlank(isJson, body)) {
       serverMessage = adminListenerHint(path);
     }
-    const requestId = headers.get("x-request-id") ?? undefined;
-    const retryAfter = headers.get("Retry-After");
-    const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : undefined;
+    const metadata = httpProblemMetadata(err, headers);
     // #1321: surface the X-RateLimit-* quota headers on 429s, same as
     // RelataClient's #parseResponse.
     const parseRateLimit = (h: string): number | undefined => {
@@ -532,12 +546,7 @@ export class TypedClientBase {
       return Number.isFinite(n) ? n : undefined;
     };
     return mapHttpError(status, serverMessage, {
-      queryId: typeof err["query_id"] === "string" ? err["query_id"] : undefined,
-      code: typeof err["code"] === "string" ? err["code"] : undefined,
-      typeUrl: typeof err["type"] === "string" ? err["type"] : undefined,
-      retryable: err["retryable"] === true,
-      requestId,
-      retryAfterSeconds,
+      ...metadata,
       rateLimitLimit: parseRateLimit("X-RateLimit-Limit"),
       rateLimitRemaining: parseRateLimit("X-RateLimit-Remaining"),
       rateLimitReset: parseRateLimit("X-RateLimit-Reset"),

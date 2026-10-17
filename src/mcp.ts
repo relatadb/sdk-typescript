@@ -682,7 +682,7 @@ export class McpClient extends TypedClientBase {
     return this.callTool("summarise", args);
   }
 
-  /** `erase_subject` — GDPR Art. 17 crypto-shred erasure with a signed receipt. */
+  /** `erase_subject` — governed erasure with scoped local receipts, without global physical or cryptographic completion. */
   async eraseSubject(
     subject: string,
     opts: { reason?: string } = {},
