@@ -776,17 +776,14 @@ deno run --allow-net examples/basic-query.ts
 bun run examples/basic-query.ts
 ```
 
-## Deployment profiles
+## Deployment
 
-> `lite` was a silent legacy alias for `free` (ADR-204); it is now rejected outright — startup fails (FATAL) if `RELATA_PROFILE=lite` is set. Use `free` instead.
+`RELATA_PROFILE` accepts only `free` (the default); `server`, `cluster` and `lite` are rejected at startup (#5809). Posture follows configuration, and the SDK works identically in each:
 
-| Profile | Use case | Start command |
-|---|---|---|
-| `free` | Embedded / single-process / dev | `RELATA_PROFILE=free relata serve` |
-| `server` | Single-node production | `RELATA_PROFILE=server relata serve` |
-| `cluster` | Multi-node distributed (alpha) | `RELATA_PROFILE=cluster relata serve` |
-
-The SDK works identically across all three.
+| Use case | Start command |
+|---|---|
+| Local / single process / dev | `relata serve` (loopback) |
+| Single-node production | `RELATA_HTTP_BIND=0.0.0.0:9090 RELATA_BEARER_TOKEN=<secret> RELATA_ADMIN_TOKEN=<secret> relata serve` |
 
 ## Testing with an ephemeral server
 
