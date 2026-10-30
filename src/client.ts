@@ -1429,6 +1429,36 @@ export class RelataClient {
   }
 
   /**
+   * Atomically apply 1..64 create/update/delete operations (`POST /commit`,
+   * #5767). All-or-nothing: every `expectedVersion` is checked before anything
+   * is written and the bundle is one durable record. A failed precondition
+   * throws `PreconditionFailedError` (`currentVersion`, `failedOperation`) and
+   * changes nothing; a retry with the same `idempotencyKey` returns the
+   * original result (`replayed: true`).
+   */
+  async commit(
+    operations: Array<{
+      op: "create" | "update" | "delete";
+      type: string;
+      id: string;
+      expectedVersion?: number;
+      data?: Record<string, unknown>;
+    }>,
+    opts: { idempotencyKey?: string; purpose?: string } = {},
+  ): Promise<{
+    commitId: string;
+    operations: Array<{ op: "create" | "update" | "delete"; type: string; id: string; version: number }>;
+    replayed: boolean;
+  }> {
+    const purpose = opts.purpose ?? this.#defaultPurpose;
+    return this.#post("/commit", {
+      operations,
+      ...(opts.idempotencyKey !== undefined ? { idempotencyKey: opts.idempotencyKey } : {}),
+      ...(purpose !== undefined ? { purpose } : {}),
+    });
+  }
+
+  /**
    * Poll generic mixed-type ingest task progress at `/ingest/tasks/:task_id`.
    * Persistent local receipts survive restart; unresolved work becomes uncertain
    * without automatic reingestion. Volatile profiles remain process-local.

@@ -254,8 +254,9 @@ export class TypedClientBase {
   protected async _put<T = Record<string, unknown>>(
     path: string,
     body: Record<string, unknown> | undefined,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
-    return this.#send<T>("PUT", path, body);
+    return this.#send<T>("PUT", path, body, extraHeaders);
   }
 
   /** @internal */
@@ -267,8 +268,11 @@ export class TypedClientBase {
   }
 
   /** @internal */
-  protected async _delete<T = Record<string, unknown>>(path: string): Promise<T> {
-    return this.#send<T>("DELETE", path, undefined);
+  protected async _delete<T = Record<string, unknown>>(
+    path: string,
+    extraHeaders?: Record<string, string>,
+  ): Promise<T> {
+    return this.#send<T>("DELETE", path, undefined, extraHeaders);
   }
 
   /** @internal Binary Files responses use the same capped, authenticated dispatcher. */

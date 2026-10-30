@@ -280,6 +280,44 @@ export class ConflictError extends RelataError {
 }
 
 /**
+ * Thrown when the server returns HTTP 412 — a conditional write
+ * (`If-Match` / `If-None-Match` / a bundle's `expectedVersion`) lost: the
+ * object is not at the version the caller read. Nothing was written; re-read
+ * the object and retry with its current version.
+ */
+export class PreconditionFailedError extends RelataError {
+  /** Live version of the object (also the response `ETag`); `null` when it does not exist. */
+  readonly currentVersion: number | null;
+  /** Index of the failing operation in a `commit` bundle (`0` for a single write). */
+  readonly failedOperation: number | undefined;
+
+  constructor(
+    serverMessage: string,
+    extras: {
+      queryId?: string | undefined;
+      code?: string | undefined;
+      typeUrl?: string | undefined;
+      retryable?: boolean | undefined;
+      requestId?: string | undefined;
+      retryAfterSeconds?: number | undefined;
+      currentVersion?: number | null | undefined;
+      failedOperation?: number | undefined;
+    } = {},
+  ) {
+    super(
+      `Precondition failed: ${serverMessage}`,
+      412,
+      serverMessage,
+      extras.queryId,
+      extras,
+    );
+    this.name = "PreconditionFailedError";
+    this.currentVersion = extras.currentVersion ?? null;
+    this.failedOperation = extras.failedOperation;
+  }
+}
+
+/**
  * Thrown when the server returns HTTP 422 — the request body failed
  * validation.
  */
@@ -589,6 +627,8 @@ export function mapHttpError(
     rateLimitLimit?: number | undefined;
     rateLimitRemaining?: number | undefined;
     rateLimitReset?: number | undefined;
+    currentVersion?: number | null | undefined;
+    failedOperation?: number | undefined;
   } = {},
 ): RelataError {
   const {
@@ -603,6 +643,8 @@ export function mapHttpError(
     rateLimitLimit,
     rateLimitRemaining,
     rateLimitReset,
+    currentVersion,
+    failedOperation,
   } = extras;
   // Shared RFC 7807 bag handed to every subclass constructor below.
   const rfc7807 = { code, typeUrl, retryable, requestId, retryAfterSeconds };
@@ -629,6 +671,13 @@ export function mapHttpError(
       return new NotFoundError(serverMessage, { queryId, ...rfc7807 });
     case 409:
       return new ConflictError(serverMessage, { queryId, ...rfc7807 });
+    case 412:
+      return new PreconditionFailedError(serverMessage, {
+        queryId,
+        ...rfc7807,
+        currentVersion,
+        failedOperation,
+      });
     case 422:
       return new ValidationError(serverMessage, { queryId, ...rfc7807 });
     case 429:
@@ -665,6 +714,8 @@ export function httpProblemMetadata(
   requestId: string | undefined;
   retryable: boolean;
   retryAfterSeconds: number | undefined;
+  currentVersion: number | null | undefined;
+  failedOperation: number | undefined;
 } {
   const retry = headers?.get("Retry-After");
   let retryAfterSeconds: number | undefined;
@@ -692,5 +743,9 @@ export function httpProblemMetadata(
       : headers?.get("x-request-id") ?? undefined,
     retryable: body["retryable"] === true,
     retryAfterSeconds,
+    // #5766: the live version a failed precondition reports (412 only).
+    currentVersion: typeof body["current_version"] === "number" ? body["current_version"]
+      : body["current_version"] === null ? null : undefined,
+    failedOperation: typeof body["failed_operation"] === "number" ? body["failed_operation"] : undefined,
   };
 }

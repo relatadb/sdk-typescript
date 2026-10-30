@@ -8,6 +8,7 @@
 
 import { RelataClient } from "./client.ts";
 import { type TypedClientCtor, TypedClientBase, qs } from "./_typed-http.ts";
+import type { PreconditionFailedError } from "./errors.ts";
 
 /** Row shape accepted by `upsert` / `batchUpsert`. */
 export type RelataRow = Record<string, unknown>;
@@ -23,6 +24,48 @@ export interface ListObjectsResponse<T = RelataRow> {
   items: T[];
   cursor?: string;
   total?: number;
+}
+
+/** One operation of an atomic `commit` bundle (#5767). */
+export interface CommitOperation {
+  op: "create" | "update" | "delete";
+  type: string;
+  id: string;
+  /** update/delete: the `_version` the caller read; any other live version is a 412. */
+  expectedVersion?: number;
+  /** create/update: the full object. */
+  data?: RelataRow;
+}
+
+/** Result of a conditional single-object write (#5766). */
+export interface ObjectWriteResult {
+  type: string;
+  id: string;
+  /** Monotonic object version after the write; also the response `ETag`. */
+  version: number;
+  commitId: string;
+  replayed: boolean;
+}
+
+/** Result of `commit` (#5767), or of its idempotent replay. */
+export interface CommitResult {
+  commitId: string;
+  operations: Array<{ op: "create" | "update" | "delete"; type: string; id: string; version: number }>;
+  replayed: boolean;
+}
+
+/** The `If-Match` / `If-None-Match` header set for a conditional write. */
+function preconditionHeaders(expectedVersion?: number, ifAbsent?: boolean): Record<string, string> {
+  if (expectedVersion !== undefined && ifAbsent === true) {
+    throw new TypeError("expectedVersion and ifAbsent are mutually exclusive");
+  }
+  if (ifAbsent === true) return { "If-None-Match": "*" };
+  if (expectedVersion !== undefined) return { "If-Match": `"${expectedVersion}"` };
+  return {};
+}
+
+function objectPath(objectType: string, objectId: string): string {
+  return `/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`;
 }
 
 /** Serialise `rows` as newline-delimited JSON — one row per line. */
@@ -73,6 +116,13 @@ export class ObjectClient extends TypedClientBase {
    * `rows_rejected` / `errors` on every call. A queued row is also not yet
    * SQL-visible; see `batchUpsert` when read-your-writes matters.
    *
+   * **Conditional (#5766).** With `expectedVersion` (replace only if the
+   * object is at that `_version`, `If-Match`) or `ifAbsent: true` (create
+   * only, `If-None-Match: *`) the call switches to the atomic
+   * `PUT /objects/{type}/{id}` door: durable before it resolves, resolving to
+   * an {@link ObjectWriteResult} with the new `version`, and rejecting with
+   * {@link PreconditionFailedError} (`currentVersion`) when the race is lost.
+   *
    * @returns The ingest ack (`rows_queued`, `rows_rejected`, `errors`,
    *          `task_id`, ...), not a per-row receipt.
    */
@@ -80,8 +130,17 @@ export class ObjectClient extends TypedClientBase {
     objectType: string,
     objectId: string,
     fields: RelataRow,
-    opts: { purpose?: string; source?: string } = {},
+    opts: { purpose?: string; source?: string; expectedVersion?: number; ifAbsent?: boolean } = {},
   ): Promise<Record<string, unknown>> {
+    if (opts.expectedVersion !== undefined || opts.ifAbsent === true) {
+      const { id: _ignored, ...body } = fields;
+      const purpose = opts.purpose ?? this.#purpose;
+      return this._put<Record<string, unknown>>(
+        `${objectPath(objectType, objectId)}${qs({ purpose })}`,
+        body,
+        preconditionHeaders(opts.expectedVersion, opts.ifAbsent),
+      );
+    }
     const row: RelataRow = { ...fields, id: objectId };
     if (opts.source !== undefined) row["_source"] = opts.source;
     return this.sendNdjson(objectType, [row], opts.purpose);
@@ -139,7 +198,7 @@ export class ObjectClient extends TypedClientBase {
     objectType: string,
     objectId: string,
   ): Promise<Record<string, unknown> | null> {
-    const path = `/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`;
+    const path = objectPath(objectType, objectId);
     try {
       return await this._get<Record<string, unknown>>(path);
     } catch (err) {
@@ -163,14 +222,42 @@ export class ObjectClient extends TypedClientBase {
    * Delete a state object by type and id.
    * Wraps `DELETE /objects/{type}/{id}`.
    *
+   * With `opts.expectedVersion` the delete is conditional (`If-Match`, #5766):
+   * a different live version rejects with {@link PreconditionFailedError} and
+   * nothing is deleted.
+   *
    * @returns The server's delete receipt (e.g. `{ deleted: true }`).
    */
   async delete(
     objectType: string,
     objectId: string,
+    opts: { expectedVersion?: number } = {},
   ): Promise<Record<string, unknown>> {
-    const path = `/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`;
-    return this._delete<Record<string, unknown>>(path);
+    const path = objectPath(objectType, objectId);
+    return this._delete<Record<string, unknown>>(
+      path,
+      opts.expectedVersion === undefined ? undefined : preconditionHeaders(opts.expectedVersion),
+    );
+  }
+
+  /**
+   * Atomically apply 1..64 create/update/delete operations
+   * (`POST /commit`, #5767). All of them become durable and visible, or none
+   * do; every `expectedVersion` is checked before anything is written. A
+   * failed precondition rejects with {@link PreconditionFailedError}
+   * (`currentVersion`, `failedOperation`). A retry with the same
+   * `idempotencyKey` resolves to the original result (`replayed: true`).
+   */
+  async commit(
+    operations: CommitOperation[],
+    opts: { idempotencyKey?: string; purpose?: string } = {},
+  ): Promise<CommitResult> {
+    const purpose = opts.purpose ?? this.#purpose;
+    return this._post<CommitResult>("/commit", {
+      operations,
+      ...(opts.idempotencyKey !== undefined ? { idempotencyKey: opts.idempotencyKey } : {}),
+      ...(purpose !== undefined ? { purpose } : {}),
+    });
   }
 
   /**

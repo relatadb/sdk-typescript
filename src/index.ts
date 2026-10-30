@@ -132,6 +132,7 @@ export {
   ForbiddenError,
   NetworkError,
   NotFoundError,
+  PreconditionFailedError,
   PurposeError,
   QuotaError,
   RateLimitedError,
@@ -359,7 +360,15 @@ export { AuditClient } from "./audit.ts";
 export { IdentityClient } from "./identity.ts";
 
 export { ObjectClient } from "./objects.ts";
-export type { RelataRow, ObjectClientCtor, ListObjectsOptions, ListObjectsResponse } from "./objects.ts";
+export type {
+  RelataRow,
+  ObjectClientCtor,
+  ListObjectsOptions,
+  ListObjectsResponse,
+  CommitOperation,
+  CommitResult,
+  ObjectWriteResult,
+} from "./objects.ts";
 
 export { IngestClient } from "./ingest.ts";
 
