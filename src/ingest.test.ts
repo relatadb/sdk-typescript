@@ -238,6 +238,35 @@ test("bulk explicit object type wins over row annotation without changing typed 
   assert.deepEqual(result, receipt, "receipt is not promoted to an invented durability state");
 });
 
+test("bulk envelope options route to /ingest/bulk with idempotency, durability, checkpoint and contract", async () => {
+  const { fetch, lastCall } = mockFetch({ inserted: 1, errors: [] });
+  const client = new IngestClient({ baseUrl: "http://x", purpose: "analytics", fetch });
+  await client.bulk("OrderEvent", [{ _pk: "k1", qty: 3 }], {
+    idempotencyKey: "batch-100",
+    durability: "sync",
+    sourceCheckpoint: { source: "kafka/orders-0", position: "100", expected_position: "" },
+    contract: { dataset: "orders", version: 2 },
+  });
+  const call = lastCall();
+  assert.equal(call.url, "http://x/ingest/bulk");
+  assert.equal(call.headers.get("Idempotency-Key"), "batch-100");
+  assert.equal(call.headers.get("X-Relata-Durability"), "sync");
+  assert.deepEqual(JSON.parse(call.body ?? "{}"), {
+    objects: [{ _pk: "k1", qty: 3, _type: "OrderEvent" }],
+    purpose: "analytics",
+    source_checkpoint: { source: "kafka/orders-0", position: "100", expected_position: "" },
+    contract: { dataset: "orders", version: 2 },
+  });
+});
+
+test("plain bulk keeps the NDJSON door and sends no envelope headers", async () => {
+  const { fetch, lastCall } = mockFetch({ rows_queued: 1 });
+  const client = new IngestClient({ baseUrl: "http://x", fetch });
+  await client.bulk("OrderEvent", [{ id: "k" }]);
+  assert.ok(lastCall().url.startsWith("http://x/ingest?"));
+  assert.equal(lastCall().headers.get("Idempotency-Key"), null);
+});
+
 test("standalone ingest tenant overrides header casing on an immutable copy", async () => {
   const { fetch, lastCall } = mockFetch({ rows_queued: 1 });
   const headers = Object.freeze({ "x-ReLaTa-TeNaNt-Id": "stale-tenant", "X-Custom": "retained" });

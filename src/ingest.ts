@@ -251,6 +251,18 @@ export class IngestClient extends TypedClientBase {
    * - `onConflict` — when set (`"upsert" | "skip" | "error"`), routes the call
    *   to `POST /ingest/bulk` so conflict resolution + `tenantId` take effect.
    * - `tenantId` — tenant scope (only honoured on the `/ingest/bulk` door).
+   * - `idempotencyKey` — `Idempotency-Key` header (#5689): a retry with the same
+   *   key and rows replays the recorded response without a second write; a
+   *   different body is `409 idempotency-conflict`.
+   * - `durability` — `"sync"` sends `X-Relata-Durability: sync` (WAL fsynced
+   *   before the response).
+   * - `sourceCheckpoint` — `{ source, position, expected_position? }`; the
+   *   server advances the durable checkpoint only after a successful
+   *   synchronous write (requires `durability: "sync"`).
+   * - `contract` — `{ dataset, version? }`: validate against a data contract
+   *   (#5714); invalid rows are quarantined server-side.
+   * Any of `onConflict`, `idempotencyKey`, `sourceCheckpoint` or `contract`
+   * routes the call to `POST /ingest/bulk`.
    */
   async bulk(
     objectType: string,
@@ -260,26 +272,38 @@ export class IngestClient extends TypedClientBase {
       detectPacks?: string;
       onConflict?: "upsert" | "skip" | "error";
       tenantId?: string;
+      idempotencyKey?: string;
+      durability?: "sync";
+      sourceCheckpoint?: { source: string; position: string; expected_position?: string };
+      contract?: { dataset: string; version?: number };
     } = {},
   ): Promise<Record<string, unknown>> {
-    if (opts.onConflict !== undefined) {
-      // Route to /ingest/bulk so on_conflict + tenant_id take effect.
-      // Match Python/Go: the explicit target type owns routing. A row's
+    if (
+      opts.onConflict !== undefined ||
+      opts.idempotencyKey !== undefined ||
+      opts.sourceCheckpoint !== undefined ||
+      opts.contract !== undefined
+    ) {
+      // Route to /ingest/bulk so on_conflict + tenant_id + the envelope take
+      // effect. Match Python/Go: the explicit target type owns routing. A row's
       // stale _type annotation must not redirect this single-type method.
       const objects = rows.map((r) => ({ ...r, _type: objectType }));
-      const body: Record<string, unknown> = {
-        objects,
-        on_conflict: opts.onConflict,
-      };
+      const body: Record<string, unknown> = { objects };
+      if (opts.onConflict !== undefined) body["on_conflict"] = opts.onConflict;
       const purpose = opts.purpose ?? this.#purpose;
       if (purpose !== undefined) body["purpose"] = purpose;
       if (opts.tenantId !== undefined) body["tenant_id"] = opts.tenantId;
+      if (opts.sourceCheckpoint !== undefined) body["source_checkpoint"] = opts.sourceCheckpoint;
+      if (opts.contract !== undefined) body["contract"] = opts.contract;
+      const headers: Record<string, string> = { ...(this.#detectHeader(opts.detectPacks) ?? {}) };
+      if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
+      if (opts.durability) headers["X-Relata-Durability"] = opts.durability;
       return this._sendRaw(
         "POST",
         "/ingest/bulk",
         JSON.stringify(body),
         "application/json",
-        this.#detectHeader(opts.detectPacks),
+        Object.keys(headers).length > 0 ? headers : undefined,
       );
     }
     const body = rows.map((r) => JSON.stringify(r)).join("\n");
