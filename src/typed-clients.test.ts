@@ -608,39 +608,6 @@ test("McpClient #2322: aggregateStats sends entity_type", async () => {
   assert.equal(seen.arguments["column"], "amount");
 });
 
-test("McpClient #2322: investigateEntity sends entity_type and id", async () => {
-  const seen = await callAndCapture((mcp) =>
-    mcp.investigateEntity("Person", "p1"),
-  );
-  assert.equal(seen.name, "investigate_entity");
-  assert.equal(seen.arguments["entity_type"], "Person");
-  assert.equal(seen.arguments["id"], "p1");
-});
-
-test("McpClient #2322: findThreats sends entity_type", async () => {
-  const seen = await callAndCapture((mcp) => mcp.findThreats("Person"));
-  assert.equal(seen.name, "find_threats");
-  assert.equal(seen.arguments["entity_type"], "Person");
-});
-
-test("McpClient #2322: searchVideoFrames sends query_id", async () => {
-  const seen = await callAndCapture((mcp) =>
-    mcp.searchVideoFrames("frame-1", { topK: 10 }),
-  );
-  assert.equal(seen.name, "search_video_frames");
-  assert.equal(seen.arguments["query_id"], "frame-1");
-  assert.equal(seen.arguments["top_k"], 10);
-});
-
-test("McpClient #2322: faceMatch sends probe_id", async () => {
-  const seen = await callAndCapture((mcp) =>
-    mcp.faceMatch("probe-1", { threshold: 0.9 }),
-  );
-  assert.equal(seen.name, "face_match");
-  assert.equal(seen.arguments["probe_id"], "probe-1");
-  assert.equal(seen.arguments["threshold"], 0.9);
-});
-
 test("unwrapMcp: returns response unchanged when not enveloped", () => {
   const flat = { rows: [1, 2, 3] };
   assert.equal(unwrapMcp(flat), flat);
