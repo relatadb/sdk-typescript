@@ -878,7 +878,7 @@ export class RelataClient {
     return this.#post("/query", { purpose: "gdpr-erasure", sql });
   }
 
-  // ── SPARQL, sessions & cluster (#967 Tier 2d) ────────────────────────────
+  // ── Sessions & cluster (#967 Tier 2d) ────────────────────────────
 
   /**
    * Bulk export all rows of a type (#967 Tier 5c). The type and format are

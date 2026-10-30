@@ -200,7 +200,7 @@ export class VectorClient {
    * Embed a single text string via `POST /embed`.
    *
    * Uses the server's built-in CPU lexical embedder when no sidecar is
-   * configured, or the GPU sidecar (`RELATA_ACCEL_ENDPOINT`) when set.
+   * configured, or the external embedding sidecar (`RELATA_EMBED_URL`) when set.
    *
    * ```typescript
    * const { embedding, model, dim } = await vectors.embed("Alice Smith");
