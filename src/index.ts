@@ -389,6 +389,7 @@ export { TenantAdminClient } from "./tenants.ts";
 export { BackupClient } from "./backup.ts";
 export type { BackupRef, RestoreStatus } from "./backup.ts";
 
+export { EvidenceClient, evidenceHeaders } from "./evidence.ts";
 export { FreshnessClient, freshnessHeaders } from "./freshness.ts";
 export type { FreshnessIndex, FreshnessOptions } from "./freshness.ts";
 
