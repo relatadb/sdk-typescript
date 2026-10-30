@@ -389,6 +389,9 @@ export { TenantAdminClient } from "./tenants.ts";
 export { BackupClient } from "./backup.ts";
 export type { BackupRef, RestoreStatus } from "./backup.ts";
 
+export { FreshnessClient, freshnessHeaders } from "./freshness.ts";
+export type { FreshnessIndex, FreshnessOptions } from "./freshness.ts";
+
 export { TokenClient } from "./tokens.ts";
 export { AppPrimitivesClient } from "./app-primitives.ts";
 export type { EnqueueOptions } from "./app-primitives.ts";
