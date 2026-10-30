@@ -390,6 +390,8 @@ export { BackupClient } from "./backup.ts";
 export type { BackupRef, RestoreStatus } from "./backup.ts";
 
 export { TokenClient } from "./tokens.ts";
+export { AppPrimitivesClient } from "./app-primitives.ts";
+export type { EnqueueOptions } from "./app-primitives.ts";
 export type { TokenStats } from "./tokens.ts";
 
 export { LogClient } from "./log.ts";
