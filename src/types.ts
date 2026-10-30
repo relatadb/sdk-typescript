@@ -251,8 +251,7 @@ export interface ClusterNodesResponse {
  * `"auto"` (the default) lets the server choose; `"vf3"` forces the VF3
  * subgraph-isomorphism matcher; `"bfs"` forces the chained-BFS fallback.
  * BFS is also the automatic fallback for patterns VF3 cannot handle
- * (e.g. unbounded `*` variable-length paths). The server-wide kill-switch
- * is `RELATA_VF3_ENABLED`.
+ * (e.g. unbounded `*` variable-length paths).
  */
 export type Matcher = "auto" | "vf3" | "bfs";
 
