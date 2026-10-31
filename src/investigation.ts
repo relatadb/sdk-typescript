@@ -8,7 +8,7 @@
  * records; the value must come from evidence the caller could read, and
  * unreadable types and rows are omitted without a count. The saved-search
  * methods keep a named SQL query (versioned, per tenant, durable);
- * `runSavedSearch` runs it through the governed `POST /query` path with the
+ * `runSavedSearch` runs it through the governed `POST /v1/query` path with the
  * caller's own read policy, so saving a query grants nothing.
  */
 
@@ -56,17 +56,17 @@ export class InvestigationClient extends TypedClientBase {
     return new InvestigationClient(TypedClientBase.clientToCtor(client));
   }
 
-  /** `GET /alerts/{id}/evidence`: events, reproduction query, completeness, SHA-256. */
+  /** `GET /v1/alerts/{id}/evidence`: events, reproduction query, completeness, SHA-256. */
   async alertEvidence(alertId: string, opts: { maxEvents?: number; deadlineMs?: number } = {}): Promise<Doc> {
-    return this._get<Doc>(`/alerts/${seg(alertId)}/evidence${bounds(opts)}`);
+    return this._get<Doc>(`/v1/alerts/${seg(alertId)}/evidence${bounds(opts)}`);
   }
 
-  /** `GET /alerts/{id}/timeline`: ordered entries, unplaced ids and pivot entities. */
+  /** `GET /v1/alerts/{id}/timeline`: ordered entries, unplaced ids and pivot entities. */
   async alertTimeline(alertId: string, opts: { maxEvents?: number; deadlineMs?: number } = {}): Promise<Doc> {
-    return this._get<Doc>(`/alerts/${seg(alertId)}/timeline${bounds(opts)}`);
+    return this._get<Doc>(`/v1/alerts/${seg(alertId)}/timeline${bounds(opts)}`);
   }
 
-  /** `POST /alerts/{id}/pivot`: other readable records for one evidence entity. */
+  /** `POST /v1/alerts/{id}/pivot`: other readable records for one evidence entity. */
   async pivot(
     alertId: string,
     opts: {
@@ -85,46 +85,46 @@ export class InvestigationClient extends TypedClientBase {
     if (opts.targetTypes !== undefined) body.target_types = opts.targetTypes;
     if (opts.limit !== undefined) body.limit = opts.limit;
     if (opts.deadlineMs !== undefined) body.deadline_ms = opts.deadlineMs;
-    return this._post<Doc>(`/alerts/${seg(alertId)}/pivot`, body);
+    return this._post<Doc>(`/v1/alerts/${seg(alertId)}/pivot`, body);
   }
 
-  /** `POST /searches/saved`: `409 saved-search-exists` if the name is taken. */
+  /** `POST /v1/search/saved`: `409 saved-search-exists` if the name is taken. */
   async createSavedSearch(input: SavedSearchInput): Promise<Doc> {
-    return this._post<Doc>("/searches/saved", searchBody(input));
+    return this._post<Doc>("/v1/search/saved", searchBody(input));
   }
 
-  /** `GET /searches/saved`: `{items, total}` ordered by name. */
+  /** `GET /v1/search/saved`: `{items, total}` ordered by name. */
   async listSavedSearches(opts: { q?: string; limit?: number } = {}): Promise<Doc> {
     const q = new URLSearchParams();
     if (opts.q !== undefined) q.set("q", opts.q);
     if (opts.limit !== undefined) q.set("limit", String(opts.limit));
     const qs = q.toString();
-    return this._get<Doc>(`/searches/saved${qs ? `?${qs}` : ""}`);
+    return this._get<Doc>(`/v1/search/saved${qs ? `?${qs}` : ""}`);
   }
 
-  /** `GET /searches/saved/{id}`. */
+  /** `GET /v1/search/saved/{id}`. */
   async getSavedSearch(searchId: string): Promise<Doc> {
-    return this._get<Doc>(`/searches/saved/${seg(searchId)}`);
+    return this._get<Doc>(`/v1/search/saved/${seg(searchId)}`);
   }
 
-  /** `PUT /searches/saved/{id}`; `expectedVersion` makes it conditional. */
+  /** `PUT /v1/search/saved/{id}`; `expectedVersion` makes it conditional. */
   async updateSavedSearch(
     searchId: string,
     input: SavedSearchInput,
     opts: { expectedVersion?: number } = {},
   ): Promise<Doc> {
-    return this._put<Doc>(`/searches/saved/${seg(searchId)}`, searchBody(input, opts.expectedVersion));
+    return this._put<Doc>(`/v1/search/saved/${seg(searchId)}`, searchBody(input, opts.expectedVersion));
   }
 
-  /** `DELETE /searches/saved/{id}`: leaves listings; history is kept. */
+  /** `DELETE /v1/search/saved/{id}`: leaves listings; history is kept. */
   async deleteSavedSearch(searchId: string): Promise<Doc> {
-    return this._delete<Doc>(`/searches/saved/${seg(searchId)}`);
+    return this._delete<Doc>(`/v1/search/saved/${seg(searchId)}`);
   }
 
-  /** `POST /searches/saved/{id}/run`: the `POST /query` response for the stored SQL. */
+  /** `POST /v1/search/saved/{id}/run`: the `POST /v1/query` response for the stored SQL. */
   async runSavedSearch(searchId: string, opts: { params?: unknown[] } = {}): Promise<Doc> {
     const body: Doc = {};
     if (opts.params !== undefined) body.params = opts.params;
-    return this._post<Doc>(`/searches/saved/${seg(searchId)}/run`, body);
+    return this._post<Doc>(`/v1/search/saved/${seg(searchId)}/run`, body);
   }
 }

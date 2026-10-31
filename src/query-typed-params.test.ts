@@ -13,7 +13,7 @@ test("typed query parameters preserve JSON types and never enter SQL text", asyn
     baseUrl: "http://data", defaultPurpose: "analytics",
     fetch: async (url, init) => {
       requests++;
-      assert.equal(String(url), "http://data/query");
+      assert.equal(String(url), "http://data/v1/query");
       assert.equal(init?.method, "POST");
       assert.deepEqual(JSON.parse(String(init?.body)), { purpose: "analytics", sql, params });
       return Response.json({ rows: [], query_id: "typed", elapsed_ms: 1 });

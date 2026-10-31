@@ -6,7 +6,7 @@
  * `lambdaMult * relevance - (1 - lambdaMult) * maxSimilarityToSelected`
  * over the candidate set, verified live in the reference retrieval toolkit
  * studied for ADR-0299. Both terms are pure functions of what
- * `POST /rag/query` already returned — RelataDB's wire contract carries
+ * `POST /v1/rag/query` already returned — RelataDB's wire contract carries
  * per-channel scores (`bm25_score`/`vector_score`, #4514) and the non-LLM
  * `relevance_confidence` signal (#4520), never raw embedding vectors, so
  * `mmrSelect` needs no embedding call, no LLM call, and no network I/O: it

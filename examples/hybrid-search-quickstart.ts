@@ -4,7 +4,7 @@
  * Emits `HYBRID_SEARCH FROM <type> QUERY '<text>' LIMIT <k>` fused via
  * reciprocal rank fusion (graph + BM25 + vector). The server embeds the query
  * text server-side; caller-supplied embeddings are not accepted by the
- * `/query` SQL surface (no vector-literal grammar).
+ * `/v1/query` SQL surface (no vector-literal grammar).
  *
  * Run:
  *   RELATA_TOKEN=secret node --experimental-strip-types examples/hybrid-search-quickstart.ts

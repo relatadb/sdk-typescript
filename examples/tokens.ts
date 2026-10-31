@@ -1,11 +1,11 @@
 /**
- * tokens.ts — dedup-token primitive (replay defence, #84).
+ * tokens.ts — tenant self-service API tokens.
  *
  * Flow:
- *   1. `remember(tokenId)` → true on first insert, false on duplicate
- *   2. `check(tokenId)`    → presence probe without mutation
- *   3. `stats()`           → dedup-set size, oldest entry, eviction policy
- *   4. `revoke(tokenId)`   → explicit removal (admin only)
+ *   1. `listSelf()`    → the caller's own tokens
+ *   2. `selfAudit()`   → audit trail of those tokens
+ *   3. `rotateSelf()`  → rotate the caller's token (optional, destructive)
+ *   4. `revokeSelf(id)`→ revoke one of the caller's own tokens
  *
  * Run:
  *   RELATA_TOKEN=secret node --experimental-strip-types examples/tokens.ts
@@ -19,29 +19,19 @@ const relata = createClient(url, { bearerToken: token, defaultPurpose: "admin" }
 const tokens = TokenClient.fromClient(relata);
 
 async function main(): Promise<void> {
-  const tokenId = "replay-defence-7QT3";
+  banner("1. listSelf()");
+  const mine = await tokens.listSelf();
+  out(JSON.stringify(mine).slice(0, 200));
 
-  banner(`1. remember('${tokenId}')`);
-  const first = await tokens.remember(tokenId, { ttlSecs: 3600 });
-  out(`first call:  newly_inserted=${first}  (expected true)`);
-  const second = await tokens.remember(tokenId, { ttlSecs: 3600 });
-  out(`second call: newly_inserted=${second}  (expected false — duplicate)`);
+  step("2. selfAudit()");
+  const audit = await tokens.selfAudit();
+  out(JSON.stringify(audit).slice(0, 200));
 
-  step(`2. check('${tokenId}')`);
-  const info = await tokens.check(tokenId);
-  out(`present=${info.present}  inserted_at_ns=${info.inserted_at_ns}  ttl=${info.ttl_secs}`);
-
-  step("3. stats()");
-  const s = await tokens.stats();
-  out(`TokenStats(count=${s.count}, oldest_ns=${s.oldest_ns}, eviction_policy=${s.eviction_policy})`);
-
-  step(`4. revoke('${tokenId}')`);
-  try {
-    const revoked = await tokens.revoke(tokenId);
-    out(`revoked=${revoked}`);
-  } catch (err) {
-    out(`(revoke requires admin — ${(err as Error).message})`);
-  }
+  // rotateSelf() and revokeSelf(id) invalidate credentials, so they are shown
+  // but not run by default:
+  //   const rotated = await tokens.rotateSelf();
+  //   await tokens.revokeSelf("<token-id>");
+  step("3. rotateSelf() / revokeSelf(id) — see comments in this file");
 }
 
 await main().catch(exitOnRelataError);

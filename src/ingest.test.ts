@@ -54,7 +54,7 @@ test("ingestCdr: normalizes aliases, reports invalid rows, and queues via generi
   assert.equal(out["rows_rejected"], 1);
   assert.equal((out["errors"] as unknown[]).length, 1);
   const call = lastCall();
-  assert.equal(call.url, "http://x/ingest?object_type=CdrRecord&purpose=finint");
+  assert.equal(call.url, "http://x/v1/ingest?object_type=CdrRecord&purpose=finint");
   assert.equal(call.headers.get("content-type"), "application/json");
   const rows = JSON.parse(call.body ?? "[]") as Array<Record<string, unknown>>;
   assert.equal(rows.length, 2);
@@ -229,7 +229,7 @@ test("bulk explicit object type wins over row annotation without changing typed 
     event_time: "2026-10-12T14:37:59.123456789+05:30", optional_note: null });
   const result = await client.bulk("StructuredRecord", [row], { onConflict: "upsert", tenantId: "tenant-a" });
   const call = lastCall();
-  assert.equal(call.url, "http://x/ingest/bulk");
+  assert.equal(call.url, "http://x/v1/ingest/bulk");
   assert.equal(call.headers.get("X-Relata-Tenant-Id"), "tenant-a");
   assert.deepEqual(JSON.parse(call.body ?? "{}"), {
     objects: [{ ...row, _type: "StructuredRecord" }], on_conflict: "upsert", purpose: "analytics", tenant_id: "tenant-a",
@@ -238,7 +238,7 @@ test("bulk explicit object type wins over row annotation without changing typed 
   assert.deepEqual(result, receipt, "receipt is not promoted to an invented durability state");
 });
 
-test("bulk envelope options route to /ingest/bulk with idempotency, durability, checkpoint and contract", async () => {
+test("bulk envelope options route to /v1/ingest/bulk with idempotency, durability, checkpoint and contract", async () => {
   const { fetch, lastCall } = mockFetch({ inserted: 1, errors: [] });
   const client = new IngestClient({ baseUrl: "http://x", purpose: "analytics", fetch });
   await client.bulk("OrderEvent", [{ _pk: "k1", qty: 3 }], {
@@ -248,7 +248,7 @@ test("bulk envelope options route to /ingest/bulk with idempotency, durability, 
     contract: { dataset: "orders", version: 2 },
   });
   const call = lastCall();
-  assert.equal(call.url, "http://x/ingest/bulk");
+  assert.equal(call.url, "http://x/v1/ingest/bulk");
   assert.equal(call.headers.get("Idempotency-Key"), "batch-100");
   assert.equal(call.headers.get("X-Relata-Durability"), "sync");
   assert.deepEqual(JSON.parse(call.body ?? "{}"), {
@@ -263,7 +263,7 @@ test("plain bulk keeps the NDJSON door and sends no envelope headers", async () 
   const { fetch, lastCall } = mockFetch({ rows_queued: 1 });
   const client = new IngestClient({ baseUrl: "http://x", fetch });
   await client.bulk("OrderEvent", [{ id: "k" }]);
-  assert.ok(lastCall().url.startsWith("http://x/ingest?"));
+  assert.ok(lastCall().url.startsWith("http://x/v1/ingest?"));
   assert.equal(lastCall().headers.get("Idempotency-Key"), null);
 });
 

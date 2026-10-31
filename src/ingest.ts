@@ -2,7 +2,7 @@
  * Bulk ingest SDK (#83).
  *
  * Exposes the generic row-ingest APIs. `RelataClient.ingestDocument` sends
- * prepared document rows as a queued mixed-type request to `/ingest/bulk`;
+ * prepared document rows as a queued mixed-type request to `/v1/ingest/bulk`;
  * document extraction and source-format mapping belong in an application
  * adapter.
  */
@@ -222,7 +222,7 @@ export class IngestClient extends TypedClientBase {
     purposeOverride: string | undefined,
   ): string {
     const effPurpose = purposeOverride ?? this.#purpose;
-    return `/ingest${qs({ object_type: objectType, purpose: effPurpose })}`;
+    return `/v1/ingest${qs({ object_type: objectType, purpose: effPurpose })}`;
   }
 
   /** @internal Build a path carrying only the (optional) `purpose` param. */
@@ -240,7 +240,7 @@ export class IngestClient extends TypedClientBase {
 
   /**
    * Bulk-ingest `rows` as NDJSON.
-   * Wraps `POST /ingest?object_type=<Type>` with an
+   * Wraps `POST /v1/ingest?object_type=<Type>` with an
    * `Content-Type: application/x-ndjson` body.
    *
    * Per-call controls (opts):
@@ -249,8 +249,8 @@ export class IngestClient extends TypedClientBase {
    *   a comma-separated list (e.g. `"network,financial"`) selects packs.
    *   Requires the `IngestDetectOverride` ACL grant server-side.
    * - `onConflict` — when set (`"upsert" | "skip" | "error"`), routes the call
-   *   to `POST /ingest/bulk` so conflict resolution + `tenantId` take effect.
-   * - `tenantId` — tenant scope (only honoured on the `/ingest/bulk` door).
+   *   to `POST /v1/ingest/bulk` so conflict resolution + `tenantId` take effect.
+   * - `tenantId` — tenant scope (only honoured on the `/v1/ingest/bulk` door).
    * - `idempotencyKey` — `Idempotency-Key` header (#5689): a retry with the same
    *   key and rows replays the recorded response without a second write; a
    *   different body is `409 idempotency-conflict`.
@@ -265,7 +265,7 @@ export class IngestClient extends TypedClientBase {
    *   `X-Relata-Claim`. Required when `sourceCheckpoint` names an
    *   `openetl/media/<work_id>` source (the server fences stale holders).
    * Any of `onConflict`, `idempotencyKey`, `sourceCheckpoint`, `contract` or
-   * `mediaWorkClaim` routes the call to `POST /ingest/bulk`.
+   * `mediaWorkClaim` routes the call to `POST /v1/ingest/bulk`.
    */
   async bulk(
     objectType: string,
@@ -289,7 +289,7 @@ export class IngestClient extends TypedClientBase {
       opts.sourceCheckpoint !== undefined ||
       opts.contract !== undefined
     ) {
-      // Route to /ingest/bulk so on_conflict + tenant_id + the envelope take
+      // Route to /v1/ingest/bulk so on_conflict + tenant_id + the envelope take
       // effect. Match Python/Go: the explicit target type owns routing. A row's
       // stale _type annotation must not redirect this single-type method.
       const objects = rows.map((r) => ({ ...r, _type: objectType }));
@@ -308,7 +308,7 @@ export class IngestClient extends TypedClientBase {
       }
       return this._sendRaw(
         "POST",
-        "/ingest/bulk",
+        "/v1/ingest/bulk",
         JSON.stringify(body),
         "application/json",
         Object.keys(headers).length > 0 ? headers : undefined,
@@ -326,7 +326,7 @@ export class IngestClient extends TypedClientBase {
 
   /**
    * Bulk-ingest a CSV string. The server parses it server-side.
-   * Wraps `POST /ingest?object_type=<Type>` with a `text/csv` body. Honours
+   * Wraps `POST /v1/ingest?object_type=<Type>` with a `text/csv` body. Honours
    * `detectPacks` via the `X-Detect-Packs` header (#2258 SI-3).
    */
   async bulkCsv(
@@ -345,7 +345,7 @@ export class IngestClient extends TypedClientBase {
 
   /**
    * Schemaless ingest — auto-create the type on first write with inferred
-   * fields (T6, #1988). Wraps `POST /ingest/auto`. The response carries
+   * fields (T6, #1988). Wraps `POST /v1/ingest/auto`. The response carries
    * `type_created` and `inferred_schema`. Optional `schema` overrides
    * field-type inference, `tenantId` scopes the write.
    */
@@ -363,12 +363,12 @@ export class IngestClient extends TypedClientBase {
     if (purpose !== undefined) body["purpose"] = purpose;
     if (opts.schema) body["schema"] = opts.schema;
     if (opts.tenantId !== undefined) body["tenant_id"] = opts.tenantId;
-    return this._post("/ingest/auto", body);
+    return this._post("/v1/ingest/auto", body);
   }
 
   /**
    * Normalize telecom CDR aliases, then queue canonical `CdrRecord` rows via
-   * `POST /ingest?object_type=CdrRecord`. Invalid rows are returned in
+   * `POST /v1/ingest?object_type=CdrRecord`. Invalid rows are returned in
    * `errors`; poll the returned `task_id` for writer completion. Pass
    * nanosecond timestamps as decimal strings or `bigint`; unsafe JavaScript
    * numeric timestamps are rejected instead of silently rounded. Strict

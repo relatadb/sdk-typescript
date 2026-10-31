@@ -24,7 +24,7 @@ export interface FreshnessOptions {
   requireDurable?: boolean;
 }
 
-/** Headers that gate `/query`, `/search`, `/graphql` or MCP reads on `token`. */
+/** Headers that gate `/v1/query`, `/v1/search`, `/v1/graphql` or MCP reads on `token`. */
 export function freshnessHeaders(
   token: string,
   opts: FreshnessOptions & { partial?: boolean } = {},
@@ -50,13 +50,13 @@ export class FreshnessClient extends TypedClientBase {
     return new FreshnessClient(TypedClientBase.clientToCtor(client));
   }
 
-  /** `GET /freshness/status`: per-index state plus a token for the latest write. */
+  /** `GET /v1/freshness/status`: per-index state plus a token for the latest write. */
   async status(): Promise<Record<string, unknown>> {
-    return this._get<Record<string, unknown>>("/freshness/status");
+    return this._get<Record<string, unknown>>("/v1/freshness/status");
   }
 
   /**
-   * `POST /freshness/barrier`: wait until `token` is visible in `opts.indexes`
+   * `POST /v1/freshness/barrier`: wait until `token` is visible in `opts.indexes`
    * (default all). A write not visible within `waitMs` throws the server's
    * `freshness-not-ready` problem, whose body names the lagging index.
    */
@@ -65,6 +65,6 @@ export class FreshnessClient extends TypedClientBase {
     if (opts.indexes !== undefined) payload["indexes"] = opts.indexes;
     if (opts.waitMs !== undefined) payload["wait_ms"] = Math.trunc(opts.waitMs);
     if (opts.requireDurable) payload["require_durable"] = true;
-    return this._post<Record<string, unknown>>("/freshness/barrier", payload);
+    return this._post<Record<string, unknown>>("/v1/freshness/barrier", payload);
   }
 }

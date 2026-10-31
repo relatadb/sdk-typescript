@@ -131,12 +131,12 @@ test("classifyQueryShape: aggregation/negation/boolean/ranking detection", () =>
   assert.equal(classifyQueryShape("Tell me about SIMI's history"), QueryShape.SIMPLE);
 });
 
-// ── smart_rag_query — the different /rag/query call shape it produces ──────
+// ── smart_rag_query — the different /v1/rag/query call shape it produces ──────
 
 test("smartRagQuery: conjunction shape requests expandWindow", async () => {
   let captured: Record<string, unknown> = {};
   const client = mockClient((path, body) => {
-    if (path === "/rag/query") captured = body!;
+    if (path === "/v1/rag/query") captured = body!;
     return { status: 200, body: { hits: [] } };
   });
   await smartRagQuery(
@@ -151,7 +151,7 @@ test("smartRagQuery: conjunction shape requests expandWindow", async () => {
 test("smartRagQuery: enumeration shape widens topK", async () => {
   let captured: Record<string, unknown> = {};
   const client = mockClient((path, body) => {
-    if (path === "/rag/query") captured = body!;
+    if (path === "/v1/rag/query") captured = body!;
     return { status: 200, body: { hits: [] } };
   });
   await smartRagQuery(client, "Which vendors were flagged for compliance issues?", "DocumentChunk", {
@@ -164,7 +164,7 @@ test("smartRagQuery: enumeration shape widens topK", async () => {
 test("smartRagQuery: enumeration never shrinks an explicit larger topK", async () => {
   let captured: Record<string, unknown> = {};
   const client = mockClient((path, body) => {
-    if (path === "/rag/query") captured = body!;
+    if (path === "/v1/rag/query") captured = body!;
     return { status: 200, body: { hits: [] } };
   });
   await smartRagQuery(client, "Which vendors were flagged?", "DocumentChunk", {
@@ -177,7 +177,7 @@ test("smartRagQuery: enumeration never shrinks an explicit larger topK", async (
 test("smartRagQuery: simple shape leaves request shape alone", async () => {
   let captured: Record<string, unknown> = {};
   const client = mockClient((path, body) => {
-    if (path === "/rag/query") captured = body!;
+    if (path === "/v1/rag/query") captured = body!;
     return { status: 200, body: { hits: [] } };
   });
   await smartRagQuery(client, "What is RelataDB?", "DocumentChunk", { purpose: "research" });
@@ -224,7 +224,7 @@ test("smartRagQuery: numeric intent provably skips HyDE", async () => {
   let captured: Record<string, unknown> = {};
   const hydeCalls: string[] = [];
   const client = mockClient((path, body) => {
-    if (path === "/rag/query") captured = body!;
+    if (path === "/v1/rag/query") captured = body!;
     return { status: 200, body: { hits: [] } };
   });
   const query = "What percentage of revenue came from repeat customers?";
@@ -242,7 +242,7 @@ test("smartRagQuery: numeric intent provably skips HyDE", async () => {
 test("smartRagQuery: applies HyDE for non-numeric query", async () => {
   let captured: Record<string, unknown> = {};
   const client = mockClient((path, body) => {
-    if (path === "/rag/query") captured = body!;
+    if (path === "/v1/rag/query") captured = body!;
     return { status: 200, body: { hits: [] } };
   });
   await smartRagQuery(client, "How does hybrid retrieval work?", "DocumentChunk", {
@@ -311,7 +311,7 @@ test("rrfMerge: dedupes and orders by summed score", () => {
 test("smartRagQuery: decomposition merges with auto-scaled k", async () => {
   let callCount = 0;
   const client = mockClient((path, body) => {
-    if (path !== "/rag/query") throw new Error(`unexpected call to ${path}`);
+    if (path !== "/v1/rag/query") throw new Error(`unexpected call to ${path}`);
     callCount += 1;
     const q = body!["query"] as string;
     if (q.includes("incident response policy")) {
@@ -334,7 +334,7 @@ test("smartRagQuery: decomposition merges with auto-scaled k", async () => {
 
 test("smartRagQuery: no decomposition skips merge entirely", async () => {
   const client = mockClient((path) => {
-    if (path !== "/rag/query") throw new Error(`unexpected call to ${path}`);
+    if (path !== "/v1/rag/query") throw new Error(`unexpected call to ${path}`);
     return { status: 200, body: { hits: [hit("c1")] } };
   });
   const result = await smartRagQuery(client, "What is RelataDB?", "DocumentChunk", {
@@ -422,7 +422,7 @@ test("extractAttributeFilters: empty for a non-attribute query", () => {
 test("routeAttributeFilterQuery: returns SQL-filtered rows", async () => {
   let captured: Record<string, unknown> = {};
   const client = mockClient((path, body) => {
-    if (path !== "/query") throw new Error(`unexpected call to ${path}`);
+    if (path !== "/v1/query") throw new Error(`unexpected call to ${path}`);
     captured = body!;
     return {
       status: 200,
@@ -450,14 +450,14 @@ test("routeAttributeFilterQuery: returns SQL-filtered rows", async () => {
 
 test("routeAttributeFilterQuery: undefined when no filters extracted", async () => {
   const client = mockClient(() => {
-    throw new Error("no /query call should be made");
+    throw new Error("no /v1/query call should be made");
   });
   assert.equal(await routeAttributeFilterQuery(client, "What is RelataDB?", "Person"), undefined);
 });
 
 test("routeAttributeFilterQuery: falls back when knownFields don't match", async () => {
   const client = mockClient(() => {
-    throw new Error("no /query call should be made");
+    throw new Error("no /v1/query call should be made");
   });
   const result = await routeAttributeFilterQuery(
     client,
@@ -471,11 +471,11 @@ test("routeAttributeFilterQuery: falls back when knownFields don't match", async
 test("smartRagQuery: routes attribute filter to SQL, not retrieval", async () => {
   let ragCalled = false;
   const client = mockClient((path) => {
-    if (path === "/rag/query") {
+    if (path === "/v1/rag/query") {
       ragCalled = true;
       return { status: 200, body: { hits: [hit("c1")] } };
     }
-    if (path === "/query") {
+    if (path === "/v1/query") {
       return {
         status: 200,
         body: {
@@ -502,7 +502,7 @@ test("smartRagQuery: routes attribute filter to SQL, not retrieval", async () =>
 
 test("smartRagQuery: attribute filter falls back to retrieval with low confidence", async () => {
   const client = mockClient((path) => {
-    if (path === "/rag/query") return { status: 200, body: { hits: [hit("c1")] } };
+    if (path === "/v1/rag/query") return { status: 200, body: { hits: [hit("c1")] } };
     throw new Error(`unexpected call to ${path}`);
   });
   const result = await smartRagQuery(
@@ -571,7 +571,7 @@ test("routeAggregationQuery: applies extracted filter", async () => {
 
 test("routeAggregationQuery: falls back when knownFields don't match", async () => {
   const client = mockClient(() => {
-    throw new Error("no /query call should be made");
+    throw new Error("no /v1/query call should be made");
   });
   const result = await routeAggregationQuery(client, "How many members are from SIMI?", "Person", {
     fieldMap: { simi: "organization" },
@@ -582,7 +582,7 @@ test("routeAggregationQuery: falls back when knownFields don't match", async () 
 
 test("routeNegationQuery: returns undefined without a field map", async () => {
   const client = mockClient(() => {
-    throw new Error("no /query call should be made");
+    throw new Error("no /v1/query call should be made");
   });
   assert.equal(
     await routeNegationQuery(client, "Which SIMI members are NOT in custody?", "Person"),
@@ -632,7 +632,7 @@ test("routeBooleanQuery: joins predicates with AND / OR per the query's own word
 
 test("routeBooleanQuery: returns undefined when fewer than two predicates resolve", async () => {
   const client = mockClient(() => {
-    throw new Error("no /query call should be made with < 2 predicates");
+    throw new Error("no /v1/query call should be made with < 2 predicates");
   });
   assert.equal(
     await routeBooleanQuery(client, "Members of SIMI AND LeT", "Person", {
@@ -687,7 +687,7 @@ test("routeRankingQuery: defaults the limit and goes ascending for 'lowest'", as
 
 test("routeRankingQuery: falls back when knownFields don't match", async () => {
   const client = mockClient(() => {
-    throw new Error("no /query call should be made");
+    throw new Error("no /v1/query call should be made");
   });
   const result = await routeRankingQuery(client, "Top 5 most active members", "Person", {
     fieldMap: { active: "activity_count" },
@@ -701,7 +701,7 @@ test("routeRankingQuery: falls back when knownFields don't match", async () => {
 test("routeEnumerationQuery: returns an inline result when small", async () => {
   let captured: Record<string, unknown> = {};
   const client = mockClient((path, body) => {
-    if (path === "/rag/export") {
+    if (path === "/v1/rag/export") {
       captured = body!;
       return { status: 202, body: { operation_id: "op-1", status: "running" } };
     }
@@ -722,7 +722,7 @@ test("routeEnumerationQuery: returns an inline result when small", async () => {
 
 test("routeEnumerationQuery: is file-backed when large", async () => {
   const client = mockClient((path) => {
-    if (path === "/rag/export") {
+    if (path === "/v1/rag/export") {
       return { status: 202, body: { operation_id: "op-2", status: "running" } };
     }
     return {
@@ -758,7 +758,7 @@ test("routeEnumerationQuery: is file-backed when large", async () => {
 
 test("routeEnumerationQuery: falls back when knownFields don't match", async () => {
   const client = mockClient(() => {
-    throw new Error("no /rag/export call should be made when the field can't resolve");
+    throw new Error("no /v1/rag/export call should be made when the field can't resolve");
   });
   const result = await routeEnumerationQuery(client, "Give me all SIMI members", "Person", {
     fieldMap: { simi: "organization" },
@@ -769,7 +769,7 @@ test("routeEnumerationQuery: falls back when knownFields don't match", async () 
 
 test("routeEnumerationQuery: rejects with TimeoutError when the operation never completes", async () => {
   const client = mockClient((path) => {
-    if (path === "/rag/export") {
+    if (path === "/v1/rag/export") {
       return { status: 202, body: { operation_id: "op-3", status: "running" } };
     }
     return { status: 200, body: { status: "running" } };
@@ -789,11 +789,11 @@ test("routeEnumerationQuery: rejects with TimeoutError when the operation never 
 test("smartRagQuery: routes aggregation to COUNT, not enumeration", async () => {
   let ragCalled = false;
   const client = mockClient((path) => {
-    if (path === "/rag/query") {
+    if (path === "/v1/rag/query") {
       ragCalled = true;
       return { status: 200, body: { hits: [hit("c1")] } };
     }
-    if (path === "/query") {
+    if (path === "/v1/query") {
       return { status: 200, body: { data: [{ count: 1234 }], columns: ["count"], query_id: "q1" } };
     }
     throw new Error(`unexpected call to ${path}`);
@@ -810,7 +810,7 @@ test("smartRagQuery: routes aggregation to COUNT, not enumeration", async () => 
 
 test("smartRagQuery: a non-structured question still routes to retrieval", async () => {
   const client = mockClient((path) => {
-    if (path === "/rag/query") return { status: 200, body: { hits: [hit("c1")] } };
+    if (path === "/v1/rag/query") return { status: 200, body: { hits: [hit("c1")] } };
     throw new Error("aggregation/negation/boolean/ranking routing must not trigger");
   });
   const result = await smartRagQuery(client, "Tell me about SIMI's history", "DocumentChunk", {
@@ -822,8 +822,8 @@ test("smartRagQuery: a non-structured question still routes to retrieval", async
 
 test("smartRagQuery: routes boolean to SQL", async () => {
   const client = mockClient((path) => {
-    if (path === "/rag/query") throw new Error("boolean-shaped query must not fall through to retrieval");
-    if (path === "/query") {
+    if (path === "/v1/rag/query") throw new Error("boolean-shaped query must not fall through to retrieval");
+    if (path === "/v1/query") {
       return {
         status: 200,
         body: { data: [{ name: "Bilal Hassan", organization: "SIMI" }], columns: ["name", "organization"], query_id: "q1" },
@@ -841,7 +841,7 @@ test("smartRagQuery: routes boolean to SQL", async () => {
 
 test("smartRagQuery: negation falls back to retrieval with low confidence", async () => {
   const client = mockClient((path) => {
-    if (path === "/rag/query") return { status: 200, body: { hits: [hit("c1")] } };
+    if (path === "/v1/rag/query") return { status: 200, body: { hits: [hit("c1")] } };
     throw new Error(`unexpected call to ${path}`);
   });
   const result = await smartRagQuery(client, "Which SIMI members are NOT in custody?", "Person", {
@@ -855,8 +855,8 @@ test("smartRagQuery: negation falls back to retrieval with low confidence", asyn
 
 test("smartRagQuery: routes ranking to SQL", async () => {
   const client = mockClient((path) => {
-    if (path === "/rag/query") throw new Error("ranking-shaped query must not fall through to retrieval");
-    if (path === "/query") {
+    if (path === "/v1/rag/query") throw new Error("ranking-shaped query must not fall through to retrieval");
+    if (path === "/v1/query") {
       return {
         status: 200,
         body: { data: [{ name: "Zahid Iqbal", activity_count: 91 }], columns: ["name", "activity_count"], query_id: "q1" },

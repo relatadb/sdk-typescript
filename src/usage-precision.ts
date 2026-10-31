@@ -14,7 +14,7 @@ export function createExactUsageFetch(
   return async (input, init) => {
     const response = await innerFetch(input, init);
     const requestUrl = input instanceof Request ? input.url : String(input);
-    if (!new URL(requestUrl).pathname.endsWith("/query") || !response.ok) {
+    if (!new URL(requestUrl).pathname.endsWith("/v1/query") || !response.ok) {
       return response;
     }
 

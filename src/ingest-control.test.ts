@@ -26,20 +26,20 @@ test("ingest control routes and bodies", async () => {
   await c.listQuarantine({ dataset: "orders", afterId: 5, limit: 50 });
   await c.listQuarantine();
   assert.deepEqual(seen, [
-    ["GET", "/ingest/checkpoints/kafka%2Forders%201", "", null],
-    ["GET", "/ingest/contracts", "", null],
-    ["GET", "/ingest/contracts/orders", "", null],
-    ["PUT", "/ingest/contracts/orders", "", { version: 2, fields: [] }],
-    ["GET", "/ingest/contracts/orders/quality", "", null],
-    ["GET", "/ingest/quarantine", "?dataset=orders&after_id=5&limit=50", null],
-    ["GET", "/ingest/quarantine", "", null],
+    ["GET", "/v1/ingest/checkpoints/kafka%2Forders%201", "", null],
+    ["GET", "/v1/ingest/contracts", "", null],
+    ["GET", "/v1/ingest/contracts/orders", "", null],
+    ["PUT", "/v1/ingest/contracts/orders", "", { version: 2, fields: [] }],
+    ["GET", "/v1/ingest/contracts/orders/quality", "", null],
+    ["GET", "/v1/ingest/quarantine", "?dataset=orders&after_id=5&limit=50", null],
+    ["GET", "/v1/ingest/quarantine", "", null],
   ]);
 });
 
 test("quarantine delete expects 204 and surfaces 404", async () => {
   const ok = recorder(204);
   await IngestControlClient.fromClient(ok.client).deleteQuarantine(9);
-  assert.deepEqual(ok.seen, [["DELETE", "/ingest/quarantine/9", "", null]]);
+  assert.deepEqual(ok.seen, [["DELETE", "/v1/ingest/quarantine/9", "", null]]);
   const missing = recorder(404, { title: "nf", status: 404 });
   await assert.rejects(() => IngestControlClient.fromClient(missing.client).deleteQuarantine(1));
 });
@@ -55,7 +55,7 @@ test("memory associateBatch fills purpose and validates ids", async () => {
   assert.deepEqual(seen, [
     [
       "POST",
-      "/memory/associate/batch",
+      "/v1/memory/associate/batch",
       "",
       {
         items: [
@@ -71,10 +71,10 @@ test("memory associateBatch fills purpose and validates ids", async () => {
 test("files createFolder posts key and bucket", async () => {
   const folder = {
     bucket: "t", key: "a/", row_id: null, size: 0, etag: '"e"', content_type: "application/x-directory",
-    modified_ns: 1, is_folder: true, download_url: "/files/content?key=a%2F",
+    modified_ns: 1, is_folder: true, download_url: "/v1/files/content?key=a%2F",
   };
   const { seen, client } = recorder(201, folder);
   const meta = await FilesClient.fromClient(client).createFolder("a", { bucket: "t" });
   assert.equal(meta.is_folder, true);
-  assert.deepEqual(seen, [["POST", "/files/folders", "", { key: "a", bucket: "t" }]]);
+  assert.deepEqual(seen, [["POST", "/v1/files/folders", "", { key: "a", bucket: "t" }]]);
 });

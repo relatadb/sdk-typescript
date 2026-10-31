@@ -39,7 +39,7 @@
  *   field, or `undefined` when the server emits the legacy `{"error": "..."}`
  *   shape. Two vocabularies exist in real responses (#2555): most HTTP errors
  *   (auth/ACL/ingest/admin/...) use kebab-case, e.g. `"access-denied"`,
- *   `"parse-error"` (catalogue: `docs/api/error-codes.md`); `/query`'s
+ *   `"parse-error"` (catalogue: `docs/api/error-codes.md`); `/v1/query`'s
  *   planner/execution errors use the `QueryError`-derived `REL_*` form, e.g.
  *   `"REL_PARSE"`, `"REL_ACL"` (catalogue: `docs/src/end-users/error-codes.md`).
  *   Match on the literal string rather than assuming either form — do not
@@ -59,7 +59,7 @@ export class RelataError extends Error {
   /**
    * The server's RFC 7807 `code` extension field, when the server emits
    * `application/problem+json`. Kebab-case for most HTTP errors, `REL_*` for
-   * `QueryError`-derived `/query*` errors — see the class docstring.
+   * `QueryError`-derived `/v1/query*` errors — see the class docstring.
    */
   readonly code: string | undefined;
   /** RFC 7807 `type` URL linking to the error docs. */

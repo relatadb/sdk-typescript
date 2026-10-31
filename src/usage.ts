@@ -258,7 +258,7 @@ export interface UsageObservation {
  * no target-revision field. The server checks the caller's tenant and target
  * visibility and returns only after local WAL sync. It rechecks visibility on
  * exact retries, so a deleted/hidden target returns 404 without appending a
- * second row. Cluster deployments are currently rejected by `/events/append`.
+ * second row. Cluster deployments are currently rejected by `/v1/ingest/events`.
  */
 export async function recordUsage(
   client: Pick<RelataClient, "appendEvent">,

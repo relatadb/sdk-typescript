@@ -1,6 +1,6 @@
 /**
  * Observability stream SDK (#3822, #3828) — SSE consumer for
- * `GET /observe/stream`.
+ * `GET /v1/observe/stream`.
  *
  * The server streams structured `ObservabilityEvent` JSON objects — one per
  * `data: {...}\n\n` SSE line. The endpoint is opt-in via
@@ -20,7 +20,7 @@ import { StreamingHttpError } from "./streaming.ts";
 import { bodyOrClosedStream } from "./_body.ts";
 
 /**
- * A single structured observability event yielded by `GET /observe/stream`.
+ * A single structured observability event yielded by `GET /v1/observe/stream`.
  *
  * Field names are preserved verbatim from the server's `ObservabilityEvent`
  * JSON wire shape (snake_case), so the SDK object is a structural match of
@@ -45,7 +45,7 @@ export interface ObservabilityEvent {
 
 /**
  * Observability SSE client — async-iterable stream of
- * {@link ObservabilityEvent} from the governed `/observe/stream` door.
+ * {@link ObservabilityEvent} from the governed `/v1/observe/stream` door.
  */
 export class ObservabilityClient {
   readonly #client: RelataClient;
@@ -75,7 +75,7 @@ export class ObservabilityClient {
   }
 
   /**
-   * Stream structured observability events from `GET /observe/stream`.
+   * Stream structured observability events from `GET /v1/observe/stream`.
    *
    * The server emits one `data: {...}\n\n` SSE line per
    * {@link ObservabilityEvent}; this generator yields each parsed JSON object
@@ -101,7 +101,7 @@ export class ObservabilityClient {
    * ```
    */
   async *observeStream(): AsyncGenerator<ObservabilityEvent> {
-    const url = `${this.#client.baseUrl}/observe/stream`;
+    const url = `${this.#client.baseUrl}/v1/observe/stream`;
     const response = await this.#client.fetchImpl(url, {
       method: "GET",
       headers: this.#headers(),

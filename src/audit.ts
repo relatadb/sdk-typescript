@@ -1,14 +1,14 @@
 /**
  * Audit + provenance SDK (#78).
  *
- * Wraps `/audit/count`, `/audit/entries`, `/audit/log`.
+ * Wraps `/v1/audit/count` and `/v1/audit/log`.
  */
 
 import { RelataClient } from "./client.ts";
 import { type TypedClientCtor, TypedClientBase, qs } from "./_typed-http.ts";
 
 /**
- * Audit + provenance client — entry listing and query correlation.
+ * Audit + provenance client — chain count and the filtered audit log.
  */
 export class AuditClient extends TypedClientBase {
   constructor(opts: TypedClientCtor) {
@@ -21,49 +21,19 @@ export class AuditClient extends TypedClientBase {
   }
 
   // -------------------------------------------------------------------------
-  // Audit entries (#78)
+  // Audit count + log (#78)
   // -------------------------------------------------------------------------
 
   /**
    * Total audit-entry count + chain integrity flag.
-   * Wraps `GET /audit/count`.
+   * Wraps `GET /v1/audit/count`.
    */
   async count(): Promise<Record<string, unknown>> {
-    return this._get("/audit/count");
+    return this._get("/v1/audit/count");
   }
 
   /**
-   * Paginated audit-entry listing with filters.
-   * Wraps `GET /audit/entries`. Returns
-   * `{"entries": [...], "next_cursor"?: string, "chain_valid": bool}`.
-   */
-  async entries(
-    opts: {
-      principal?: string;
-      purpose?: string;
-      decision?: string;
-      requestId?: string;
-      sinceNs?: number;
-      untilNs?: number;
-      limit?: number;
-      cursor?: string;
-    } = {},
-  ): Promise<Record<string, unknown>> {
-    const path = `/audit/entries${qs({
-      principal: opts.principal,
-      purpose: opts.purpose,
-      decision: opts.decision,
-      request_id: opts.requestId,
-      since: opts.sinceNs,
-      until: opts.untilNs,
-      limit: opts.limit ?? 100,
-      cursor: opts.cursor,
-    })}`;
-    return this._get(path);
-  }
-
-  /**
-   * Filtered mutation-style audit projections. Wraps `GET /audit/log`.
+   * Filtered mutation-style audit projections. Wraps `GET /v1/audit/log`.
    * `from`/`to` are inclusive timestamp bounds, `table` a substring of the
    * derived resource; `tenantId` only applies to an unscoped admin caller.
    * Returns `{"entries": [...], "chain_valid": bool}`.
@@ -71,7 +41,7 @@ export class AuditClient extends TypedClientBase {
   async log(
     opts: { limit?: number; from?: string; to?: string; table?: string; tenantId?: string } = {},
   ): Promise<Record<string, unknown>> {
-    const path = `/audit/log${qs({
+    const path = `/v1/audit/log${qs({
       limit: opts.limit ?? 100,
       from: opts.from,
       to: opts.to,
@@ -80,29 +50,4 @@ export class AuditClient extends TypedClientBase {
     })}`;
     return this._get(path);
   }
-
-  /**
-   * Look up a single audit entry by its `request_id`. Returns `null` when
-   * no entry matches (the server returns an empty page).
-   */
-  async findByRequestId(
-    requestId: string,
-  ): Promise<Record<string, unknown> | null> {
-    const page = await this.entries({ requestId, limit: 1 });
-    const entries =
-      typeof page === "object" && page !== null && Array.isArray(page["entries"])
-        ? page["entries"]
-        : undefined;
-    if (Array.isArray(entries) && entries.length > 0) {
-      const first = entries[0];
-      if (typeof first !== "object" || first === null) return null;
-      const row = first as Record<string, unknown>;
-      // Never return a different request's entry (e.g. a server that ignores
-      // the `request_id` filter answers with the newest entry).
-      if ("request_id" in row && row["request_id"] !== requestId) return null;
-      return row;
-    }
-    return null;
-  }
-
 }

@@ -18,8 +18,8 @@
  * npm install @langchain/langgraph-checkpoint @langchain/core
  * ```
  *
- * The A2A checkpoint endpoints (`PUT/GET /a2a/checkpoints/{thread_id}/{checkpoint_id}`,
- * `GET /a2a/checkpoints/{thread_id}`) keep exact state in a bounded,
+ * The A2A checkpoint endpoints (`PUT/GET /v1/a2a/checkpoints/{thread_id}/{checkpoint_id}`,
+ * `GET /v1/a2a/checkpoints/{thread_id}`) keep exact state in a bounded,
  * process-local map (4096 entries, FIFO eviction). State is lost when the
  * server restarts. Saves also attempt a governed `MemoryItem` mirror for
  * audit/provenance, but the mirror is not an exact checkpoint recovery source.
@@ -84,7 +84,7 @@ const WRITES_SUFFIX = "__writes";
 
 /**
  * Encode `(checkpointNs, checkpointId)` into the single path segment the
- * `/a2a/checkpoints/{thread_id}/{checkpoint_id}` route expects.
+ * `/v1/a2a/checkpoints/{thread_id}/{checkpoint_id}` route expects.
  *
  * `checkpointNs` is percent-encoded (it may be empty, or a subgraph
  * namespace containing arbitrary characters); `checkpointId` is a LangGraph
@@ -177,7 +177,7 @@ function requireThreadId(config: RunnableConfig | undefined): {
   if (!threadId) {
     throw new Error(
       "RelataCheckpointer requires a thread_id in config.configurable " +
-        '(e.g. { configurable: { thread_id: "..." } }) — the Relata /a2a/checkpoints ' +
+        '(e.g. { configurable: { thread_id: "..." } }) — the Relata /v1/a2a/checkpoints ' +
         "door has no cross-thread listing route.",
     );
   }
@@ -187,10 +187,10 @@ function requireThreadId(config: RunnableConfig | undefined): {
 
 const DELETE_THREAD_UNSUPPORTED =
   "RelataCheckpointer does not support thread deletion: the Relata " +
-  "/a2a/checkpoints door has no delete route (checkpoints FIFO-evict " +
+  "/v1/a2a/checkpoints door has no delete route (checkpoints FIFO-evict " +
   "server-side — see docs/src/guides/langgraph-checkpointer.md). For explicit " +
   "governed erasure of the audit-trail MemoryItem mirror, call " +
-  "`DELETE /memory/forget/:id` directly against the underlying memory item id.";
+  "`DELETE /v1/memory/forget/:id` directly against the underlying memory item id.";
 
 // ---------------------------------------------------------------------------
 // RelataCheckpointer
@@ -373,7 +373,7 @@ export class RelataCheckpointer extends BaseCheckpointSaver {
 
   /**
    * Store a checkpoint in the server's process-local map.
-   * `PUT /a2a/checkpoints/{thread_id}/{checkpoint_id}`
+   * `PUT /v1/a2a/checkpoints/{thread_id}/{checkpoint_id}`
    * stores the checkpoint + metadata verbatim; overwrites any existing
    * checkpoint for the same id (re-saves don't accumulate duplicates).
    */
@@ -448,9 +448,9 @@ export class RelataCheckpointer extends BaseCheckpointSaver {
    *
    * @remarks
    * Server-limited stub (#2756): this method **always throws**. The Relata
-   * `/a2a/checkpoints` door has no delete route (checkpoints FIFO-evict
+   * `/v1/a2a/checkpoints` door has no delete route (checkpoints FIFO-evict
    * server-side instead). For governed erasure of the underlying
-   * audit-trail memory item, call `DELETE /memory/forget/:id` directly.
+   * audit-trail memory item, call `DELETE /v1/memory/forget/:id` directly.
    */
   override async deleteThread(_threadId: string): Promise<void> {
     throw new Error(DELETE_THREAD_UNSUPPORTED);

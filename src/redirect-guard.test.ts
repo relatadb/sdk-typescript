@@ -42,7 +42,7 @@ test("assertNotRedirected: throws NetworkError on a 3xx response", () => {
     headers: { location: "https://attacker.example/steal" },
   });
   assert.throws(
-    () => assertNotRedirected(response, "http://relata.local/query"),
+    () => assertNotRedirected(response, "http://relata.local/v1/query"),
     (err: unknown) => {
       assert.ok(err instanceof NetworkError, "should be NetworkError");
       return true;

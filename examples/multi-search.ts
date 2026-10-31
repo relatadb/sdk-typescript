@@ -1,7 +1,7 @@
 /**
  * multi-search.ts — federated multi-query search in one round-trip (#967).
  *
- * `POST /multi-search` lets you query N types (or N query strings) in a single
+ * `POST /v1/search/multi` lets you query N types (or N query strings) in a single
  * HTTP call. The server runs each query in parallel and returns a combined
  * result envelope with `processingTimeMs` for the whole batch.
  *

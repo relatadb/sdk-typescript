@@ -31,7 +31,7 @@
  * Per ADR-0298, RelataDB has no server-side agent loop and orchestration
  * lives in the SDK. `sdks/python/relata/rag.py`'s `RagClient` stays the
  * canonical implementation; `./rag.ts`'s `RagClient` stays a thin
- * pass-through over the frozen `/rag/query` contract. This module is the
+ * pass-through over the frozen `/v1/rag/query` contract. This module is the
  * one exception epic #4576 opens: the query-understanding layer *above*
  * that thin pass-through, now shipped here too.
  *
@@ -48,7 +48,7 @@ import { TimeoutError } from "./errors.ts";
 
 // ---------------------------------------------------------------------------
 // 0. Content-safety pre-filter (#4536) — runs before everything else, before
-//    any /rag/query or /query call is constructed.
+//    any /v1/rag/query or /v1/query call is constructed.
 // ---------------------------------------------------------------------------
 
 /**
@@ -364,7 +364,7 @@ export function isNumericIntent(query: string): boolean {
  *
  * `hypothesisFn` is called with `query` and must return a hypothetical
  * answer (plain text); that hypothetical answer becomes the `query` field
- * sent to `POST /rag/query` (#4514), which embeds and searches it
+ * sent to `POST /v1/rag/query` (#4514), which embeds and searches it
  * server-side — this function does not embed anything itself.
  */
 export async function expandQueryHyde(
@@ -408,7 +408,7 @@ export function decomposeQuery(query: string): string[] {
  * result lists: `max(10, 60 / n)` (verified in the reference toolkit).
  * Deliberately *not* RelataDB's fixed internal `RRF_K=60`
  * (`crates/relata-query/src/hybrid.rs`), which fuses BM25⊕vector within one
- * `/rag/query` call — a different merge at a different layer.
+ * `/v1/rag/query` call — a different merge at a different layer.
  */
 export function rrfKForFanout(nSubqueries: number): number {
   if (nSubqueries <= 0) throw new RangeError("nSubqueries must be positive");
@@ -623,7 +623,7 @@ export interface RouteQueryOptions {
 
 /**
  * Route an attribute-filter-shaped query (#4536) to a governed SQL
- * `/query` call instead of a semantic-similarity retrieval guess.
+ * `/v1/query` call instead of a semantic-similarity retrieval guess.
  *
  * Returns `undefined` (never throws for "nothing to route") when
  * {@link extractAttributeFilters} found nothing, or when `knownFields` is
@@ -842,7 +842,7 @@ export async function routeRankingQuery(
 //
 // "Give me all calls made by X last year" is structurally different from
 // the four shapes above: its legitimate result can be thousands to millions
-// of rows. `POST /rag/export` always runs the query as a background
+// of rows. `POST /v1/rag/export` always runs the query as a background
 // operation; a result at/under the server's row threshold comes back
 // inline, a larger one is written as a governed S3Object and the response
 // carries the real count, a small explicitly-labeled preview, and the
@@ -859,7 +859,7 @@ export const ENUMERATION_POLL_INTERVAL_MS = 500;
 export const ENUMERATION_POLL_TIMEOUT_MS = 300_000;
 
 /**
- * Result of a completed `POST /rag/export` operation (#4535).
+ * Result of a completed `POST /v1/rag/export` operation (#4535).
  *
  * Exactly one of two shapes, distinguished by {@link isFileBacked}:
  * **Inline** (`rowCount` at/under the server's threshold): `data` carries
@@ -957,7 +957,7 @@ function enumerationExportSql(
 }
 
 /**
- * @internal Thin `POST /rag/export` + `GET /v1/operations/{id}` transport,
+ * @internal Thin `POST /v1/rag/export` + `GET /v1/operations/{id}` transport,
  * built off the same `TypedClientBase` plumbing `RagClient` (`rag.ts`) uses
  * — inherits auth/tenant/timeout/retry from the parent `RelataClient`.
  */
@@ -967,7 +967,7 @@ class RagExportTransport extends TypedClientBase {
   }
 
   export(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this._post<Record<string, unknown>>("/rag/export", payload);
+    return this._post<Record<string, unknown>>("/v1/rag/export", payload);
   }
 
   operationStatus(operationId: string): Promise<Record<string, unknown>> {
@@ -997,7 +997,7 @@ export interface RouteEnumerationOptions {
 
 /**
  * Route an ENUMERATION-shaped query (#4535, e.g. "give me all calls made by
- * 9800004040 last year") to `POST /rag/export` instead of a widened-`topK`
+ * 9800004040 last year") to `POST /v1/rag/export` instead of a widened-`topK`
  * retrieval guess that can never be exhaustive.
  *
  * Returns `undefined` (caller should fall back to retrieval) only when
@@ -1044,7 +1044,7 @@ export async function routeEnumerationQuery(
 }
 
 // ---------------------------------------------------------------------------
-// Entry point — composes everything ahead of the first /rag/query call
+// Entry point — composes everything ahead of the first /v1/rag/query call
 // ---------------------------------------------------------------------------
 
 /** Result of {@link smartRagQuery} — extends the plain `{hits}` RAG response with the gate/routing outcome. */
@@ -1107,7 +1107,7 @@ export interface SmartRagQueryOptions {
 /**
  * Run `query` through the content-safety gate, structured-attribute
  * routing, decomposition, per-sub-query shape dispatch, and optional HyDE,
- * then issue the (possibly several, parallel) `/rag/query` calls via a
+ * then issue the (possibly several, parallel) `/v1/rag/query` calls via a
  * `RagClient` built from `client` and RRF-merge the results.
  *
  * Sub-query fan-out runs concurrently via `Promise.all` — the TypeScript
@@ -1116,7 +1116,7 @@ export interface SmartRagQueryOptions {
  * mirror the sync twin's `max_workers`.
  *
  * `refused` is set (empty `hits`) when the content-safety gate matched,
- * before any `/rag/query`/`/query` call was made. `sqlResult` is set (empty
+ * before any `/v1/rag/query`/`/v1/query` call was made. `sqlResult` is set (empty
  * `hits`) when an attribute-filter/aggregation/negation/boolean/
  * ranking-shaped query was routed to SQL instead of retrieval. Otherwise
  * this is the (possibly RRF-merged) retrieval result — with `lowConfidence`

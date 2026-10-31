@@ -1,7 +1,7 @@
 /**
  * Memory — Mem0-style high-level memory client (#684).
  *
- * A thin convenience layer over Relata's governed `/memory/*` verbs (ADR-144)
+ * A thin convenience layer over Relata's governed `/v1/memory/*` verbs (ADR-144)
  * so the common agent-memory case is a one-liner instead of hand-built
  * requests:
  *
@@ -249,7 +249,7 @@ export class Memory {
       session_id: opts.sessionId ?? this.#sessionId,
     };
     const result = unwrapMcp(
-      await this.#post("/memory/remember", payload),
+      await this.#post("/v1/memory/remember", payload),
     );
     const id = result["id"];
     return id !== undefined && id !== null ? String(id) : "";
@@ -274,7 +274,7 @@ export class Memory {
       items: batchItems(items, defaultSession),
     };
     const result = unwrapMcp(
-      await this.#post("/memory/remember/batch", payload),
+      await this.#post("/v1/memory/remember/batch", payload),
     );
     return batchIds(result);
   }
@@ -317,36 +317,29 @@ export class Memory {
     query: string,
     opts: MemoryRecallOptions,
   ): Promise<Record<string, unknown>> {
-    const params = new URLSearchParams();
-    params.set("q", query);
-    params.set("purpose", this.#purpose);
-    params.set("top_k", String(opts.topK ?? 5));
+    const body: Record<string, unknown> = {
+      q: query,
+      purpose: this.#purpose,
+      top_k: opts.topK ?? 5,
+    };
     const sid = opts.sessionId ?? this.#sessionId;
-    if (sid) params.set("session_id", sid);
-    if (opts.asOf) params.set("as_of", opts.asOf);
-    if (opts.minConfidence !== undefined) {
-      params.set("min_confidence", String(opts.minConfidence));
-    }
+    if (sid) body["session_id"] = sid;
+    if (opts.asOf) body["as_of"] = opts.asOf;
+    if (opts.minConfidence !== undefined) body["min_confidence"] = opts.minConfidence;
     if (opts.recencyHalfLifeSecs !== undefined) {
-      params.set("recency_half_life_secs", String(opts.recencyHalfLifeSecs));
+      body["recency_half_life_secs"] = opts.recencyHalfLifeSecs;
     }
-    if (opts.budgetTokens !== undefined) {
-      params.set("budget_tokens", String(opts.budgetTokens));
-    }
-    if (opts.stabilityDays !== undefined) {
-      params.set("stability_days", String(opts.stabilityDays));
-    }
-    if (opts.cancelThreshold !== undefined) {
-      params.set("cancel_threshold", String(opts.cancelThreshold));
-    }
-    return unwrapMcp(await this.#get(`/memory/recall?${params}`));
+    if (opts.budgetTokens !== undefined) body["budget_tokens"] = opts.budgetTokens;
+    if (opts.stabilityDays !== undefined) body["stability_days"] = opts.stabilityDays;
+    if (opts.cancelThreshold !== undefined) body["cancel_threshold"] = opts.cancelThreshold;
+    return unwrapMcp(await this.#post("/v1/memory/recall", body));
   }
 
   /**
    * Fetch a single memory by id, or `null` if not found.
    */
   async get(memoryId: string): Promise<Record<string, unknown> | null> {
-    const path = `/memory/recognize/${enc(memoryId)}?purpose=${enc(this.#purpose)}`;
+    const path = `/v1/memory/recognize/${enc(memoryId)}?purpose=${enc(this.#purpose)}`;
     const result = unwrapMcp(await this.#get(path));
     const memory = result["memory"];
     return typeof memory === "object" && memory !== null && !Array.isArray(memory)
@@ -364,7 +357,7 @@ export class Memory {
       purpose: this.#purpose,
     };
     const result = unwrapMcp(
-      await this.#post("/memory/consolidate", payload),
+      await this.#post("/v1/memory/consolidate", payload),
     );
     const newId = result["new_id"];
     return newId !== undefined && newId !== null ? String(newId) : "";
@@ -377,14 +370,14 @@ export class Memory {
    * `policy`, `forget_at_ns`).
    */
   async forget(memoryId: string): Promise<Record<string, unknown>> {
-    const path = `/memory/forget/${enc(memoryId)}?purpose=${enc(this.#purpose)}`;
+    const path = `/v1/memory/forget/${enc(memoryId)}?purpose=${enc(this.#purpose)}`;
     return unwrapMcp(await this.#delete(path));
   }
 
   /**
    * Approve or reject a pending memory (`decision` is `"approve"` or `"reject"`).
    *
-   * Wraps `POST /memory/review/{id}`. Memory stored with an `external:` origin
+   * Wraps `POST /v1/memory/review/{id}`. Memory stored with an `external:` origin
    * is `pending` and hidden from recall until reviewed; the row is superseded
    * by a reviewed copy, so `asOf` recall still sees the earlier state. Returns
    * `id`, `review_status`, `previous_review_status` and `changed`.
@@ -396,7 +389,7 @@ export class Memory {
   ): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = { decision, purpose: this.#purpose };
     if (opts.reason) payload.reason = opts.reason;
-    return unwrapMcp(await this.#post(`/memory/review/${enc(memoryId)}`, payload));
+    return unwrapMcp(await this.#post(`/v1/memory/review/${enc(memoryId)}`, payload));
   }
 
   // -------------------------------------------------------------------------
@@ -406,7 +399,7 @@ export class Memory {
   /**
    * Link two memories with a typed relation.
    *
-   * Wraps `POST /memory/associate`. The server reads `from_id` / `to_id` /
+   * Wraps `POST /v1/memory/associate`. The server reads `from_id` / `to_id` /
    * `relation` (`confidence` is not part of the server schema and is ignored).
    * Returns the association record.
    */
@@ -422,13 +415,13 @@ export class Memory {
       relation,
       purpose: this.#purpose,
     };
-    return unwrapMcp(await this.#post("/memory/associate", payload));
+    return unwrapMcp(await this.#post("/v1/memory/associate", payload));
   }
 
   /**
    * Link many memory pairs in one request.
    *
-   * Wraps `POST /memory/associate/batch`. Each item is
+   * Wraps `POST /v1/memory/associate/batch`. Each item is
    * `{ from_id, to_id, relation?, confidence?, purpose? }`; the client's purpose
    * fills any item that omits it. Resolves with
    * `{ stored, submitted, results }` (`stored` below `submitted` means some
@@ -441,13 +434,13 @@ export class Memory {
       }
       return { purpose: this.#purpose, ...item };
     });
-    return unwrapMcp(await this.#post("/memory/associate/batch", { items: out }));
+    return unwrapMcp(await this.#post("/v1/memory/associate/batch", { items: out }));
   }
 
   /**
    * List episodes with full `Episode` detail.
    *
-   * Wraps `GET /memory/episodes`. Optional `sessionId` filters to one
+   * Wraps `GET /v1/memory/episodes`. Optional `sessionId` filters to one
    * session; `asOf` makes the lookup bi-temporal.
    */
   async episodes(
@@ -458,7 +451,7 @@ export class Memory {
     const sid = opts.sessionId ?? this.#sessionId;
     if (sid) params.set("session_id", sid);
     if (opts.asOf) params.set("as_of", opts.asOf);
-    const result = unwrapMcp(await this.#get(`/memory/episodes?${params}`));
+    const result = unwrapMcp(await this.#get(`/v1/memory/episodes?${params}`));
     const rows =
       typeof result === "object" && result !== null
         ? (result["rows"] ?? result)
@@ -469,30 +462,30 @@ export class Memory {
   /**
    * Return the PROV-O assertion chain for `memoryId`.
    *
-   * Wraps `GET /memory/justify/<id>`. The chain explains how the memory was
+   * Wraps `GET /v1/memory/justify/<id>`. The chain explains how the memory was
    * derived — source session, tool call, prior belief, etc.
    */
   async justify(memoryId: string): Promise<Record<string, unknown>> {
-    const path = `/memory/justify/${enc(memoryId)}?purpose=${enc(this.#purpose)}`;
+    const path = `/v1/memory/justify/${enc(memoryId)}?purpose=${enc(this.#purpose)}`;
     return unwrapMcp(await this.#get(path));
   }
 
   /**
    * Resolve a memory's supersession chain to its canonical head.
    *
-   * Wraps `GET /memory/resolve/<id>`. Follows the supersession chain from
+   * Wraps `GET /v1/memory/resolve/<id>`. Follows the supersession chain from
    * `memoryId` to the current canonical belief and returns it. (The route is
    * GET-only server-side and does not read a `policy` field — #2675.)
    */
   async resolve(memoryId: string): Promise<Record<string, unknown>> {
-    const path = `/memory/resolve/${enc(memoryId)}?purpose=${enc(this.#purpose)}`;
+    const path = `/v1/memory/resolve/${enc(memoryId)}?purpose=${enc(this.#purpose)}`;
     return unwrapMcp(await this.#get(path));
   }
 
   /**
    * Produce a summary belief from a set of source memories.
    *
-   * Wraps `POST /memory/summarise`. `sourceIds` is the list of memory ids to
+   * Wraps `POST /v1/memory/summarise`. `sourceIds` is the list of memory ids to
    * summarise; `summaryContent` lets the caller supply the summary text (the
    * server otherwise derives one). Returns the new summary memory.
    */
@@ -507,7 +500,43 @@ export class Memory {
     if (opts.summaryContent !== undefined) {
       payload["contents"] = [opts.summaryContent];
     }
-    return unwrapMcp(await this.#post("/memory/summarise", payload));
+    return unwrapMcp(await this.#post("/v1/memory/summarise", payload));
+  }
+
+  /**
+   * Store a versioned agent procedure (`POST /v1/memory/remember-procedure`).
+   *
+   * Re-storing the same `name` for an `agentId` creates a new version that
+   * supersedes the prior one.
+   */
+  async rememberProcedure(
+    agentId: string,
+    name: string,
+    instructionText: string,
+  ): Promise<Record<string, unknown>> {
+    const payload: Record<string, unknown> = {
+      agent_id: agentId,
+      name,
+      instruction_text: instructionText,
+      purpose: this.#purpose,
+    };
+    return unwrapMcp(await this.#post("/v1/memory/remember-procedure", payload));
+  }
+
+  /**
+   * Read back stored procedures for an agent
+   * (`GET /v1/memory/recall-procedure`). Only the latest version per name
+   * is returned unless `allVersions` is set.
+   */
+  async recallProcedure(
+    agentId: string,
+    opts: { name?: string; allVersions?: boolean; limit?: number } = {},
+  ): Promise<Record<string, unknown>> {
+    const params = new URLSearchParams({ agent_id: agentId, purpose: this.#purpose });
+    if (opts.name) params.set("name", opts.name);
+    if (opts.allVersions !== undefined) params.set("all_versions", String(opts.allVersions));
+    if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+    return unwrapMcp(await this.#get(`/v1/memory/recall-procedure?${params}`));
   }
 
   // -------------------------------------------------------------------------

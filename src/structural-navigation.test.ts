@@ -14,7 +14,7 @@ import { PurposeError } from "./errors.ts";
 import { StructuralNavigator, type StructureNode } from "./structural-navigation.ts";
 
 // ---------------------------------------------------------------------------
-// Mock fetch helper — queues one JSON response body per `/query` call.
+// Mock fetch helper — queues one JSON response body per `/v1/query` call.
 // ---------------------------------------------------------------------------
 
 function queuedClient(

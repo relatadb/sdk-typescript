@@ -27,9 +27,9 @@ test("list, get and replay hit the documented routes with inherited auth", async
   await c.replay("evd_1");
   assert.equal((out["citations"] as { outcome: string }[])[0]?.outcome, "verified");
   assert.deepEqual(seen, [
-    ["GET", "/evidence", "?limit=5", null],
-    ["GET", "/evidence/evd_a%2Fb", "", null],
-    ["POST", "/evidence/evd_1/replay", "", { include_content: true }],
-    ["POST", "/evidence/evd_1/replay", "", {}],
+    ["GET", "/v1/evidence", "?limit=5", null],
+    ["GET", "/v1/evidence/evd_a%2Fb", "", null],
+    ["POST", "/v1/evidence/evd_1/replay", "", { include_content: true }],
+    ["POST", "/v1/evidence/evd_1/replay", "", {}],
   ]);
 });

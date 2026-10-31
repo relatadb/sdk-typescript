@@ -25,7 +25,7 @@ The v3 SDK accepts prepared detection rules through `GovernanceClient.createRule
 or MCP `createRule`. Raw Sigma YAML parsing/import is no longer an SDK or MCP
 server method. Convert YAML in OpenETL (the former `relata-connectors import-sigma`
 was removed), or convert externally and submit the prepared
-`name`, `condition_sql`, and `target_type` JSON fields through `/rules`.
+`name`, `condition_sql`, and `target_type` JSON fields through `/v1/rules`.
 
 TypeScript is **async-native**, so every SDK method returns a `Promise`. There are no
 separate `Async*` classes — that is the idiomatic parity with the Python SDK's sync/async
@@ -121,7 +121,7 @@ ingest → BM25-only vs. vector-only vs. fused search).
 
 ## Agent memory in three lines
 
-`Memory` is a Mem0-style surface over the governed `/memory/*` verbs — purpose + ACL
+`Memory` is a Mem0-style surface over the governed `/v1/memory/*` verbs — purpose + ACL
 stay on by default.
 
 ```typescript
@@ -165,14 +165,13 @@ const relata = createClient("http://localhost:9090", {
 | `.query<T>(sql, options?)` | `Promise<QueryResult<T>>` | Execute raw SQL. Wire shape normalised (see below). |
 | `.select(type)` | `QueryBuilder` | Begin a fluent query |
 | `.health()` | `Promise<HealthResponse>` | `GET /health` — liveness |
-| `.status()` | `Promise<StatusResponse>` | `GET /status` — profile, role, quota |
-| `.stats()` | `Promise<Stats>` | `GET /debug/stats` — engine counts |
+| `.status()` | `Promise<StatusResponse>` | `GET /v1/system/status` — profile, role, quota |
+| `.stats()` | `Promise<Stats>` | `GET /v1/system/stats` — engine counts |
 | `.version()` | `Promise<VersionInfo>` | `GET /version` — build info |
 | `.ready()` | `Promise<ReadyReport>` | `GET /health/ready` — 9-condition readiness |
-| `.auditCount()` | `Promise<AuditCountResponse>` | `GET /audit/count` — entry count + `chainValid` |
-| `.clusterNodes()` | `Promise<ClusterNode[]>` | `GET /cluster/nodes` — list cluster members |
-| `.ingestDocument(objects, purpose?)` | `Promise<IngestDocumentResponse>` | Queues prepared mixed-type rows through `POST /ingest/bulk` (`queued: true`) and returns one process-local task receipt |
-| `.ingestDocumentStatus(taskId)` | `Promise<IngestDocumentTaskStatus>` | `GET /ingest/tasks/:task_id` — observe pending/complete/partial/failed/uncertain/incomplete state plus confirmed written/dropped row counts |
+| `.auditCount()` | `Promise<AuditCountResponse>` | `GET /v1/audit/count` — entry count + `chainValid` |
+| `.ingestDocument(objects, purpose?)` | `Promise<IngestDocumentResponse>` | Queues prepared mixed-type rows through `POST /v1/ingest/bulk` (`queued: true`) and returns one process-local task receipt |
+| `.ingestDocumentStatus(taskId)` | `Promise<IngestDocumentTaskStatus>` | `GET /v1/ingest/tasks/:task_id` — observe pending/complete/partial/failed/uncertain/incomplete state plus confirmed written/dropped row counts |
 
 `ingestDocument` accepts application-prepared governed rows (for example a
 `DocumentSource`, linked `DocumentChunk` rows, and optional evidence rows with
@@ -304,7 +303,7 @@ result.elapsedMs;   // number
 
 ## `Memory` — agent memory
 
-Mem0-style governed agent memory over `/memory/*` (ADR-144). Construct with a mandatory
+Mem0-style governed agent memory over `/v1/memory/*` (ADR-144). Construct with a mandatory
 `purpose`.
 
 ```typescript
@@ -344,18 +343,20 @@ const summary = await m.summarise([id1, id2], { summaryContent: "both prefer dif
 
 | Method | HTTP | Description |
 |---|---|---|
-| `.add(content, opts?)` | `POST /memory/remember` | Store a memory; returns its id |
-| `.addBatch(items, opts?)` | `POST /memory/remember/batch` | Bulk store; returns index-aligned ids |
-| `.search(query, opts?)` | `GET /memory/recall` | Recall ranked by confidence × recency × relevance |
-| `.searchDetailed(query, opts?)` | `GET /memory/recall` | Like `.search` but returns the full envelope, incl. read-only `recall_cost_tokens`/`cancelled`. `opts` also takes the ADR-145 knobs: `minConfidence`, `recencyHalfLifeSecs`, `budgetTokens`, `stabilityDays`, `cancelThreshold` |
-| `.get(memoryId)` | `GET /memory/recognize/:id` | Fetch one memory or `null` |
-| `.update(memoryId, content)` | `POST /memory/consolidate` | Governed supersede; returns new id |
-| `.forget(memoryId)` | `DELETE /memory/forget/:id` | Governed retention-policy retract |
-| `.associate(src, tgt, relation, opts?)` | `POST /memory/associate` | Link two memories |
-| `.episodes(opts?)` | `GET /memory/episodes` | List episodes |
-| `.justify(memoryId)` | `GET /memory/justify/:id` | PROV-O assertion chain |
-| `.resolve(memoryId)` | `GET /memory/resolve/:id` | Resolve a supersession chain to its canonical head |
-| `.summarise(sourceIds, opts?)` | `POST /memory/summarise` | Summary belief from sources |
+| `.add(content, opts?)` | `POST /v1/memory/remember` | Store a memory; returns its id |
+| `.addBatch(items, opts?)` | `POST /v1/memory/remember/batch` | Bulk store; returns index-aligned ids |
+| `.search(query, opts?)` | `POST /v1/memory/recall` | Recall ranked by confidence × recency × relevance |
+| `.searchDetailed(query, opts?)` | `POST /v1/memory/recall` | Like `.search` but returns the full envelope, incl. read-only `recall_cost_tokens`/`cancelled`. `opts` also takes the ADR-145 knobs: `minConfidence`, `recencyHalfLifeSecs`, `budgetTokens`, `stabilityDays`, `cancelThreshold` |
+| `.rememberProcedure(agentId, name, instructionText)` | `POST /v1/memory/remember-procedure` | Store a versioned agent procedure |
+| `.recallProcedure(agentId, opts?)` | `GET /v1/memory/recall-procedure` | Read back stored procedures (latest version per name unless `allVersions`) |
+| `.get(memoryId)` | `GET /v1/memory/recognize/:id` | Fetch one memory or `null` |
+| `.update(memoryId, content)` | `POST /v1/memory/consolidate` | Governed supersede; returns new id |
+| `.forget(memoryId)` | `DELETE /v1/memory/forget/:id` | Governed retention-policy retract |
+| `.associate(src, tgt, relation, opts?)` | `POST /v1/memory/associate` | Link two memories |
+| `.episodes(opts?)` | `GET /v1/memory/episodes` | List episodes |
+| `.justify(memoryId)` | `GET /v1/memory/justify/:id` | PROV-O assertion chain |
+| `.resolve(memoryId)` | `GET /v1/memory/resolve/:id` | Resolve a supersession chain to its canonical head |
+| `.summarise(sourceIds, opts?)` | `POST /v1/memory/summarise` | Summary belief from sources |
 
 The MCP envelope (`{"content": [{"type":"text","text":"<json>"}]}`) is unwrapped
 transparently.
@@ -446,7 +447,7 @@ const audit  = AuditClient.fromClient(relata);
 
 const rule   = await gov.createRule({ name: "big-xfer", condition_sql: "amount_usd > 1000000", target_type: "Transaction", severity: "high" });
 const tools  = await mcp.listTools();
-const entries = await audit.entries({ purpose: "compliance", limit: 50 });
+const entries = await audit.log({ limit: 50 });
 ```
 
 | Module | Class | Surface |
@@ -454,19 +455,18 @@ const entries = await audit.entries({ purpose: "compliance", limit: 50 });
 | `governance.ts` | `GovernanceClient` | Rules, retention (holds + WORM), breakglass, alerts, DSAR |
 | `mcp.ts` | `McpClient` | 22+ typed MCP tool wrappers + generic `callTool` |
 | `a2a.ts` | `A2AClient` | A2A tasks + LangGraph checkpoints + agent card |
-| `audit.ts` | `AuditClient` | Audit entries (filtered/paginated) + signed receipts + PDF export |
+| `audit.ts` | `AuditClient` | Audit count + filtered audit log |
 | `identity.ts` | `IdentityClient` | Identity label/uncertainty + lookup tables + `ERASE SUBJECT` |
-| `objects.ts` | `ObjectClient` | Typed upsert + batch via `/ingest?object_type=` |
+| `objects.ts` | `ObjectClient` | Typed upsert + batch via `/v1/ingest?object_type=` |
 | `ingest.ts` | `IngestClient` | Bulk NDJSON + CSV + media task status; it does not upload raw media bytes |
-| `files.ts` | `FilesClient` | Buffered governed Files `put`/`get`/`delete` for opaque bytes and representation metadata |
+| `files.ts` | `FilesClient` | Governed Files `put`/`get`/`head`/`list`/`delete`, resumable uploads, and media row content |
 | `vectors.ts` | `VectorClient` | KNN + hybrid search + similar-to (SQL-backed) |
 | `system.ts` | `SystemClient` | Generic jobs and operator surfaces; no feed broker routing |
 | `feed-broker.ts` | `FeedBrokerClient` | Optional RIFN broker health, channels, signed-entry publishing at an explicit broker URL |
 | `streaming.ts` | `StreamingClient` | NDJSON row streams + SSE consumers (watch/alerts) + Arrow IPC |
-| `tenants.ts` | `TenantAdminClient` | Tenant CRUD + quota + sharing agreements + platform admin |
+| `tenants.ts` | `TenantAdminClient` | The caller's own tenant (`me`) |
 | `backup.ts` | `BackupClient` | Backup / restore / PITR (admin) |
-| `tokens.ts` | `TokenClient` | Dedup / uniqueness tokens (test-and-set) |
-| `log.ts` | `LogClient` | Ordered integrity log (append / head / load leaves) |
+| `tokens.ts` | `TokenClient` | Tenant self-service tokens (list / audit / rotate / revoke) |
 
 The former `get_domain_summary` MCP route is not a core tool in v3.0. To build
 the same application-facing inventory, call generic, tenant-scoped
@@ -491,14 +491,14 @@ create or sign entries, and `SystemClient.fromClient()` does not configure a
 broker client.
 
 **Admin-listener reachability (`adminBaseUrl`, #2321):** on a hardened
-`server`/`cluster` deployment, `/admin/*` and `/platform/*` are mounted only
+deployment, `/admin/*` is mounted only
 on the loopbound admin control-plane listener (`RELATA_ADMIN_BIND`, default
 `127.0.0.1:9091` — ADR-0261), never the main data-plane `baseUrl`. Pass
 `adminBaseUrl` to `RelataClient` (inherited automatically by
-`BackupClient`/`TenantAdminClient.fromClient(...)`) or directly to a typed
+`BackupClient.fromClient(...)`) or directly to a typed
 client's constructor options to reach those routes. Leave it unset (the
 default) on the free profile, where the admin listener isn't split from the
-data plane. A bare 404 from an admin/platform-only route with no error
+data plane. A bare 404 from an admin-only route with no error
 detail is rewritten into a hint pointing at this option instead of a
 confusing plain 404.
 
@@ -537,7 +537,7 @@ SSE consumers reconnect with exponential backoff until you break out of the
 
 ### HTTP Arrow IPC
 
-The supported columnar query path is `POST /query/arrow`. `StreamingClient`
+The supported columnar query path is `POST /v1/query/arrow`. `StreamingClient`
 exposes its response as raw byte chunks so an application can pass them to
 its own Arrow IPC reader. This SDK does not include a typed `apache-arrow`
 table helper.
@@ -556,7 +556,7 @@ for await (const chunk of streaming.queryArrowRaw(
 console.log(`Received ${totalBytes} Arrow IPC bytes`);
 ```
 
-`POST /ingest/media` was removed (#5942), together with
+`POST /v1/ingest/media` was removed (#5942), together with
 `IngestClient.mediaStatus()` and `McpClient.ingestMedia()`; poll OpenETL work
 items with `MediaWorkClient.get()`.
 
@@ -592,8 +592,7 @@ The inherited request timeout bounds the client request, and abort/stream
 cleanup applies to the client request; neither promises that server work
 already accepted by the engine is aborted or rolled back. See
 the [HTTP Files contract](../../docs/src/specs/files-api.md) for server
-behavior. This client wraps only `/files/content`, not the Files list or
-folder operations.
+behavior.
 
 ## Response models
 
@@ -603,7 +602,6 @@ folder operations.
 | `HealthResponse` | `status`, `profile`, `nodeId` |
 | `StatusResponse` | `profile`, `role`, `queryQuota` |
 | `AuditCountResponse` | `entries`, `chainValid` |
-| `ClusterNode` | `nodeId`, `role`, `url` |
 | `IngestDocumentResponse` | `taskId`, `rowsQueued`, `rowsRejected`, `errors`, `queueDepth` |
 | `VersionInfo` | `version`, `commit`, `profile`, `schemaVersion`, `features` |
 | `Stats` | `records`, `states`, `snapshotRows`, `logLeaves`, `tokens`, `raw` |
@@ -809,7 +807,7 @@ bearer token (defaults: `relata` / `relata-test`).
 
 AGPL-3.0-only — see the root `LICENSE` file.
 
-`StreamingClient.queryRows()` uses `/query/stream` NDJSON and yields data rows,
+`StreamingClient.queryRows()` uses `/v1/query/stream` NDJSON and yields data rows,
 not the reserved leading/terminal metadata frames. Treat the answer as complete
 only after the iterator finishes normally: missing, malformed, truncated or
 inconsistent terminal metadata raises `IncompleteQueryStreamError`, carrying

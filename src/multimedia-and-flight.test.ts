@@ -64,7 +64,7 @@ test("buildSimilarImageSql: escapes single quotes in mediaRef and index", () => 
 });
 
 // ---------------------------------------------------------------------------
-// #2251 — HTTP dispatch through /query
+// #2251 — HTTP dispatch through /v1/query
 // ---------------------------------------------------------------------------
 
 test("similarImage: posts SIMILAR_IMAGE operator + honours threshold/index/purpose", async () => {

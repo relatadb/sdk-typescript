@@ -87,11 +87,11 @@ test("runRagAnswer composes the full chain: real retrieval, synthesis, trace", a
   const traceCalls: Record<string, unknown>[] = [];
 
   const client = mockClient((path, body) => {
-    if (path === "/rag/query") {
+    if (path === "/v1/rag/query") {
       ragCalls += 1;
       return { status: 200, body: { hits: [hit("chunk-1")], total: 1 } };
     }
-    if (path === "/mcp/tools/call") {
+    if (path === "/v1/mcp/tools/call") {
       traceCalls.push(body!);
       const result = {
         stored: "RagAnswer",
@@ -172,7 +172,7 @@ test("content-safety refusal short-circuits before any call", async () => {
 
 test("SQL-routable shape short-circuits before synthesis", async () => {
   const client = mockClient((path) => {
-    if (path === "/query") {
+    if (path === "/v1/query") {
       return { status: 200, body: { rows: [{ count: 42 }], columns: ["count"], row_count: 1 } };
     }
     throw new Error(`unexpected path for SQL-routed query: ${path}`);
@@ -199,7 +199,7 @@ test("fanoutStrategies path still produces a full trace", async () => {
   const traceCalls: Record<string, unknown>[] = [];
 
   const client = mockClient((path, body) => {
-    if (path === "/rag/query") {
+    if (path === "/v1/rag/query") {
       const slot = (body?.["embedding_slot"] as string | undefined) ?? "text";
       const conf = slot === "text" ? 0.9 : 0.3;
       return {
@@ -207,7 +207,7 @@ test("fanoutStrategies path still produces a full trace", async () => {
         body: { hits: [hit(`chunk-${slot}`, { relevance_confidence: conf })], total: 1 },
       };
     }
-    if (path === "/mcp/tools/call") {
+    if (path === "/v1/mcp/tools/call") {
       traceCalls.push(body!);
       const result = { stored: "RagAnswer" };
       return {

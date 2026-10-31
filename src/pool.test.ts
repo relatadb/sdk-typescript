@@ -86,7 +86,7 @@ test("ClientPool: query() and search() delegate through the failover path", asyn
   const fetch = (async (input: RequestInfo | URL): Promise<Response> => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push(new URL(url).pathname);
-    if (url.endsWith("/query")) {
+    if (url.endsWith("/v1/query")) {
       return new Response(JSON.stringify({ rows: [{ id: "p1" }] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -106,5 +106,5 @@ test("ClientPool: query() and search() delegate through the failover path", asyn
   const searchResult = await pool.search({ query: "alice", type: "Person" });
   assert.deepEqual(searchResult.hits, []);
 
-  assert.deepEqual(calls, ["/query", "/search"]);
+  assert.deepEqual(calls, ["/v1/query", "/v1/search"]);
 });

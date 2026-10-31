@@ -8,7 +8,7 @@ test("Files preserves binary views, encoded keys, inherited authentication and D
   const methods: string[] = [];
   const fetchImpl: typeof globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
-    assert.equal(url.pathname, "/files/content");
+    assert.equal(url.pathname, "/v1/files/content");
     assert.equal(url.searchParams.get("key"), "folder/a+b ?&/雪");
     assert.equal(url.searchParams.get("bucket"), "tenant one");
     const headers = new Headers(init?.headers);
@@ -115,7 +115,7 @@ test("Files.upload resumes after a transient failure and sends chunk digests", a
   const fetchImpl: typeof globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
     const method = init!.method!;
-    if (method === "POST" && url.pathname === "/files/uploads") {
+    if (method === "POST" && url.pathname === "/v1/files/uploads") {
       const body = JSON.parse(new TextDecoder().decode(init!.body as ArrayBuffer));
       assert.match(body.sha256, /^[0-9a-f]{64}$/);
       server.size = body.size;
@@ -142,4 +142,32 @@ test("Files.upload resumes after a transient failure and sends chunk digests", a
   assert.equal(server.statusReads, 1);
   assert.equal(server.digests.length, 3);
   assert.ok(server.digests.every(d => /^[0-9a-f]{64}$/.test(d)));
+});
+
+test("Files head/list/mediaContent use the /v1 routes", async () => {
+  const seen: Array<[string, string, string]> = [];
+  const fetchImpl: typeof globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    seen.push([init!.method!, url.pathname, url.search]);
+    if (init?.method === "HEAD") {
+      if (url.searchParams.get("key") === "missing") return new Response(null, { status: 404 });
+      return new Response(null, { status: 200, headers: { ETag: '"h"', "Content-Length": "9", "Content-Type": "text/plain" } });
+    }
+    if (url.pathname === "/v1/files") return Response.json({ files: [], next_cursor: null });
+    return new Response(new Uint8Array([1, 2, 3]).buffer, { headers: { "Content-Type": "image/png" } });
+  };
+  const files = FilesClient.fromClient(new RelataClient({ baseUrl: "http://example.invalid", bearerToken: "s", fetch: fetchImpl }));
+  const meta = await files.head("a");
+  assert.equal(meta?.size, 9);
+  assert.equal(meta?.etag, '"h"');
+  assert.equal(await files.head("missing"), null);
+  assert.deepEqual(await files.list({ prefix: "docs/", limit: 5 }), { files: [], next_cursor: null });
+  const media = await files.mediaContent("row/1");
+  assert.deepEqual(media.data, new Uint8Array([1, 2, 3]));
+  assert.deepEqual(seen, [
+    ["HEAD", "/v1/files/content", "?key=a"],
+    ["HEAD", "/v1/files/content", "?key=missing"],
+    ["GET", "/v1/files", "?prefix=docs%2F&limit=5"],
+    ["GET", "/v1/media/row%2F1/content", ""],
+  ]);
 });

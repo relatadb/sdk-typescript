@@ -42,24 +42,24 @@ test("every call hits its documented route with exact bodies", async () => {
   await c.entitiesExist([{ type: "Person", match: { email: "a@b.c" } }]);
   await c.entitiesExist([], { definition: "kb" });
   assert.deepEqual(seen, [
-    ["POST", "/ontology/suggestions", "", { suggestions: [s] }],
-    ["GET", "/ontology/suggestions", "", null],
+    ["POST", "/v1/ontology/suggestions", "", { suggestions: [s] }],
+    ["GET", "/v1/ontology/suggestions", "", null],
     [
       "GET",
-      "/ontology/suggestions",
+      "/v1/ontology/suggestions",
       "?state=pending&kind=entity&definition=kb&low_confidence=true&stale=false&min_confidence=0.25&limit=5",
       null,
     ],
-    ["GET", "/ontology/suggestions/sug%2F1", "", null],
-    ["POST", "/ontology/suggestions/sug_1/decision", "", { decision: "accept", reason: "ok" }],
-    ["POST", "/ontology/suggestions/sug_1/decision", "", { decision: "accept", reason: "", accept_low_confidence: true }],
-    ["POST", "/ontology/suggestions/sug_1/decision", "", { decision: "reject", reason: "wrong" }],
-    ["POST", "/ontology/suggestions/sug_1/decision", "", { decision: "correct", reason: "typo", correction: fix }],
-    ["POST", "/ontology/suggestions/sug_1/decision", "", { decision: "reopen", reason: "" }],
-    ["POST", "/ontology/suggestions/apply", "", { definition: "kb" }],
-    ["POST", "/ontology/suggestions/apply", "", { definition: "kb", suggestion_ids: ["sug_1"] }],
-    ["POST", "/entities/exists", "", { candidates: [{ type: "Person", match: { email: "a@b.c" } }] }],
-    ["POST", "/entities/exists", "", { candidates: [], definition: "kb" }],
+    ["GET", "/v1/ontology/suggestions/sug%2F1", "", null],
+    ["POST", "/v1/ontology/suggestions/sug_1/decision", "", { decision: "accept", reason: "ok" }],
+    ["POST", "/v1/ontology/suggestions/sug_1/decision", "", { decision: "accept", reason: "", accept_low_confidence: true }],
+    ["POST", "/v1/ontology/suggestions/sug_1/decision", "", { decision: "reject", reason: "wrong" }],
+    ["POST", "/v1/ontology/suggestions/sug_1/decision", "", { decision: "correct", reason: "typo", correction: fix }],
+    ["POST", "/v1/ontology/suggestions/sug_1/decision", "", { decision: "reopen", reason: "" }],
+    ["POST", "/v1/ontology/suggestions/apply", "", { definition: "kb" }],
+    ["POST", "/v1/ontology/suggestions/apply", "", { definition: "kb", suggestion_ids: ["sug_1"] }],
+    ["POST", "/v1/entities/exists", "", { candidates: [{ type: "Person", match: { email: "a@b.c" } }] }],
+    ["POST", "/v1/entities/exists", "", { candidates: [], definition: "kb" }],
   ]);
 });
 

@@ -14,7 +14,7 @@ import type { Logger } from "./logger.ts";
 /**
  * The result of a SQL query executed against Relata.
  *
- * The wire shape returned by `POST /query` is normalised by the client so that
+ * The wire shape returned by `POST /v1/query` is normalised by the client so that
  * `rows` is **always** an array of row objects, regardless of whether the
  * server sent `data: [...]` (the rich shape) or `rows: <int>` (the legacy
  * count-only shape). See `RelataClient.query` for details.
@@ -72,9 +72,9 @@ export interface RelataClientOptions {
   /**
    * Base URL of the loopbound admin control-plane listener
    * (`RELATA_ADMIN_BIND`, default `127.0.0.1:9091`). Per ADR-0261,
-   * `/admin/*` and `/platform/*` routes are mounted **only** there on a
+   * `/admin/*` routes are mounted **only** there on a
    * hardened server/cluster deployment — set this so
-   * {@link BackupClient}/{@link TenantAdminClient}'s platform-tenant methods
+   * {@link BackupClient}'s admin methods
    * reach them (relatadb/RelataDB#2321). Leave unset (the default) when the
    * admin listener isn't split from the data plane (e.g. local/free-profile
    * dev) — every request then goes to `baseUrl`, unchanged.
@@ -190,7 +190,7 @@ export interface HealthResponse {
 }
 
 /**
- * Response from `GET /status`.
+ * Response from `GET /v1/system/status`.
  */
 export interface StatusResponse {
   /** Deployment profile: `"free"` | `"server"` | `"cluster"`. */
@@ -206,7 +206,7 @@ export interface StatusResponse {
 // ---------------------------------------------------------------------------
 
 /**
- * Response from `GET /audit/count`.
+ * Response from `GET /v1/audit/count`.
  */
 export interface AuditCountResponse {
   /** Total number of audit log entries in the tamper-evident chain. */
@@ -216,29 +216,6 @@ export interface AuditCountResponse {
    * and must be investigated immediately.
    */
   chainValid: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Cluster
-// ---------------------------------------------------------------------------
-
-/**
- * A single node in the Relata cluster.
- */
-export interface ClusterNode {
-  /** Node identifier (`NODE_ID` env var). */
-  nodeId: string;
-  /** Cluster role: `"coordinator"` | `"reader"` | `"writer"` | `"indexer"`. */
-  role: string;
-  /** Reachable URL of this node. */
-  url: string;
-}
-
-/**
- * Response from `GET /cluster/nodes`.
- */
-export interface ClusterNodesResponse {
-  nodes: ClusterNode[];
 }
 
 // ---------------------------------------------------------------------------
@@ -320,29 +297,17 @@ export interface WireHealthResponse {
   node_id: string;
 }
 
-/** @internal Wire shape returned by `GET /status`. */
+/** @internal Wire shape returned by `GET /v1/system/status`. */
 export interface WireStatusResponse {
   profile: string;
   role: string;
   query_quota: number;
 }
 
-/** @internal Wire shape returned by `GET /audit/count`. */
+/** @internal Wire shape returned by `GET /v1/audit/count`. */
 export interface WireAuditCountResponse {
   entries: number;
   chain_valid: boolean;
-}
-
-/** @internal Wire shape returned by `GET /cluster/nodes`. */
-export interface WireClusterNode {
-  node_id: string;
-  role: string;
-  url: string;
-}
-
-/** @internal */
-export interface WireClusterNodesResponse {
-  nodes: WireClusterNode[];
 }
 
 /** @internal Wire error envelope returned by the server. */
@@ -351,7 +316,7 @@ export interface WireErrorResponse {
   /**
    * RFC 7807 `code` extension field. Kebab-case for most HTTP errors (e.g.
    * `"access-denied"`); the `QueryError`-derived `REL_*` form (e.g.
-   * `"REL_PARSE"`) for `/query*` planner/execution errors — see
+   * `"REL_PARSE"`) for `/v1/query*` planner/execution errors — see
    * `RelataError` in `errors.ts` for the full vocabulary split (#2555). Not
    * the dotted `"RELATA.QUERY.PURPOSE_REQUIRED"` form, which was never
    * implemented server-side.
@@ -375,7 +340,7 @@ export interface WireErrorResponse {
 // Ingest / introspection
 // ---------------------------------------------------------------------------
 
-/** Receipt from a queued, mixed-type document batch sent through `/ingest/bulk`. */
+/** Receipt from a queued, mixed-type document batch sent through `/v1/ingest/bulk`. */
 export interface IngestDocumentResponse {
   /** Process-local task id; poll with `ingestDocumentStatus(taskId)`. */
   taskId: string;
@@ -389,7 +354,7 @@ export interface IngestDocumentResponse {
   queueDepth: number;
 }
 
-/** Generic task status from `GET /ingest/tasks/:task_id`. Persistent local receipts survive restart; volatile profiles remain process-local. */
+/** Generic task status from `GET /v1/ingest/tasks/:task_id`. Persistent local receipts survive restart; volatile profiles remain process-local. */
 export interface IngestDocumentTaskStatus {
   taskId: string;
   /** Server-reported state: pending is nonterminal; complete, partial, failed, uncertain, and incomplete are terminal outcomes. Uncertain does not mean complete. */
@@ -473,7 +438,7 @@ export interface VersionInfo {
 }
 
 /**
- * Response from `GET /debug/stats` — engine-wide counts for health dashboards.
+ * Response from `GET /v1/system/stats` — engine-wide counts for health dashboards.
  *
  * The shape mirrors the storage-backend contract §9. Every field the server
  * populates is exposed; fields the server does not yet emit default to
@@ -512,7 +477,7 @@ export interface ReadyReport {
 // Raw wire shapes (internal — used for JSON parsing)
 // ---------------------------------------------------------------------------
 
-/** @internal Wire shape returned by `POST /query`. The client normalises the
+/** @internal Wire shape returned by `POST /v1/query`. The client normalises the
  * `data`/`rows` ambiguity into the public `QueryResult` shape. */
 export interface WireQueryResponse {
   /** When an array, the actual row data. When a number, a row count. */
@@ -535,7 +500,7 @@ export interface WireQueryResponse {
 // Search (#670)
 // ---------------------------------------------------------------------------
 
-/** A single document returned by `POST /search`. */
+/** A single document returned by `POST /v1/search`. */
 export interface SearchHit {
   /** Object ID. */
   id: string;
@@ -549,7 +514,7 @@ export interface SearchHit {
   highlights: Record<string, string>;
 }
 
-/** Response from `POST /search` (#670). */
+/** Response from `POST /v1/search` (#670). */
 export interface SearchResponse {
   /** Matching documents sorted by descending score. */
   hits: SearchHit[];
@@ -624,7 +589,7 @@ export interface SearchOptions {
 // Ingest (#751)
 // ---------------------------------------------------------------------------
 
-/** Response from `POST /ingest`. */
+/** Response from `POST /v1/ingest`. */
 export interface IngestResponse {
   rows_written: number;
 }
@@ -641,7 +606,7 @@ export interface RememberOptions {
   purpose?: string;
 }
 
-/** Response from `POST /memory/remember`. */
+/** Response from `POST /v1/memory/remember`. */
 export interface RememberResponse {
   id: string;
 }
@@ -654,7 +619,7 @@ export interface RecallOptions {
   purpose?: string;
 }
 
-/** A single memory item returned by `GET /memory/recall`. */
+/** A single memory item returned by `GET /v1/memory/recall`. */
 export interface RecallItem {
   id: string;
   content: string;
@@ -662,13 +627,13 @@ export interface RecallItem {
   memory_class: string;
 }
 
-/** Response from `GET /memory/recall`. */
+/** Response from `GET /v1/memory/recall`. */
 export interface RecallResponse {
   items: RecallItem[];
 }
 
 /**
- * @internal Wire shape for `POST /search`.
+ * @internal Wire shape for `POST /v1/search`.
  *
  * Mirrors `search_handler`'s actual response (`crates/relata-cli/src/serve/search.rs`):
  * each hit carries its row under `data`, and the handler never emits

@@ -65,7 +65,7 @@ export interface TypedClientCtor {
   baseUrl: string;
   /**
    * Base URL of the loopbound admin control-plane listener (#2321,
-   * ADR-0261). `/admin/*`/`/platform/*` requests route here instead of
+   * ADR-0261). `/admin/*` requests route here instead of
    * `baseUrl` when set — see {@link TypedClientBase.clientToCtor} and
    * `#resolveBaseUrl`. `undefined` preserves prior behaviour (every request
    * goes to `baseUrl`).
@@ -99,11 +99,11 @@ export interface TypedClientCtor {
  * @internal
  * #2321 (ADR-0261): `true` for a path mounted only on the loopbound admin
  * control-plane listener (`RELATA_ADMIN_BIND`, default `127.0.0.1:9091`) —
- * `/admin/*` and `/platform/*` — never the main data-plane listener. See
+ * `/admin/*` — never the main data-plane listener. See
  * `crates/relata-cli/src/serve/admin_listener.rs`.
  */
 export function isAdminOnlyPath(path: string): boolean {
-  return path.startsWith("/admin/") || path.startsWith("/platform/");
+  return path.startsWith("/admin/");
 }
 
 /**
@@ -134,7 +134,7 @@ export function responseDetailIsBlank(isJson: boolean, body: unknown): boolean {
 /**
  * @internal
  * Build the "you're probably pointed at the wrong port" hint for a bare 404
- * against an admin/platform-only `path` (#2321).
+ * against an admin-only `path` (#2321).
  */
 export function adminListenerHint(path: string): string {
   return (
@@ -214,7 +214,7 @@ export class TypedClientBase {
   /**
    * @internal
    * Resolve the base URL a request to `path` should target: `adminBaseUrl`
-   * for `/admin/*`/`/platform/*` when configured (#2321), `baseUrl`
+   * for `/admin/*` when configured (#2321), `baseUrl`
    * otherwise — unchanged behaviour when `adminBaseUrl` is unset.
    */
   #resolveBaseUrl(path: string): string {
@@ -277,14 +277,14 @@ export class TypedClientBase {
 
   /** @internal Binary Files responses use the same capped, authenticated dispatcher. */
   protected async _sendBytes(
-    method: "GET" | "PUT" | "POST" | "DELETE",
+    method: "GET" | "HEAD" | "PUT" | "POST" | "DELETE",
     path: string,
     body?: Uint8Array,
     contentType = "application/octet-stream",
     extraHeaders?: Record<string, string>,
   ): Promise<{ data: Uint8Array; status: number; headers: Headers }> {
     const headers = this.#buildHeaders();
-    headers["Accept"] = method === "GET" ? "application/octet-stream" : "application/json";
+    headers["Accept"] = method === "GET" || method === "HEAD" ? "application/octet-stream" : "application/json";
     Object.assign(headers, extraHeaders);
     const init: RequestInit = { method, headers, redirect: "manual" };
     if (body !== undefined) {
@@ -536,7 +536,7 @@ export class TypedClientBase {
       (typeof err["message"] === "string" && err["message"]) ||
       `HTTP ${status}`;
     // #2321 (ADR-0261): a bare 404 with no detail text against an
-    // admin/platform-only path almost always means this client is pointed
+    // admin-only path almost always means this client is pointed
     // at the data-plane listener rather than the loopbound admin listener
     // those routes are exclusively mounted on — surface a hint instead of
     // an uninformative bare 404.

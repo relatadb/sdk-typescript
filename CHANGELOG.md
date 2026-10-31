@@ -7,7 +7,47 @@ workspace `Cargo.toml`'s `[workspace.package].version`, mirrored into
 
 ## [Unreleased]
 
+### Changed (breaking, #5960 `/v1` route restructure)
+
+- Every data-plane wrapper now calls its `/v1/...` path (for example
+  `/query` -> `/v1/query`, `/memory/*` -> `/v1/memory/*`,
+  `/tokens/self*` -> `/v1/auth/tokens/self*`, `/session/{id}` ->
+  `/v1/sessions/{id}`, `/notifications/rules` -> `/v1/notification-rules`,
+  `/alerts/list|submit|update/{id}` -> `/v1/alerts` + `/v1/alerts/{id}`,
+  `/status` -> `/v1/system/status`, `/debug/stats` -> `/v1/system/stats`,
+  `/events/append` -> `/v1/ingest/events`, `/object-changes` -> `/v1/changes`).
+  Method names are unchanged where the operation survives. `/health`,
+  `/version`, `/admin/*`, `/openapi.json` and `POST /mcp` are unchanged.
+- `Memory.search`/`searchDetailed` and `RelataClient.recall` now use
+  `POST /v1/memory/recall` (the `GET` recall route was removed).
+- `VectorClient.embedBatch(texts)` posts `{texts}` to `POST /v1/embed`.
+- `TenantAdminClient` now exposes only `me()` (tenant administration is Enterprise-only).
+- `TokenClient` now wraps the tenant self-service routes: `listSelf`,
+  `selfAudit`, `rotateSelf`, `revokeSelf`.
+
+### Removed (breaking, #5960)
+
+- Removed routes: `RelataClient.listModules`, `registerWebhook` /
+  `listWebhooks` / `deleteWebhook` (webhooks are now a channel of notification
+  rules: set `webhook_url` / `webhook_headers` on the rule),
+  `SystemClient.listPipelines` / `definePipeline`, `AuditClient.entries` /
+  `findByRequestId` (use `AuditClient.log`), `LogClient` (transparency log),
+  the dedup-token methods (`remember`/`check`/`revoke`/`stats`),
+  `VectorClient.embedImage` / `embedFace` / `embedAudio` / `embedVideo`,
+  `Namespace.branchFrom` (use the schema-branch wrappers), and the `relata
+  nodes` CLI command.
+- Enterprise-only, no longer in the public SDK: tenant administration
+  (`create`/`get`/`delete`/`setTier`/`suspend`/`reactivate`/`setQuota`/
+  `tenantUsage`/sharing/`platformUsage`/`platformLicense`), cluster calls
+  (`clusterTopology`/`clusterRebalance`/`clusterDrain`/`clusterNodes`) and the
+  `ClusterNode` types. `/platform/*` is no longer routed to `adminBaseUrl`.
+
 ### Added
+
+- `MediaWorkClient.requeue`, `FilesClient.head` / `list` / `mediaContent`,
+  `Memory.rememberProcedure` / `recallProcedure`,
+  `StreamingClient.recallStream`, `GovernanceClient.erase` /
+  `deletionStatus` / `verifyReceipt`.
 
 - `IngestControlClient` (checkpoints, data contracts, contract quality,
   quarantine), `MediaWorkClient.qualification()`, `Memory.associateBatch()`,

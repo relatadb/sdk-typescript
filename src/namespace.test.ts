@@ -89,7 +89,7 @@ test("Namespace: factory relata.namespace(name) binds the name + shares transpor
   // Same parent client → shared transport / auth / tenant context.
 });
 
-test("Namespace.query: forwards to POST /search with the bound name", async () => {
+test("Namespace.query: forwards to POST /v1/search with the bound name", async () => {
   const { fetch, calls } = mockFetch({
     body: {
       rows: [{ id: "d1", title: "graph retrieval" }],
@@ -107,10 +107,10 @@ test("Namespace.query: forwards to POST /search with the bound name", async () =
   assert.equal(sent.from, "Document");
   assert.equal(sent.limit, 5);
   assert.deepEqual(sent.rank_by, ["bm25", "*", "graph retrieval"]);
-  assert.equal(calls[0]?.url, "http://x/search");
+  assert.equal(calls[0]?.url, "http://x/v1/search");
 });
 
-test("Namespace.write: schemaless upsert POSTs to /ingest/auto with object_type", async () => {
+test("Namespace.write: schemaless upsert POSTs to /v1/ingest/auto with object_type", async () => {
   const { fetch, calls } = mockFetch({
     body: { type_created: true, inferred_schema: { title: "text" } },
   });
@@ -126,7 +126,7 @@ test("Namespace.write: schemaless upsert POSTs to /ingest/auto with object_type"
   assert.deepEqual(sent.rows, [{ id: "d1", title: "Knowledge graphs 101" }]);
   assert.deepEqual(sent.schema, { title: "text" });
   assert.equal(sent.purpose, "rag", "inherits parent default purpose");
-  assert.equal(calls[0]?.url, "http://x/ingest/auto");
+  assert.equal(calls[0]?.url, "http://x/v1/ingest/auto");
 });
 
 test("Namespace.get: issues SELECT * FROM <Name> WHERE id = $1 LIMIT 1 with bound param", async () => {
@@ -162,7 +162,7 @@ test("Namespace.get: returns null when no rows", async () => {
   assert.equal(row, null);
 });
 
-test("Namespace.deleteAll: selects ids then writes _deleted tombstones via /ingest/auto", async () => {
+test("Namespace.deleteAll: selects ids then writes _deleted tombstones via /v1/ingest/auto", async () => {
   const { fetch, calls } = mockFetch([
     { body: { data: [{ id: "d1" }, { id: "d2" }], query_id: "q", elapsed_ms: 1 } },
     { body: { type_created: false } },
@@ -173,8 +173,8 @@ test("Namespace.deleteAll: selects ids then writes _deleted tombstones via /inge
   assert.deepEqual(out, { deleted: 2 });
   // First call: SELECT id FROM Document
   assert.equal(JSON.parse(calls[0]?.body ?? "{}").sql, "SELECT id FROM Document");
-  // Second call: tombstones through /ingest/auto
-  assert.equal(calls[1]?.url, "http://x/ingest/auto");
+  // Second call: tombstones through /v1/ingest/auto
+  assert.equal(calls[1]?.url, "http://x/v1/ingest/auto");
   const sent = JSON.parse(calls[1]?.body ?? "{}");
   assert.equal(sent.object_type, "Document");
   assert.deepEqual(sent.rows, [
@@ -194,37 +194,17 @@ test("Namespace.deleteAll: short-circuits with {deleted: 0} when empty", async (
   assert.equal(calls.length, 1, "only the SELECT — no tombstone POST");
 });
 
-test("Namespace.branchFrom: POSTs {from} to /v1/namespaces/:name/branch", async () => {
-  const { fetch, calls } = mockFetch({ body: { branched: true } });
-  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "rag", fetch });
-  const docs = relata.namespace("Document_v2");
-  const out = await docs.branchFrom("Document", { purpose: "rag" });
-  assert.equal(out["branched"], true);
-  assert.equal(calls[0]?.method, "POST");
-  assert.equal(calls[0]?.url, "http://x/v1/namespaces/Document_v2/branch");
-  const sent = JSON.parse(calls[0]?.body ?? "{}");
-  assert.equal(sent.from, "Document");
-  assert.equal(sent.purpose, "rag");
-});
-
-test("Namespace.branchFrom: rejects an invalid source name", async () => {
-  const { fetch } = mockFetch({ body: {} });
-  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "rag", fetch });
-  const docs = relata.namespace("Document");
-  await assert.rejects(() => docs.branchFrom("bad-name"), /invalid namespace/);
-});
-
 // ---------------------------------------------------------------------------
 // #2497 — schema-BRANCH CRUD + edge-type registry
 // ---------------------------------------------------------------------------
 
-test("createSchemaBranch: POSTs {from} to /schema/branches/:name (#2497)", async () => {
+test("createSchemaBranch: POSTs {from} to /v1/schema/branches/:name (#2497)", async () => {
   const { fetch, calls } = mockFetch({ body: { created: true } });
   const relata = new RelataClient({ baseUrl: "http://x", fetch });
   const out = await relata.createSchemaBranch("exp-1", "main");
   assert.equal(out["created"], true);
   assert.equal(calls[0]?.method, "POST");
-  assert.equal(calls[0]?.url, "http://x/schema/branches/exp-1");
+  assert.equal(calls[0]?.url, "http://x/v1/schema/branches/exp-1");
   assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), { from: "main" });
 });
 
@@ -233,19 +213,19 @@ test("createSchemaBranch: url-encodes the branch name (#2497)", async () => {
   const relata = new RelataClient({ baseUrl: "http://x", fetch });
   // Valid namespace chars only — but encode the special ones defensively.
   await relata.createSchemaBranch("a b/c", "main");
-  assert.equal(calls[0]?.url, "http://x/schema/branches/a%20b%2Fc");
+  assert.equal(calls[0]?.url, "http://x/v1/schema/branches/a%20b%2Fc");
 });
 
-test("deleteSchemaBranch: DELETE /schema/branches/:name (#2497)", async () => {
+test("deleteSchemaBranch: DELETE /v1/schema/branches/:name (#2497)", async () => {
   const { fetch, calls } = mockFetch({ body: { deleted: true } });
   const relata = new RelataClient({ baseUrl: "http://x", fetch });
   const out = await relata.deleteSchemaBranch("exp-1");
   assert.equal(out["deleted"], true);
   assert.equal(calls[0]?.method, "DELETE");
-  assert.equal(calls[0]?.url, "http://x/schema/branches/exp-1");
+  assert.equal(calls[0]?.url, "http://x/v1/schema/branches/exp-1");
 });
 
-test("listEdgeTypes: GET /types/edges (#2497)", async () => {
+test("listEdgeTypes: GET /v1/types/edges (#2497)", async () => {
   const { fetch, calls } = mockFetch({
     body: { edges: [{ from_type: "Person", to_type: "Document", label: "authored" }] },
   });
@@ -255,16 +235,16 @@ test("listEdgeTypes: GET /types/edges (#2497)", async () => {
     { from_type: "Person", to_type: "Document", label: "authored" },
   ]);
   assert.equal(calls[0]?.method, "GET");
-  assert.equal(calls[0]?.url, "http://x/types/edges");
+  assert.equal(calls[0]?.url, "http://x/v1/types/edges");
 });
 
-test("registerEdgeType: POSTs {from_type, to_type, label} to /types/edges (#2497)", async () => {
+test("registerEdgeType: POSTs {from_type, to_type, label} to /v1/types/edges (#2497)", async () => {
   const { fetch, calls } = mockFetch({ body: { registered: true } });
   const relata = new RelataClient({ baseUrl: "http://x", fetch });
   const out = await relata.registerEdgeType("Person", "Document", "authored");
   assert.equal(out["registered"], true);
   assert.equal(calls[0]?.method, "POST");
-  assert.equal(calls[0]?.url, "http://x/types/edges");
+  assert.equal(calls[0]?.url, "http://x/v1/types/edges");
   assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), {
     from_type: "Person",
     to_type: "Document",

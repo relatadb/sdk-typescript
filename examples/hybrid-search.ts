@@ -6,7 +6,7 @@
  * `queryEmbedding` (vector leg), or both — when both are present the server
  * fuses the two rankings via reciprocal rank fusion (ADR-175).
  *
- * This walkthrough embeds a few short texts (`POST /embed`, #1172), writes
+ * This walkthrough embeds a few short texts (`POST /v1/embed`, #1172), writes
  * them into a `Document` namespace with the embedding pre-computed in the
  * `_emb_text` slot (the caller-supplied convention, see
  * `docs/src/end-users/search.md`), then runs `hybridSearch` three ways —

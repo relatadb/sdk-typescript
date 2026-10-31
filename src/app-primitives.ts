@@ -34,72 +34,72 @@ export class AppPrimitivesClient extends TypedClientBase {
     return new AppPrimitivesClient(TypedClientBase.clientToCtor(client));
   }
 
-  /** Allocate `count` (default 1) contiguous values. Wraps `POST /sequences/:name/next`. */
+  /** Allocate `count` (default 1) contiguous values. Wraps `POST /v1/sequences/:name/next`. */
   async sequenceNext(
     name: string,
     opts: { count?: number; idempotencyKey?: string } = {},
   ): Promise<Record<string, unknown>> {
-    return this._post(`/sequences/${encodeURIComponent(name)}/next`, defined({ ...opts }));
+    return this._post(`/v1/sequences/${encodeURIComponent(name)}/next`, defined({ ...opts }));
   }
 
-  /** Return the value the next allocation would start at. Wraps `GET /sequences/:name`. */
+  /** Return the value the next allocation would start at. Wraps `GET /v1/sequences/:name`. */
   async sequenceGet(name: string): Promise<Record<string, unknown>> {
-    return this._get(`/sequences/${encodeURIComponent(name)}`);
+    return this._get(`/v1/sequences/${encodeURIComponent(name)}`);
   }
 
-  /** Enqueue a job. Wraps `POST /queues/:name/jobs`. */
+  /** Enqueue a job. Wraps `POST /v1/queues/:name/jobs`. */
   async enqueue(
     queue: string,
     payload: unknown,
     opts: EnqueueOptions = {},
   ): Promise<Record<string, unknown>> {
     return this._post(
-      `/queues/${encodeURIComponent(queue)}/jobs`,
+      `/v1/queues/${encodeURIComponent(queue)}/jobs`,
       defined({ payload: payload ?? null, ...opts }),
     );
   }
 
-  /** Lease up to `max` ready jobs. Wraps `POST /queues/:name/claim`. */
+  /** Lease up to `max` ready jobs. Wraps `POST /v1/queues/:name/claim`. */
   async claim(
     queue: string,
     workerId: string,
     opts: { leaseMs?: number; max?: number } = {},
   ): Promise<Array<Record<string, unknown>>> {
     const resp = await this._post<{ jobs?: Array<Record<string, unknown>> }>(
-      `/queues/${encodeURIComponent(queue)}/claim`,
+      `/v1/queues/${encodeURIComponent(queue)}/claim`,
       defined({ workerId, ...opts }),
     );
     return resp.jobs ?? [];
   }
 
-  /** Extend a held lease. Wraps `POST /jobs/:id/renew`. */
+  /** Extend a held lease. Wraps `POST /v1/jobs/:id/renew`. */
   async renew(
     jobId: string,
     fencingToken: number,
     opts: { leaseMs?: number } = {},
   ): Promise<Record<string, unknown>> {
-    return this._post(`/jobs/${encodeURIComponent(jobId)}/renew`, defined({ fencingToken, ...opts }));
+    return this._post(`/v1/jobs/${encodeURIComponent(jobId)}/renew`, defined({ fencingToken, ...opts }));
   }
 
-  /** Mark a held job done. Wraps `POST /jobs/:id/complete`. */
+  /** Mark a held job done. Wraps `POST /v1/jobs/:id/complete`. */
   async complete(
     jobId: string,
     fencingToken: number,
     opts: { result?: unknown } = {},
   ): Promise<Record<string, unknown>> {
-    return this._post(`/jobs/${encodeURIComponent(jobId)}/complete`, defined({ fencingToken, ...opts }));
+    return this._post(`/v1/jobs/${encodeURIComponent(jobId)}/complete`, defined({ fencingToken, ...opts }));
   }
 
-  /** Report failure. Wraps `POST /jobs/:id/fail`. */
+  /** Report failure. Wraps `POST /v1/jobs/:id/fail`. */
   async fail(
     jobId: string,
     fencingToken: number,
     opts: { error?: string; retryAfterMs?: number; retryable?: boolean } = {},
   ): Promise<Record<string, unknown>> {
-    return this._post(`/jobs/${encodeURIComponent(jobId)}/fail`, defined({ fencingToken, ...opts }));
+    return this._post(`/v1/jobs/${encodeURIComponent(jobId)}/fail`, defined({ fencingToken, ...opts }));
   }
 
-  /** Inspect a queue. Wraps `GET /queues/:name/jobs`. */
+  /** Inspect a queue. Wraps `GET /v1/queues/:name/jobs`. */
   async listJobs(
     queue: string,
     opts: { state?: string; limit?: number } = {},
@@ -108,11 +108,11 @@ export class AppPrimitivesClient extends TypedClientBase {
     if (opts.state !== undefined) params.set("state", opts.state);
     if (opts.limit !== undefined) params.set("limit", String(opts.limit));
     const qs = params.toString();
-    return this._get(`/queues/${encodeURIComponent(queue)}/jobs${qs ? `?${qs}` : ""}`);
+    return this._get(`/v1/queues/${encodeURIComponent(queue)}/jobs${qs ? `?${qs}` : ""}`);
   }
 
-  /** Fetch one job. Wraps `GET /queues/:name/jobs/:id`. */
+  /** Fetch one job. Wraps `GET /v1/queues/:name/jobs/:id`. */
   async getJob(queue: string, jobId: string): Promise<Record<string, unknown>> {
-    return this._get(`/queues/${encodeURIComponent(queue)}/jobs/${encodeURIComponent(jobId)}`);
+    return this._get(`/v1/queues/${encodeURIComponent(queue)}/jobs/${encodeURIComponent(jobId)}`);
   }
 }

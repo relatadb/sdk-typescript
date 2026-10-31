@@ -8,9 +8,9 @@ function client(fetchImpl: typeof globalThis.fetch): FreshnessClient {
   );
 }
 
-test("status reads GET /freshness/status with inherited auth", async () => {
+test("status reads GET /v1/freshness/status with inherited auth", async () => {
   const f: typeof globalThis.fetch = async (input, init) => {
-    assert.equal(new URL(String(input)).pathname, "/freshness/status");
+    assert.equal(new URL(String(input)).pathname, "/v1/freshness/status");
     assert.equal(init?.method, "GET");
     assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer secret");
     return Response.json({ contract: "relata.freshness/v1", token: "fv1.x", indexes: [] });
@@ -21,7 +21,7 @@ test("status reads GET /freshness/status with inherited auth", async () => {
 test("barrier posts the exact body and omits unset options", async () => {
   const bodies: unknown[] = [];
   const f: typeof globalThis.fetch = async (input, init) => {
-    assert.equal(new URL(String(input)).pathname, "/freshness/barrier");
+    assert.equal(new URL(String(input)).pathname, "/v1/freshness/barrier");
     assert.equal(init?.method, "POST");
     bodies.push(JSON.parse(String(init?.body)));
     return Response.json({ freshness: { status: "complete" } });

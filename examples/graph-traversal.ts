@@ -248,17 +248,6 @@ try {
     out("  No connection before 2024-07-01 in the data.");
   }
 
-  // -------------------------------------------------------------------------
-  // 6. Cluster nodes — show topology (useful in cluster profile)
-  // -------------------------------------------------------------------------
-
-  step("6: Cluster topology");
-
-  const nodes = await relata.clusterNodes();
-  for (const node of nodes) {
-    out(`  ${node.nodeId} — ${node.role} @ ${node.url}`);
-  }
-
   out("\n=== Graph traversal complete ===");
 } catch (err) {
   exitOnRelataError(err);

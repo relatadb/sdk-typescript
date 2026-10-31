@@ -9,7 +9,7 @@ test("usage fetch preserves observed_at source digits before SDK decoding", asyn
       headers: { "content-type": "application/json" },
     }),
   );
-  const response = await fetcher("http://localhost:9090/query", { method: "POST" });
+  const response = await fetcher("http://localhost:9090/v1/query", { method: "POST" });
   const decoded = JSON.parse(await response.text()) as {
     data: Array<{ observed_at: string; row_count: number }>;
   };
@@ -24,6 +24,6 @@ test("usage fetch leaves other endpoints on the regular response path", async ()
     headers: { "content-type": "application/json" },
   });
   const fetcher = createExactUsageFetch(async () => original);
-  const response = await fetcher("http://localhost:9090/status");
+  const response = await fetcher("http://localhost:9090/v1/system/status");
   assert.equal(response, original);
 });

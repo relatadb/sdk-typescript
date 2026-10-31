@@ -9,7 +9,7 @@
  * each document's `section_path`/`page_start`/`page_end` — one node per
  * distinct heading-breadcrumb prefix, plus a synthetic root, each carrying a
  * cheap LLM-free one-line `summary` and its direct `leaf_chunk_ids`.
- * `POST /rag/query`'s `search_mode: structural` (#4514/#4542,
+ * `POST /v1/rag/query`'s `search_mode: structural` (#4514/#4542,
  * `crates/relata-cli/src/serve/query/rag_query.rs`) is a single-shot,
  * one-hop approximation of tree navigation: it lexically matches node
  * title/summary, then ranks within the matched node(s)' own leaf chunks.
@@ -21,9 +21,9 @@
  * `selectChild` strategy which subtree to descend into, and stops either
  * when a level has no children (a leaf) or the strategy declines to descend
  * further — then ranks that leaf's own `leaf_chunk_ids` via a governed
- * `RAG_RETRIEVE` call, exactly like every other `/rag/query` mode (same
+ * `RAG_RETRIEVE` call, exactly like every other `/v1/rag/query` mode (same
  * ACL/cell-masking enforcement — no bypass, since this still goes through
- * `RelataClient.query`, the same governed `/query` surface `/rag/query`
+ * `RelataClient.query`, the same governed `/v1/query` surface `/v1/rag/query`
  * itself delegates to server-side).
  *
  * Per ADR-0298, RelataDB has no server-side agent loop — the reasoning that
@@ -139,7 +139,7 @@ function purposeOpt(purpose: string | undefined): { purpose?: string } {
 /**
  * Structural table-of-contents navigation over `RelataClient`. Every fetch
  * (`fetchRootNode`/`fetchChildNodes`/the final ranked `RAG_RETRIEVE`) goes
- * through `RelataClient.query` — the same governed `/query` surface — so
+ * through `RelataClient.query` — the same governed `/v1/query` surface — so
  * ACL/cell-masking apply identically at every level; there is no bypass path.
  */
 export class StructuralNavigator {
@@ -150,7 +150,7 @@ export class StructuralNavigator {
   }
 
   /**
-   * Build a {@link StructureNode} from one `/query` result row.
+   * Build a {@link StructureNode} from one `/v1/query` result row.
    *
    * `leafChunkIds` is stored server-side as a JSON array string
    * (`the former relata-connectors document_ingest module (removed, #5932)` — no native array
@@ -224,7 +224,7 @@ export class StructuralNavigator {
    * Fetch the direct children of `parentId` (or the synthetic root's
    * single row when `parentId` is `null`) for `reportId`'s
    * `DocumentStructureNode` tree, via a plain governed `SELECT` — the same
-   * `/query` surface `/rag/query` itself delegates to server-side, so
+   * `/v1/query` surface `/v1/rag/query` itself delegates to server-side, so
    * ACL/cell-masking apply identically.
    */
   async fetchChildNodes(opts: {
@@ -286,7 +286,7 @@ export class StructuralNavigator {
       // The raw RAG_RETRIEVE SQL operator (crates/relata-query/src/executor/
       // vector_search_exec.rs) only ever emits _bm25_score/_vector_score/
       // _rerank_score columns — relevance_confidence (#4520) is computed one
-      // layer up, in the /rag/query HTTP handler
+      // layer up, in the /v1/rag/query HTTP handler
       // (crates/relata-cli/src/serve/query/rag_query.rs), which this SQL-only
       // path never goes through. null here mirrors the Python reference's
       // RagHit.relevance_confidence default (None) exactly.
@@ -332,13 +332,13 @@ export class StructuralNavigator {
    * `leafChunkIds` against `question`.
    *
    * This is the true multi-hop agent loop #4542's design describes,
-   * complementing (not replacing) `/rag/query`'s single-shot `search_mode:
+   * complementing (not replacing) `/v1/rag/query`'s single-shot `search_mode:
    * structural` (#4514) — `selectChild` is where an application plugs in
    * real reasoning (e.g. an LLM call over the candidates' `summary`
    * fields); {@link lexicalChildSelector} is the LLM-free default.
    *
    * Every fetch goes through `RelataClient.query` — the same governed
-   * `/query` surface — so ACL/cell-masking apply identically at every
+   * `/v1/query` surface — so ACL/cell-masking apply identically at every
    * level; there is no bypass path.
    *
    * Returns an empty {@link RagQueryResponse} when `reportId` has no

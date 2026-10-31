@@ -5,7 +5,7 @@
  *
  * Each adapter (LangChain.js / LlamaIndex.TS) maps its framework's memory
  * interface onto these primitives, which in turn call Relata's governed
- * `/memory/*` verbs via {@link Memory}. The adapters never import their
+ * `/v1/memory/*` verbs via {@link Memory}. The adapters never import their
  * target framework — they just duck-type its expected `BaseMemory`-shaped
  * interface, so they load with or without the framework installed.
  *

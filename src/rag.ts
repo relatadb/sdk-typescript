@@ -1,9 +1,9 @@
 /**
- * Thin typed pass-through for `POST /rag/query` (#4523, #4514/ADR-0299).
+ * Thin typed pass-through for `POST /v1/rag/query` (#4523, #4514/ADR-0299).
  *
  * Per ADR-0298, `sdks/python` carries the canonical agentic-RAG
  * implementation (the SDK-side iterative retrieve→evaluate→refine loop);
- * this module stays a thin typed wrapper over the frozen `/rag/query`
+ * this module stays a thin typed wrapper over the frozen `/v1/rag/query`
  * contract — no client-side agentic loop lives here, not full parity with
  * `sdks/python`'s `relata.rag`.
  *
@@ -39,7 +39,7 @@ export interface RagFilter {
   value: unknown;
 }
 
-/** Typed `/rag/query` request parameters (#4514's exact table). */
+/** Typed `/v1/rag/query` request parameters (#4514's exact table). */
 export interface RagQueryOptions {
   /** Object type to search (e.g. `"DocumentChunk"`). */
   type: string;
@@ -63,7 +63,7 @@ export interface RagQueryOptions {
   graphHops?: number;
 }
 
-/** A single hit from `POST /rag/query` (#4514's per-hit contract table). */
+/** A single hit from `POST /v1/rag/query` (#4514's per-hit contract table). */
 export interface RagHit {
   /** Lexical (BM25) channel score — always present, never fused away. */
   bm25_score: number;
@@ -93,12 +93,12 @@ export interface RagHit {
   relevance_confidence?: number | null;
 }
 
-/** Response from `POST /rag/query`. */
+/** Response from `POST /v1/rag/query`. */
 export interface RagQueryResponse {
   hits: RagHit[];
 }
 
-/** Build the `POST /rag/query` JSON body per #4514's exact table. */
+/** Build the `POST /v1/rag/query` JSON body per #4514's exact table. */
 export function buildRagPayload(
   query: string,
   opts: RagQueryOptions,
@@ -122,7 +122,7 @@ export function buildRagPayload(
 }
 
 /**
- * Typed `/rag/query` client. Obtain via `RagClient.fromClient(client)` so
+ * Typed `/v1/rag/query` client. Obtain via `RagClient.fromClient(client)` so
  * calls run under the parent client's auth/tenant context and inherit its
  * `defaultPurpose`.
  */
@@ -139,7 +139,7 @@ export class RagClient extends TypedClientBase {
     return new RagClient(TypedClientBase.clientToCtor(client), client.defaultPurpose);
   }
 
-  /** Run a governed retrieval via `POST /rag/query` (#4514). */
+  /** Run a governed retrieval via `POST /v1/rag/query` (#4514). */
   async query(query: string, opts: RagQueryOptions): Promise<RagQueryResponse> {
     const purpose = opts.purpose ?? this.#defaultPurpose;
     if (!purpose) {
@@ -149,6 +149,6 @@ export class RagClient extends TypedClientBase {
           "`defaultPurpose` on the RelataClient.",
       );
     }
-    return this._post<RagQueryResponse>("/rag/query", buildRagPayload(query, opts, purpose));
+    return this._post<RagQueryResponse>("/v1/rag/query", buildRagPayload(query, opts, purpose));
   }
 }

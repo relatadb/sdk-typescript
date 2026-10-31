@@ -84,12 +84,12 @@ export class FilesClient extends TypedClientBase {
     return JSON.parse(new TextDecoder().decode(response.data)) as FileMetadata;
   }
 
-  /** Create a folder marker (`POST /files/folders`); resolves with 201 metadata (`is_folder` true). */
+  /** Create a folder marker (`POST /v1/files/folders`); resolves with 201 metadata (`is_folder` true). */
   async createFolder(key: string, opts: { bucket?: string } = {}): Promise<FileMetadata> {
     const body: Record<string, string> = { key };
     if (opts.bucket !== undefined) body["bucket"] = opts.bucket;
     const response = await this._sendBytes(
-      "POST", "/files/folders", new TextEncoder().encode(JSON.stringify(body)), "application/json",
+      "POST", "/v1/files/folders", new TextEncoder().encode(JSON.stringify(body)), "application/json",
     );
     this.expectStatus(response.status, 201, "POST folder");
     return JSON.parse(new TextDecoder().decode(response.data)) as FileMetadata;
@@ -99,6 +99,61 @@ export class FilesClient extends TypedClientBase {
   async get(key: string, opts: FilesOptions = {}): Promise<FileContent> {
     const response = await this._sendBytes("GET", this.path(key, opts));
     this.expectStatus(response.status, 200, "GET");
+    return {
+      data: response.data,
+      etag: response.headers.get("etag"),
+      contentType: response.headers.get("content-type"),
+      size: response.data.byteLength,
+    };
+  }
+
+  /**
+   * Existence / metadata check (`HEAD /v1/files/content`). Resolves with the
+   * response headers' view of the object, or `null` on 404.
+   */
+  async head(key: string, opts: FilesOptions = {}): Promise<FileContent | null> {
+    let response: { data: Uint8Array; status: number; headers: Headers };
+    try {
+      response = await this._sendBytes("HEAD", this.path(key, opts));
+    } catch (error) {
+      if (error instanceof RelataError && error.statusCode === 404) return null;
+      throw error;
+    }
+    this.expectStatus(response.status, 200, "HEAD");
+    const length = response.headers.get("content-length");
+    return {
+      data: new Uint8Array(0),
+      etag: response.headers.get("etag"),
+      contentType: response.headers.get("content-type"),
+      size: length !== null ? Number(length) : 0,
+    };
+  }
+
+  /**
+   * List objects (`GET /v1/files`), optionally under `prefix`, paginated with
+   * `cursor`/`limit`. Returns the server's JSON page.
+   */
+  async list(
+    opts: FilesOptions & { prefix?: string; cursor?: string; limit?: number } = {},
+  ): Promise<Record<string, unknown>> {
+    const response = await this._sendBytes(
+      "GET",
+      `/v1/files${qs({ bucket: opts.bucket, prefix: opts.prefix, cursor: opts.cursor, limit: opts.limit })}`,
+      undefined,
+      undefined,
+      { Accept: "application/json" },
+    );
+    this.expectStatus(response.status, 200, "GET list");
+    return JSON.parse(new TextDecoder().decode(response.data)) as Record<string, unknown>;
+  }
+
+  /**
+   * Offloaded bytes of a stored media row (`GET /v1/media/:rowId/content`),
+   * read within the inherited response cap.
+   */
+  async mediaContent(rowId: string): Promise<FileContent> {
+    const response = await this._sendBytes("GET", `/v1/media/${encodeURIComponent(rowId)}/content`);
+    this.expectStatus(response.status, 200, "GET media content");
     return {
       data: response.data,
       etag: response.headers.get("etag"),
@@ -118,7 +173,7 @@ export class FilesClient extends TypedClientBase {
     const body = new TextEncoder().encode(JSON.stringify({
       key, size, bucket: opts.bucket, content_type: opts.contentType, sha256: opts.sha256,
     }));
-    const response = await this._sendBytes("POST", "/files/uploads", body, "application/json");
+    const response = await this._sendBytes("POST", "/v1/files/uploads", body, "application/json");
     this.expectStatus(response.status, 201, "POST upload");
     return JSON.parse(new TextDecoder().decode(response.data)) as UploadSession;
   }
@@ -126,7 +181,7 @@ export class FilesClient extends TypedClientBase {
   /** Append a chunk at `offset` (digest-checked by the server); a wrong offset is a typed 409. */
   async uploadChunk(uploadId: string, offset: number, data: Uint8Array): Promise<UploadSession> {
     const response = await this._sendBytes(
-      "PUT", `/files/uploads/${encodeURIComponent(uploadId)}${qs({ offset })}`, data, undefined,
+      "PUT", `/v1/files/uploads/${encodeURIComponent(uploadId)}${qs({ offset })}`, data, undefined,
       { "X-Relata-Chunk-Sha256": await sha256Hex(data) },
     );
     this.expectStatus(response.status, 200, "PUT upload chunk");
@@ -135,21 +190,21 @@ export class FilesClient extends TypedClientBase {
 
   /** Durable next-expected offset of an upload (survives server restarts). */
   async uploadStatus(uploadId: string): Promise<UploadSession> {
-    const response = await this._sendBytes("GET", `/files/uploads/${encodeURIComponent(uploadId)}`);
+    const response = await this._sendBytes("GET", `/v1/files/uploads/${encodeURIComponent(uploadId)}`);
     this.expectStatus(response.status, 200, "GET upload");
     return JSON.parse(new TextDecoder().decode(response.data)) as UploadSession;
   }
 
   /** Verify and commit staged bytes; never retried automatically. */
   async completeUpload(uploadId: string): Promise<FileMetadata> {
-    const response = await this._sendBytes("POST", `/files/uploads/${encodeURIComponent(uploadId)}/complete`);
+    const response = await this._sendBytes("POST", `/v1/files/uploads/${encodeURIComponent(uploadId)}/complete`);
     this.expectStatus(response.status, 201, "POST upload complete");
     return JSON.parse(new TextDecoder().decode(response.data)) as FileMetadata;
   }
 
   /** Discard an upload and its staged data (idempotent). */
   async abortUpload(uploadId: string): Promise<void> {
-    const response = await this._sendBytes("DELETE", `/files/uploads/${encodeURIComponent(uploadId)}`);
+    const response = await this._sendBytes("DELETE", `/v1/files/uploads/${encodeURIComponent(uploadId)}`);
     this.expectStatus(response.status, 204, "DELETE upload");
   }
 
@@ -186,7 +241,7 @@ export class FilesClient extends TypedClientBase {
   }
 
   private path(key: string, opts: FilesOptions): string {
-    return `/files/content${qs({ key, bucket: opts.bucket })}`;
+    return `/v1/files/content${qs({ key, bucket: opts.bucket })}`;
   }
 
   private expectStatus(actual: number, expected: number, method: string): void {

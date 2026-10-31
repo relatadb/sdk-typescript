@@ -14,7 +14,7 @@ import { type TypedClientCtor, TypedClientBase } from "./_typed-http.ts";
 
 type Doc = Record<string, unknown>;
 
-const BASE = "/ontology/definitions";
+const BASE = "/v1/ontology/definitions";
 const seg = (s: string | number): string => encodeURIComponent(String(s));
 
 /** Options for {@link OntologyDefinitionsClient.publish}. */
@@ -37,17 +37,17 @@ export class OntologyDefinitionsClient extends TypedClientBase {
     return new OntologyDefinitionsClient(TypedClientBase.clientToCtor(client));
   }
 
-  /** `GET /ontology/definitions`. */
+  /** `GET /v1/ontology/definitions`. */
   async list(): Promise<Doc> {
     return this._get<Doc>(BASE);
   }
 
-  /** `POST /ontology/definitions`: a new set with an initial draft. */
+  /** `POST /v1/ontology/definitions`: a new set with an initial draft. */
   async create(name: string, definition: Doc): Promise<Doc> {
     return this._post<Doc>(BASE, { name, definition });
   }
 
-  /** `GET /ontology/definitions/{name}`: head and current draft. */
+  /** `GET /v1/ontology/definitions/{name}`: head and current draft. */
   async get(name: string): Promise<Doc> {
     return this._get<Doc>(`${BASE}/${seg(name)}`);
   }

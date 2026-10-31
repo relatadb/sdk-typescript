@@ -177,17 +177,17 @@ export class ClientPool {
     return this.#withFailover((c) => c.health());
   }
 
-  /** `GET /stats` via the pool. */
+  /** `GET /v1/system/stats` via the pool. */
   async stats(): Promise<Stats> {
     return this.#withFailover((c) => c.stats());
   }
 
-  /** `POST /query` via the pool. */
+  /** `POST /v1/query` via the pool. */
   async query<T = Record<string, unknown>>(sql: string, purpose: string): Promise<QueryResult<T>> {
     return this.#withFailover((c) => c.query<T>(sql, { purpose }));
   }
 
-  /** `POST /search` via the pool. */
+  /** `POST /v1/search` via the pool. */
   async search(params: { query: string; type: string } & SearchOptions): Promise<SearchResponse> {
     return this.#withFailover((c) => c.search(params));
   }

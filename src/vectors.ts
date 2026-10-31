@@ -24,7 +24,7 @@ export type VectorRow = Record<string, unknown>;
  * `SELECT * FROM HYBRID_SEARCH(from => …, query_text => …)` TVF shape was
  * never accepted by the server (named args aren't a real grammar).
  *
- * Caller-supplied query embeddings are not supported by the `/query` SQL
+ * Caller-supplied query embeddings are not supported by the `/v1/query` SQL
  * surface (no vector-literal grammar); the server embeds `queryText`
  * server-side. Exported for unit testing parity with Python/Go.
  */
@@ -136,10 +136,10 @@ export class VectorClient {
    * Hybrid BM25 + vector search via the `HYBRID_SEARCH` operator.
    *
    * Executes `HYBRID_SEARCH FROM <type> QUERY '<text>' LIMIT <k>` through the
-   * governed `/query` door so PURPOSE / ACL / cell-masking / tenant isolation
+   * governed `/v1/query` door so PURPOSE / ACL / cell-masking / tenant isolation
    * apply identically to a hand-written query. The server embeds `queryText`
    * server-side; caller-supplied embeddings are **not** accepted by the
-   * `/query` SQL surface (no vector-literal grammar — use `embed()` for
+   * `/v1/query` SQL surface (no vector-literal grammar — use `embed()` for
    * text→vector instead).
    *
    * @param objectType - Type to search.
@@ -194,10 +194,10 @@ export class VectorClient {
     return result.rows;
   }
 
-  // ── #1172: direct embedding via /embed ────────────────────────────────────
+  // ── #1172: direct embedding via /v1/embed ────────────────────────────────────
 
   /**
-   * Embed a single text string via `POST /embed`.
+   * Embed a single text string via `POST /v1/embed`.
    *
    * Uses the server's built-in CPU lexical embedder when no sidecar is
    * configured, or the external embedding sidecar (`RELATA_EMBED_URL`) when set.
@@ -216,13 +216,13 @@ export class VectorClient {
   ): Promise<{ embedding: number[]; model: string; dim: number }> {
     return this.#client.request<{ embedding: number[]; model: string; dim: number }>(
       "POST",
-      "/embed",
+      "/v1/embed",
       { text, ...(opts.model !== undefined ? { model: opts.model } : {}) },
     );
   }
 
   /**
-   * Embed multiple texts in one call via `POST /embed/batch`.
+   * Embed multiple texts in one call via `POST /v1/embed` with `{texts: [...]}`.
    *
    * ```typescript
    * const { embeddings, dim, count } = await vectors.embedBatch(["Alice", "Bob"]);
@@ -243,83 +243,8 @@ export class VectorClient {
       count: number;
     }>(
       "POST",
-      "/embed/batch",
+      "/v1/embed",
       { texts, ...(opts.model !== undefined ? { model: opts.model } : {}) },
     );
-  }
-
-  // ── #2444 (ADR-0276): per-modality data-plane media embed routes ─────────
-
-  /** @internal Shared POST for the four per-modality media-embed routes. */
-  async #embedMedia(
-    modality: "image" | "face" | "audio" | "video",
-    bytesB64: string,
-    opts: { model?: string } = {},
-  ): Promise<{ embedding: number[]; model: string; dim: number }> {
-    return this.#client.request<{ embedding: number[]; model: string; dim: number }>(
-      "POST",
-      `/embed/${modality}`,
-      { bytes_b64: bytesB64, ...(opts.model !== undefined ? { model: opts.model } : {}) },
-    );
-  }
-
-  /**
-   * Embed a single image via `POST /embed/image` (#2444, ADR-0276).
-   *
-   * Uses the server's configured embedder's sidecar (`RELATA_ACCEL_ENDPOINT`,
-   * ADR-177); the request rejects with a 503 when the active embedder does
-   * not support media (the built-in CPU lexical default does not).
-   *
-   * @param bytesB64 - Base64-encoded image bytes.
-   * @param opts - Optional model hint passed through to the server.
-   * @returns `{ embedding: number[], model: string, dim: number }`
-   */
-  async embedImage(
-    bytesB64: string,
-    opts: { model?: string } = {},
-  ): Promise<{ embedding: number[]; model: string; dim: number }> {
-    return this.#embedMedia("image", bytesB64, opts);
-  }
-
-  /**
-   * Embed a single face crop via `POST /embed/face` (#2444, ADR-0276).
-   *
-   * @param bytesB64 - Base64-encoded face-crop bytes.
-   * @param opts - Optional model hint.
-   * @returns `{ embedding: number[], model: string, dim: number }`
-   */
-  async embedFace(
-    bytesB64: string,
-    opts: { model?: string } = {},
-  ): Promise<{ embedding: number[]; model: string; dim: number }> {
-    return this.#embedMedia("face", bytesB64, opts);
-  }
-
-  /**
-   * Embed a single audio clip via `POST /embed/audio` (#2444, ADR-0276).
-   *
-   * @param bytesB64 - Base64-encoded audio bytes.
-   * @param opts - Optional model hint.
-   * @returns `{ embedding: number[], model: string, dim: number }`
-   */
-  async embedAudio(
-    bytesB64: string,
-    opts: { model?: string } = {},
-  ): Promise<{ embedding: number[]; model: string; dim: number }> {
-    return this.#embedMedia("audio", bytesB64, opts);
-  }
-
-  /**
-   * Embed a single video clip/keyframe via `POST /embed/video` (#2444, ADR-0276).
-   *
-   * @param bytesB64 - Base64-encoded video bytes.
-   * @param opts - Optional model hint.
-   * @returns `{ embedding: number[], model: string, dim: number }`
-   */
-  async embedVideo(
-    bytesB64: string,
-    opts: { model?: string } = {},
-  ): Promise<{ embedding: number[]; model: string; dim: number }> {
-    return this.#embedMedia("video", bytesB64, opts);
   }
 }

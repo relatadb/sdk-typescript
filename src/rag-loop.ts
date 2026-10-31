@@ -12,7 +12,7 @@
  *
  * Per ADR-0298, RelataDB runs no server-side agent loop and no LLM
  * (ADR-013) — this module is the SDK-side control flow that decides,
- * after each `POST /rag/query` call (#4514's ADR-0299 contract), whether
+ * after each `POST /v1/rag/query` call (#4514's ADR-0299 contract), whether
  * the hits are good enough to synthesize from or whether another round is
  * warranted, and it never calls an LLM itself: every LLM-backed decision
  * point ({@link EmbeddingFn} excepted — the heuristic gate is not an LLM
@@ -34,12 +34,12 @@
  * test-backed reason):**
  *
  * 1. **Heuristic gate** ({@link heuristicGate}) — centroid cosine similarity
- *    between the query embedding and the top-K `/rag/query` hits'
+ *    between the query embedding and the top-K `/v1/rag/query` hits'
  *    embeddings, <5ms, no LLM call either way. Score strictly greater than
  *    {@link HEURISTIC_PASS_THRESHOLD} (`0.85`) auto-passes (stop,
  *    synthesize from these hits). Score strictly less than
  *    {@link HEURISTIC_RETRY_THRESHOLD} (`0.60`) auto-retries (issue another
- *    `/rag/query` call, still no LLM). Between the two thresholds, control
+ *    `/v1/rag/query` call, still no LLM). Between the two thresholds, control
  *    proceeds to corrective retrieval grading below.
  * 2. **Corrective retrieval grading** ({@link gradeHits}) — one batched
  *    cheap-model call grades every hit correct/ambiguous/incorrect at once
@@ -171,7 +171,7 @@ export type GateDecision = "pass" | "retry" | "evaluate";
 export const GateDecision = {
   /** Score > {@link HEURISTIC_PASS_THRESHOLD} — stop, synthesize from these hits. No LLM call. */
   PASS: "pass",
-  /** Score < {@link HEURISTIC_RETRY_THRESHOLD} — issue another `/rag/query` call. No LLM call. */
+  /** Score < {@link HEURISTIC_RETRY_THRESHOLD} — issue another `/v1/rag/query` call. No LLM call. */
   RETRY: "retry",
   /** Between the two thresholds — proceed to corrective retrieval grading ({@link gradeHits}), the loop's one LLM call per iteration. */
   EVALUATE: "evaluate",
@@ -229,7 +229,7 @@ export interface HeuristicGateResult {
 
 /**
  * Cheap pre-LLM gate: centroid cosine between `queryEmbedding` and the
- * top-K `/rag/query` hits' embeddings, <5ms, no LLM call either way.
+ * top-K `/v1/rag/query` hits' embeddings, <5ms, no LLM call either way.
  *
  * Zero hits scores `0.0` and decides {@link GateDecision.RETRY} — nothing
  * to be confident about.
@@ -327,7 +327,7 @@ export async function gradeHits(
  * Caller-supplied web-search fallback, invoked when corrective grading's
  * {@link CorrectiveGradingResult.needsRequery} trips and a fallback is
  * configured. Returns a full `{hits}`-shaped result — the loop does not
- * care whether it came from `/rag/query` or an external search API.
+ * care whether it came from `/v1/rag/query` or an external search API.
  */
 export type WebSearchFallbackFn = (
   query: string,
@@ -514,7 +514,7 @@ export interface RunAgenticLoopOptions {
    */
   maxIterations?: number;
   /**
-   * Forwarded to `RagClient.query()` on every `/rag/query` call
+   * Forwarded to `RagClient.query()` on every `/v1/rag/query` call
    * (`topK`, `rerank`, `searchMode`, `embeddingSlot`, `filters`, `asOf`,
    * `expandWindow`, `graphHops`).
    */
@@ -557,7 +557,7 @@ export async function runAgenticLoop(
 
 /**
  * One parallel retrieval strategy for {@link runSubagentFanout} — a
- * distinct `/rag/query` parameterization, typically a `searchMode`/
+ * distinct `/v1/rag/query` parameterization, typically a `searchMode`/
  * `embeddingSlot` combination (#4514).
  */
 export interface SubAgentStrategy {
@@ -624,7 +624,7 @@ function validateFanoutStrategies(strategies: readonly SubAgentStrategy[]): void
  * Deterministic per-strategy confidence: the top hit's
  * `relevance_confidence` (#4520), or `0.0` when there are no hits or the
  * field is unset (server predates #4520). A pure function of the response
- * already returned by `/rag/query` — no LLM/network call.
+ * already returned by `/v1/rag/query` — no LLM/network call.
  */
 function strategyConfidence(response: RagQueryResponse): number {
   if (response.hits.length === 0) return 0.0;
@@ -677,12 +677,12 @@ export interface RunSubagentFanoutOptions {
   purpose?: string;
   /** Confidence floor (default {@link MERGE_THRESHOLD}) for folding a non-winning survivor in as supporting evidence. */
   mergeThreshold?: number;
-  /** Forwarded to every strategy's `/rag/query` call before that strategy's own `ragOptions` override on top. */
+  /** Forwarded to every strategy's `/v1/rag/query` call before that strategy's own `ragOptions` override on top. */
   ragOptions?: Partial<Omit<RagQueryOptions, "type" | "purpose">>;
 }
 
 /**
- * Run `strategies` (2-5 parallel `/rag/query` parameterizations,
+ * Run `strategies` (2-5 parallel `/v1/rag/query` parameterizations,
  * concurrently via `Promise.all`) and deterministically pick + merge a
  * winner.
  *

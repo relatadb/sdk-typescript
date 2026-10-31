@@ -2,7 +2,7 @@
  * Tests for the LangChain.js memory adapter (#2312).
  *
  * LangChain is not imported (the adapter is framework-agnostic); these tests
- * drive it through a mocked Relata `/memory/*` surface and assert the
+ * drive it through a mocked Relata `/v1/memory/*` surface and assert the
  * store/recall/clear behaviour, mirroring
  * `sdks/python/tests/test_adapters.py::test_langchain_save_and_load`.
  */
@@ -17,7 +17,7 @@ function mcpEnvelope(inner: unknown): unknown {
   return { content: [{ type: "text", text: JSON.stringify(inner) }], isError: false };
 }
 
-/** A routing mock `fetch` that serves canned `/memory/*` replies and records calls. */
+/** A routing mock `fetch` that serves canned `/v1/memory/*` replies and records calls. */
 function mockMemoryServer(): {
   fetch: typeof globalThis.fetch;
   paths: string[];
@@ -27,14 +27,14 @@ function mockMemoryServer(): {
   const fetch = (async (url: string | URL | Request): Promise<Response> => {
     const path = new URL(typeof url === "string" ? url : url.toString()).pathname;
     calls.push(path);
-    if (path === "/memory/remember") {
+    if (path === "/v1/memory/remember") {
       nextId += 1;
       return new Response(JSON.stringify(mcpEnvelope({ id: `mem-${nextId}` })), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
     }
-    if (path === "/memory/recall") {
+    if (path === "/v1/memory/recall") {
       return new Response(
         JSON.stringify(
           mcpEnvelope({ rows: [{ id: "a", content: "dark mode", score: 0.9 }] }),
@@ -42,7 +42,7 @@ function mockMemoryServer(): {
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }
-    if (path.startsWith("/memory/forget/")) {
+    if (path.startsWith("/v1/memory/forget/")) {
       return new Response(
         JSON.stringify(mcpEnvelope({ memory_item_id: path.split("/").pop() })),
         { status: 200, headers: { "content-type": "application/json" } },
@@ -64,7 +64,7 @@ test("RelataMemory (langchain): saveContext stores human + ai turns", async () =
   const mem = new RelataMemory({ baseUrl: "http://x", purpose: "agent", fetch });
 
   await mem.saveContext({ input: "what theme?" }, { output: "dark mode" });
-  assert.equal(paths.filter((p) => p === "/memory/remember").length, 2);
+  assert.equal(paths.filter((p) => p === "/v1/memory/remember").length, 2);
 });
 
 test("RelataMemory (langchain): loadMemoryVariables recalls under memoryKey", async () => {
@@ -73,7 +73,7 @@ test("RelataMemory (langchain): loadMemoryVariables recalls under memoryKey", as
 
   const out = await mem.loadMemoryVariables({ input: "theme preference" });
   assert.ok(String(out["history"]).includes("dark mode"));
-  assert.ok(paths.includes("/memory/recall"));
+  assert.ok(paths.includes("/v1/memory/recall"));
 });
 
 test("RelataMemory (langchain): loadMemoryVariables with no input skips the recall round-trip", async () => {
@@ -91,7 +91,7 @@ test("RelataMemory (langchain): clear retracts every stored memory", async () =>
 
   await mem.saveContext({ input: "a" }, { output: "b" });
   await mem.clear();
-  assert.equal(paths.filter((p) => p.startsWith("/memory/forget/")).length, 2);
+  assert.equal(paths.filter((p) => p.startsWith("/v1/memory/forget/")).length, 2);
 });
 
 test("RelataMemory (langchain): custom memoryKey and topK are honored", async () => {
@@ -106,5 +106,5 @@ test("RelataMemory (langchain): custom memoryKey and topK are honored", async ()
   assert.deepEqual(mem.memoryKeys, ["chat_history"]);
   const out = await mem.loadMemoryVariables({ input: "x" });
   assert.ok("chat_history" in out);
-  assert.ok(paths.includes("/memory/recall"));
+  assert.ok(paths.includes("/v1/memory/recall"));
 });

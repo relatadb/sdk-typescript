@@ -25,7 +25,7 @@ export interface DnsTunnelFinding {
 export interface DnsTunnelResult {
   columns: string[];
   rows: DnsTunnelFinding[];
-  /** Candidate DNS types exposed by the caller's `/query/schema` response. */
+  /** Candidate DNS types exposed by the caller's `/v1/query/schema` response. */
   types_scanned: string[];
   rows_scanned: number;
   complete: boolean;

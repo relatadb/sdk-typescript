@@ -1,9 +1,9 @@
 /**
  * Identity + lookup + GDPR SDK (#79).
  *
- * Wraps `/identity/label`, `/identity/uncertainty`, `/lookup`,
- * `/lookup/register`, plus the `ERASE SUBJECT` SQL command. The
- * `eraseSubject` path goes through `POST /query` because the server exposes
+ * Wraps `/v1/identity/label`, `/v1/identity/uncertainty`, `/v1/lookup`,
+ * `/v1/lookup/register`, plus the `ERASE SUBJECT` SQL command. The
+ * `eraseSubject` path goes through `POST /v1/query` because the server exposes
  * it as a SQL statement, not a dedicated HTTP route.
  */
 
@@ -28,7 +28,7 @@ export class IdentityClient extends TypedClientBase {
 
   /**
    * Assign a canonical label to an identity.
-   * Wraps `POST /identity/label`.
+   * Wraps `POST /v1/identity/label`.
    */
   async label(
     identity: string,
@@ -41,19 +41,19 @@ export class IdentityClient extends TypedClientBase {
       confidence: opts.confidence ?? 1.0,
     };
     if (opts.sourceId !== undefined) payload["source_id"] = opts.sourceId;
-    return this._post("/identity/label", payload);
+    return this._post("/v1/identity/label", payload);
   }
 
   /**
    * Record uncertainty about an identity match. The server surfaces these for
-   * human review. Wraps `GET /identity/uncertainty`.
+   * human review. Wraps `GET /v1/identity/uncertainty`.
    */
   async recordUncertainty(
     identity: string,
     reason: string,
     opts: { suggestedAlternatives?: string[] } = {},
   ): Promise<Record<string, unknown>> {
-    const path = `/identity/uncertainty${qs({
+    const path = `/v1/identity/uncertainty${qs({
       identity,
       reason,
       // `suggested_alternatives` is an array — encode as comma-separated.
@@ -68,7 +68,7 @@ export class IdentityClient extends TypedClientBase {
 
   /**
    * Register a lookup table (CSV). Matches Splunk's `lookup` semantics.
-   * Wraps `POST /lookup/register`.
+   * Wraps `POST /v1/lookup/register`.
    */
   async registerLookup(
     name: string,
@@ -84,15 +84,15 @@ export class IdentityClient extends TypedClientBase {
       key_column: opts.keyColumn,
     };
     if (opts.valueColumns !== undefined) payload["value_columns"] = opts.valueColumns;
-    return this._post("/lookup/register", payload);
+    return this._post("/v1/lookup/register", payload);
   }
 
   /**
    * List registered lookup tables.
-   * Wraps `GET /lookup`.
+   * Wraps `GET /v1/lookup`.
    */
   async listLookups(): Promise<Record<string, unknown>[]> {
-    const data = await this._get<Record<string, unknown>>("/lookup");
+    const data = await this._get<Record<string, unknown>>("/v1/lookup");
     const lookups =
       typeof data === "object" && data !== null && Array.isArray(data["lookups"])
         ? data["lookups"]
@@ -103,14 +103,14 @@ export class IdentityClient extends TypedClientBase {
   }
 
   /**
-   * Invoke a registered lookup. Wraps `GET /lookup?name=...&key=...`.
+   * Invoke a registered lookup. Wraps `GET /v1/lookup?name=...&key=...`.
    * Returns the row(s) matching `key`.
    */
   async invokeLookup(
     name: string,
     key: string,
   ): Promise<Record<string, unknown>> {
-    const path = `/lookup${qs({ name, key })}`;
+    const path = `/v1/lookup${qs({ name, key })}`;
     return this._get(path);
   }
 
@@ -146,6 +146,6 @@ export class IdentityClient extends TypedClientBase {
     const sql =
       `ERASE SUBJECT '${escapeSqlString(subjectIdentity)}' ` +
       `REASON '${escapeSqlString(reason)}'${certifyKw}`;
-    return this._post("/query", { purpose: opts.purpose, sql });
+    return this._post("/v1/query", { purpose: opts.purpose, sql });
   }
 }

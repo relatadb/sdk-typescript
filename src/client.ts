@@ -28,7 +28,6 @@
 
 import {
   type AuditCountResponse,
-  type ClusterNode,
   type EventAppendReceipt,
   type EventAppendRequest,
   type AlertSubmitRequest,
@@ -51,7 +50,6 @@ import {
   type StatusResponse,
   type VersionInfo,
   type WireAuditCountResponse,
-  type WireClusterNodesResponse,
   type WireHealthResponse,
   type WireQueryResponse,
   type WireSearchResponse,
@@ -254,7 +252,7 @@ export class RelataClient {
    * `defaultPurpose` on the client. The server rejects purposeless queries
    * with HTTP 400 (`PurposeError`).
    *
-   * The wire shape returned by `POST /query` is normalised so callers always
+   * The wire shape returned by `POST /v1/query` is normalised so callers always
    * see `rows` as a list of row objects, regardless of whether the server
    * sent the rich `{"data": [...]}` shape or the legacy
    * `{"rows": <int count>}` shape.
@@ -326,7 +324,7 @@ export class RelataClient {
     }
 
     const wire = await this.#post<WireQueryResponse>(
-      "/query",
+      "/v1/query",
       {
         purpose,
         sql: injectMatcherHint(sql, options?.matcher),
@@ -399,7 +397,7 @@ export class RelataClient {
       throw new PurposeError(undefined, "purpose field is required");
     }
     const wire = await this.#post<WireQueryResponse>(
-      "/query",
+      "/v1/query",
       { purpose, sql: injectMatcherHint(sql, options?.matcher), params },
       options?.timeoutMs,
     );
@@ -431,7 +429,7 @@ export class RelataClient {
   // -------------------------------------------------------------------------
 
   /**
-   * Full-text search over a governed object type (`POST /search`).
+   * Full-text search over a governed object type (`POST /v1/search`).
    *
    * By default this is BM25-only — it never touches the vector channel. Pass
    * `metric` and/or `weights` to route through the server's real
@@ -481,7 +479,7 @@ export class RelataClient {
     if (params.metric) body["metric"] = params.metric;
     if (params.weights) body["weights"] = params.weights;
 
-    const wire = await this.#post<WireSearchResponse>("/search", body);
+    const wire = await this.#post<WireSearchResponse>("/v1/search", body);
     return {
       // #4626: the wire response carries each hit's row under `data` and
       // never sets `object_type` — see `WireSearchResponse`'s doc comment.
@@ -540,7 +538,7 @@ export class RelataClient {
     const wire = await this.#post<{
       results: WireMultiSearchResult[];
       processing_time_ms: number;
-    }>("/multi-search", { queries });
+    }>("/v1/search/multi", { queries });
     const results: SearchResponse[] = (wire.results ?? []).map((r) => ({
       hits: (r.hits ?? []).map((h) => ({
         id: h.id,
@@ -580,7 +578,7 @@ export class RelataClient {
 
   /** List all registered object types. */
   async listTypes(): Promise<Record<string, unknown>> {
-    return this.#get("/types");
+    return this.#get("/v1/types");
   }
 
   /**
@@ -598,11 +596,11 @@ export class RelataClient {
       params.set("purpose", purpose ?? this.#defaultPurpose!);
     }
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
-    return this.#get(`/query/schema${suffix}`);
+    return this.#get(`/v1/query/schema${suffix}`);
   }
 
   /**
-   * Register a custom object type at runtime (`POST /types`). `spec` mirrors
+   * Register a custom object type at runtime (`POST /v1/types`). `spec` mirrors
    * the server's full `TypeDef` body (`crates/relata-cli/src/serve/types_routes.rs`):
    *
    * - `description`/`owner` — free-text, not schema-enforced.
@@ -635,26 +633,26 @@ export class RelataClient {
       force?: boolean;
     },
   ): Promise<Record<string, unknown>> {
-    return this.#post("/types", { name, ...spec });
+    return this.#post("/v1/types", { name, ...spec });
   }
 
   /** Deregister an empty custom type. Admin token required; types with history or protected data are rejected. */
   async deregisterType(name: string): Promise<Record<string, unknown>> {
-    return this.#delete(`/types/${pathSegment(name)}`);
+    return this.#delete(`/v1/types/${pathSegment(name)}`);
   }
 
   /** Get type detail (properties, owner, row count). */
   async typeDetail(name: string): Promise<Record<string, unknown>> {
-    return this.#get(`/types/${pathSegment(name)}`);
+    return this.#get(`/v1/types/${pathSegment(name)}`);
   }
 
   /** Lifecycle progress of a type (#5724): recent register/alter/deregister outcomes plus derived-index progress. */
   async typeLifecycle(name: string): Promise<Record<string, unknown>> {
-    return this.#get(`/types/${pathSegment(name)}/lifecycle`);
+    return this.#get(`/v1/types/${pathSegment(name)}/lifecycle`);
   }
 
   /**
-   * Online schema evolution — `PATCH /types/:name/schema` (#1307). `action` is
+   * Online schema evolution — `PATCH /v1/types/:name/schema` (#1307). `action` is
    * "add_column" | "remove_column" | "rename_column" | "change_type"; `column`
    * is the target column; `newColumn` / `colType` / `optional` apply to the
    * relevant actions (see the engine's `types_routes.rs` for the exact
@@ -678,7 +676,7 @@ export class RelataClient {
     if (opts.optional !== undefined) body["optional"] = opts.optional;
     if (opts.expectedSchemaVersion !== undefined)
       body["expected_schema_version"] = opts.expectedSchemaVersion;
-    return this.#patch(`/types/${pathSegment(name)}/schema`, body);
+    return this.#patch(`/v1/types/${pathSegment(name)}/schema`, body);
   }
 
   // -------------------------------------------------------------------------
@@ -691,7 +689,7 @@ export class RelataClient {
   // -------------------------------------------------------------------------
 
   /**
-   * Create a schema branch — `POST /schema/branches/:name` with a
+   * Create a schema branch — `POST /v1/schema/branches/:name` with a
    * `{"from": <source>}` body (#2497). The new branch is a copy-on-write
    * child of `fromBranch` (typically `"main"`).
    */
@@ -700,30 +698,30 @@ export class RelataClient {
     fromBranch: string,
   ): Promise<Record<string, unknown>> {
     return this.#post(
-      `/schema/branches/${encodeURIComponent(name)}`,
+      `/v1/schema/branches/${encodeURIComponent(name)}`,
       { from: fromBranch },
     );
   }
 
   /**
-   * Delete a schema branch — `DELETE /schema/branches/:name` (#2497).
+   * Delete a schema branch — `DELETE /v1/schema/branches/:name` (#2497).
    * Admin token required server-side.
    */
   async deleteSchemaBranch(name: string): Promise<Record<string, unknown>> {
-    return this.#delete(`/schema/branches/${encodeURIComponent(name)}`);
+    return this.#delete(`/v1/schema/branches/${encodeURIComponent(name)}`);
   }
 
   /**
-   * List registered edge (link) types — `GET /types/edges` (#2497).
+   * List registered edge (link) types — `GET /v1/types/edges` (#2497).
    * Returns the registry of `(from_type, to_type, label)` triples the
    * planner uses to resolve governed links.
    */
   async listEdgeTypes(): Promise<Record<string, unknown>> {
-    return this.#get("/types/edges");
+    return this.#get("/v1/types/edges");
   }
 
   /**
-   * Register an edge (link) type — `POST /types/edges` with a
+   * Register an edge (link) type — `POST /v1/types/edges` with a
    * `{"from_type", "to_type", "label"}` body (#2497). Mirrors the Rust flat
    * client's `register_edge_type`.
    */
@@ -732,22 +730,17 @@ export class RelataClient {
     toType: string,
     label: string,
   ): Promise<Record<string, unknown>> {
-    return this.#post("/types/edges", { from_type: fromType, to_type: toType, label });
+    return this.#post("/v1/types/edges", { from_type: fromType, to_type: toType, label });
   }
 
   /** SHACL schema migration — type specs, link types, property constraints. */
   async ontologyMigrate(schema: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.#post("/ontology/migrate", schema);
+    return this.#post("/v1/ontology/migrate", schema);
   }
 
   /** Register identity enrichment rules for SmartIngest. */
   async enrichmentRules(rules: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.#post("/ontology/enrichment-rules", rules);
-  }
-
-  /** List installed modules / extensions. */
-  async listModules(): Promise<Record<string, unknown>> {
-    return this.#get("/modules");
+    return this.#post("/v1/ontology/enrichment-rules", rules);
   }
 
   /** Create a typed governed link (edge) between two objects. */
@@ -758,7 +751,7 @@ export class RelataClient {
     targetId: string;
     targetType: string;
   }): Promise<Record<string, unknown>> {
-    return this.#post("/links", {
+    return this.#post("/v1/links", {
       link_name: params.linkName,
       source_id: params.sourceId,
       source_type: params.sourceType,
@@ -769,7 +762,7 @@ export class RelataClient {
 
   /**
    * Bulk-create up to 5000 edges in one idempotent, durable request
-   * (`POST /links/batch`). Edges are keyed by `(linkName, sourceId, targetId)`
+   * (`POST /v1/links/batch`). Edges are keyed by `(linkName, sourceId, targetId)`
    * within the tenant: an existing current edge is reported as
    * `already_present` and never written twice, so retrying after a timeout or
    * crash cannot duplicate. `idempotencyKey` additionally replays the first
@@ -791,7 +784,7 @@ export class RelataClient {
     if (opts.idempotencyKey !== undefined) headers["Idempotency-Key"] = opts.idempotencyKey;
     if (opts.durability !== undefined) headers["X-Relata-Durability"] = opts.durability;
     return this.#post(
-      "/links/batch",
+      "/v1/links/batch",
       {
         edges: edges.map((e) => ({
           link_name: e.linkName,
@@ -809,20 +802,20 @@ export class RelataClient {
 
   /** Close matching current native edges in the caller's tenant; preserves history. */
   async deleteLink(params: { linkName: string; sourceId: string; targetId: string }): Promise<Record<string, unknown>> {
-    return this.#send("DELETE", "/links", {
+    return this.#send("DELETE", "/v1/links", {
       link_name: params.linkName, source_id: params.sourceId, target_id: params.targetId,
     }, undefined);
   }
 
   /** List detection rules. */
   async listRules(): Promise<Record<string, unknown>> {
-    return this.#get("/rules");
+    return this.#get("/v1/rules");
   }
 
   /**
    * Create a detection rule.
    *
-   * `purpose` is mandatory server-side (`POST /rules?purpose=<p>`) — pass it
+   * `purpose` is mandatory server-side (`POST /v1/rules?purpose=<p>`) — pass it
    * here or set `defaultPurpose` on the client.
    */
   async createRule(
@@ -833,17 +826,17 @@ export class RelataClient {
     if (!purpose) {
       throw new PurposeError(undefined, "purpose field is required");
     }
-    return this.#post(`/rules?purpose=${encodeURIComponent(purpose)}`, rule);
+    return this.#post(`/v1/rules?purpose=${encodeURIComponent(purpose)}`, rule);
   }
 
   /** Disable (logically delete) a rule. */
   async disableRule(ruleId: string): Promise<Record<string, unknown>> {
-    return this.#delete(`/rules/${pathSegment(ruleId)}`);
+    return this.#delete(`/v1/rules/${pathSegment(ruleId)}`);
   }
 
   /** Snooze a rule for ``durationSecs``. */
   async snoozeRule(ruleId: string, durationSecs: number): Promise<Record<string, unknown>> {
-    return this.#post(`/rules/${pathSegment(ruleId)}/snooze`, { duration_secs: durationSecs });
+    return this.#post(`/v1/rules/${pathSegment(ruleId)}/snooze`, { duration_secs: durationSecs });
   }
 
   /**
@@ -857,17 +850,17 @@ export class RelataClient {
   ): Promise<Record<string, unknown>> {
     const body: Record<string, unknown> = { entity_id: entityId };
     if (opts?.condition !== undefined) body["condition"] = opts.condition;
-    return this.#post(`/rules/${pathSegment(ruleId)}/suppress`, body);
+    return this.#post(`/v1/rules/${pathSegment(ruleId)}/suppress`, body);
   }
 
   /** Add an exception entry so specific matches are ignored. */
   async addRuleException(ruleId: string, exception: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.#post(`/rules/${pathSegment(ruleId)}/exceptions`, exception);
+    return this.#post(`/v1/rules/${pathSegment(ruleId)}/exceptions`, exception);
   }
 
   /** Retrieve tuning state (snoozes, suppressions, exceptions). */
   async getRuleTuning(ruleId: string): Promise<Record<string, unknown>> {
-    return this.#get(`/rules/${pathSegment(ruleId)}/tuning`);
+    return this.#get(`/v1/rules/${pathSegment(ruleId)}/tuning`);
   }
 
   /**
@@ -888,13 +881,13 @@ export class RelataClient {
       mode === undefined
         ? `RESOLVE_IDENTITY('${escaped}')`
         : `RESOLVE_IDENTITY('${escaped}', MODE => '${mode}')`;
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql });
   }
 
   /** Detect identities in free text via SmartIngest. */
   async detectIdentities(text: string, purpose?: string): Promise<Record<string, unknown>> {
     const sql = `DETECT_IDENTITIES('${escapeSqlString(text)}')`;
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql });
   }
 
   /** Request scoped GDPR erasure. Controller access revocation is not certified cryptographic erasure; inspect receipt_scope and incomplete copy states. */
@@ -902,10 +895,10 @@ export class RelataClient {
     const s = escapeSqlString(subject);
     const r = escapeSqlString(reason ?? "gdpr-art17-request");
     const sql = `ERASE SUBJECT '${s}' REASON '${r}' CERTIFY`;
-    return this.#post("/query", { purpose: "gdpr-erasure", sql });
+    return this.#post("/v1/query", { purpose: "gdpr-erasure", sql });
   }
 
-  // ── Sessions & cluster (#967 Tier 2d) ────────────────────────────
+  // ── Sessions (#967 Tier 2d) ────────────────────────────
 
   /**
    * Bulk export all rows of a type (#967 Tier 5c). The type and format are
@@ -918,65 +911,22 @@ export class RelataClient {
       format: format ?? "json",
       purpose: "export",
     });
-    return this.#get(`/export?${params.toString()}`);
-  }
-
-  /** Register a webhook for push notifications (#967 Tier 5b). */
-  /**
-   * Register a webhook for push notifications (#967 Tier 5b). `opts.secret`,
-   * when supplied, is stored server-side (never echoed back by `listWebhooks`)
-   * and used to sign every delivered payload with HMAC-SHA256 in the
-   * `X-Webhook-Signature` header — the only way to get a *signed* (verifiable)
-   * webhook; omitting it registers an unsigned one.
-   */
-  async registerWebhook(
-    url: string,
-    eventTypes?: string[],
-    opts?: { secret?: string },
-  ): Promise<Record<string, unknown>> {
-    const body: Record<string, unknown> = { url, event_types: eventTypes ?? [] };
-    if (opts?.secret !== undefined) body["secret"] = opts.secret;
-    return this.#post("/webhooks", body);
-  }
-
-  /** List registered webhooks. */
-  async listWebhooks(): Promise<Record<string, unknown>> {
-    return this.#get("/webhooks");
-  }
-
-  /** Delete a webhook. */
-  async deleteWebhook(id: string): Promise<Record<string, unknown>> {
-    return this.#delete(`/webhooks/${pathSegment(id)}`);
-  }
-
-  /** Get cluster topology. */
-  async clusterTopology(): Promise<Record<string, unknown>> {
-    return this.#get("/cluster/topology");
-  }
-
-  /** Trigger a cluster rebalance. */
-  async clusterRebalance(): Promise<Record<string, unknown>> {
-    return this.#post("/cluster/rebalance", {});
-  }
-
-  /** Drain a node for maintenance. */
-  async clusterDrain(nodeId: string): Promise<Record<string, unknown>> {
-    return this.#post(`/cluster/drain/${pathSegment(nodeId)}`, {});
+    return this.#get(`/v1/export?${params.toString()}`);
   }
 
   /** View uncommitted session changes. */
   async sessionDiff(sessionId: string): Promise<Record<string, unknown>> {
-    return this.#get(`/session/${pathSegment(sessionId)}/diff`);
+    return this.#get(`/v1/sessions/${pathSegment(sessionId)}/diff`);
   }
 
   /** Commit a session's draft writes. */
   async sessionCommit(sessionId: string): Promise<Record<string, unknown>> {
-    return this.#post(`/session/${pathSegment(sessionId)}/commit`, {});
+    return this.#post(`/v1/sessions/${pathSegment(sessionId)}/commit`, {});
   }
 
   /** Discard uncommitted session changes. */
   async sessionDiscard(sessionId: string): Promise<Record<string, unknown>> {
-    return this.#delete(`/session/${pathSegment(sessionId)}/draft`);
+    return this.#delete(`/v1/sessions/${pathSegment(sessionId)}/draft`);
   }
 
   // ── Entity merge, dedup & identity (#967) ────────────────────────────────
@@ -984,12 +934,12 @@ export class RelataClient {
   /** Resolve an identity to its full cluster of linked identifiers. */
   async identityCluster(value: string, purpose?: string): Promise<Record<string, unknown>> {
     const sql = `RESOLVE_IDENTITY('${escapeSqlString(value)}', MODE => 'cluster')`;
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql });
   }
 
   /**
    * Predicate: do two identifiers resolve to the same entity? Executes
-   * `SAME_IDENTITY('<a>', '<b>')` via `POST /query` and decodes the `match`
+   * `SAME_IDENTITY('<a>', '<b>')` via `POST /v1/query` and decodes the `match`
    * verdict as a boolean (#2246).
    */
   async sameIdentity(a: string, b: string, purpose?: string): Promise<boolean> {
@@ -997,7 +947,7 @@ export class RelataClient {
     const cb = escapeSqlString(b);
     const sql = `SAME_IDENTITY('${ca}', '${cb}')`;
     const wire = await this.#post<{ data?: Array<Record<string, unknown>> }>(
-      "/query",
+      "/v1/query",
       { purpose: purpose ?? "analytics", sql },
     );
     return Boolean(Array.isArray(wire.data) && wire.data[0]?.["match"]);
@@ -1008,7 +958,7 @@ export class RelataClient {
     const a = escapeSqlString(idA);
     const b = escapeSqlString(idB);
     const sql = `FUSE_IDENTITIES('${a}', '${b}')`;
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql });
   }
 
   /** Ontological unmerge — inverse of fuseIdentities (#967). */
@@ -1016,18 +966,18 @@ export class RelataClient {
     const a = escapeSqlString(idA);
     const b = escapeSqlString(idB);
     const sql = `SPLIT_IDENTITIES('${a}', '${b}')`;
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql });
   }
 
   // ── Graph algorithm operators (#967) ─────────────────────────────────────
 
   async graphDijkstra(objectType: string, fromId: string, toId: string, purpose?: string): Promise<Record<string, unknown>> {
     const sql = `GRAPH_DIJKSTRA(${sqlLiteral(objectType)}, FROM => ${sqlLiteral(fromId)}, TO => ${sqlLiteral(toId)})`;
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql });
   }
 
   /**
-   * Shortest path via the governed `GET /graph/shortest-path` door (#2344).
+   * Shortest path via the governed `GET /v1/graph/shortest-path` door (#2344).
    * Unlike `graphDijkstra` (a SQL operator), this exposes the HTTP door's
    * `maxHops` ceiling.
    */
@@ -1038,11 +988,11 @@ export class RelataClient {
   ): Promise<Record<string, unknown>> {
     const p = new URLSearchParams({ from: fromId, to: toId });
     if (opts.maxHops !== undefined) p.set("max_hops", String(opts.maxHops));
-    return this.#get(`/graph/shortest-path?${p.toString()}`);
+    return this.#get(`/v1/graph/shortest-path?${p.toString()}`);
   }
 
   /**
-   * Breadth-first traversal via the governed `GET /graph/traverse` door.
+   * Breadth-first traversal via the governed `GET /v1/graph/traverse` door.
    * `direction` is "out" | "in" | "both" (server default out).
    */
   async graphTraverse(
@@ -1053,7 +1003,7 @@ export class RelataClient {
     if (opts.direction !== undefined) p.set("direction", opts.direction);
     if (opts.maxDepth !== undefined) p.set("max_depth", String(opts.maxDepth));
     if (opts.limit !== undefined) p.set("limit", String(opts.limit));
-    return this.#get(`/graph/traverse?${p.toString()}`);
+    return this.#get(`/v1/graph/traverse?${p.toString()}`);
   }
 
   async graphPageRank(objectType: string, opts?: { damping?: number; maxIter?: number; purpose?: string }): Promise<Record<string, unknown>> {
@@ -1061,24 +1011,24 @@ export class RelataClient {
     if (opts?.damping !== undefined) parts.push(`, DAMPING => ${opts.damping}`);
     if (opts?.maxIter !== undefined) parts.push(`, MAX_ITER => ${opts.maxIter}`);
     parts.push(")");
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
+    return this.#post("/v1/query", { purpose: opts?.purpose ?? "analytics", sql: parts.join("") });
   }
 
   async graphSCC(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_SCC(${sqlLiteral(objectType)})` });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql: `GRAPH_SCC(${sqlLiteral(objectType)})` });
   }
 
   async graphCycles(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_CYCLES(${sqlLiteral(objectType)})` });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql: `GRAPH_CYCLES(${sqlLiteral(objectType)})` });
   }
 
   async graphCommunity(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `GRAPH_COMMUNITY(${sqlLiteral(objectType)})` });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql: `GRAPH_COMMUNITY(${sqlLiteral(objectType)})` });
   }
 
   async graphNodeSimilarity(objectType: string, node: string, purpose?: string): Promise<Record<string, unknown>> {
     const sql = `GRAPH_NODE_SIMILARITY(${sqlLiteral(objectType)}, NODE => ${sqlLiteral(node)})`;
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql });
   }
 
   /**
@@ -1087,11 +1037,11 @@ export class RelataClient {
    */
   async graphLinkPredict(objectType: string, from: string, to: string, purpose?: string): Promise<Record<string, unknown>> {
     const sql = `GRAPH_LINK_PREDICT(${sqlLiteral(objectType)}, FROM => ${sqlLiteral(from)}, TO => ${sqlLiteral(to)})`;
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql });
   }
 
   async graphTriangleCount(objectType: string, purpose?: string): Promise<Record<string, unknown>> {
-    return this.#post("/query", { purpose: purpose ?? "analytics", sql: `TRIANGLE_COUNT(${sqlLiteral(objectType)})` });
+    return this.#post("/v1/query", { purpose: purpose ?? "analytics", sql: `TRIANGLE_COUNT(${sqlLiteral(objectType)})` });
   }
 
   // ── Intelligence operators (#967) ────────────────────────────────────────
@@ -1102,7 +1052,7 @@ export class RelataClient {
     if (opts?.timeTolSecs !== undefined) parts.push(`TIME_TOL => ${opts.timeTolSecs * 1_000_000_000}`);
     if (opts?.minPoints !== undefined) parts.push(`MIN_POINTS => ${opts.minPoints}`);
     const sql = `CONVOY(${parts.join(", ")})`;
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
+    return this.#post("/v1/query", { purpose: opts?.purpose ?? "analytics", sql });
   }
 
   /**
@@ -1129,7 +1079,7 @@ export class RelataClient {
    */
   async geofence(fence: string, targetType: string, opts?: { purpose?: string }): Promise<Record<string, unknown>> {
     const sql = `GEOFENCE(${sqlLiteral(fence)}, TARGET_TYPE => ${sqlLiteral(targetType)})`;
-    return this.#post("/query", { purpose: opts?.purpose ?? "analytics", sql });
+    return this.#post("/v1/query", { purpose: opts?.purpose ?? "analytics", sql });
   }
 
   // Domain workflows such as vessel-track reconstruction are solution code.
@@ -1138,7 +1088,7 @@ export class RelataClient {
   // ── Multimedia operators (#2251, epic #655 — ADR-030) ───────────────────
   //
   // Biometric / perceptual-hash search via the governed SQL operator door.
-  // Both route through `POST /query` so PURPOSE / ACL / cell-masking / tenant
+  // Both route through `POST /v1/query` so PURPOSE / ACL / cell-masking / tenant
   // isolation apply identically to a hand-written query. The server operators
   // are registered in `relata_query::parser`:
   //  - SIMILAR_IMAGE('<media_ref>', THRESHOLD => f, INDEX => '<corpus>')
@@ -1148,7 +1098,7 @@ export class RelataClient {
    * Near-duplicate/similar-image search against a media reference (#2840,
    * PR #2859).
    *
-   * Executes `SIMILAR_IMAGE(...)` through the governed `/query` door.
+   * Executes `SIMILAR_IMAGE(...)` through the governed `/v1/query` door.
    *
    * @param mediaRef - Reference media identifier to find near-duplicates of.
    * @param opts - `threshold` (minimum similarity 0–1, default 0.9), `index`
@@ -1193,7 +1143,7 @@ export class RelataClient {
     const body: Record<string, unknown> = { query };
     if (variables !== undefined) body["variables"] = variables;
     if (operationName !== undefined) body["operationName"] = operationName;
-    const wire = await this.#post<{ data?: unknown; errors?: { message?: string }[] }>("/graphql", body);
+    const wire = await this.#post<{ data?: unknown; errors?: { message?: string }[] }>("/v1/graphql", body);
     if (wire.errors && wire.errors.length > 0) {
       const msg = wire.errors[0]?.message ?? "graphql error";
       throw new RelataError(`graphql: ${msg}`, 200, msg);
@@ -1261,7 +1211,7 @@ export class RelataClient {
    * @throws {NetworkError} Server unreachable.
    */
   async status(): Promise<StatusResponse> {
-    const wire = await this.#get<WireStatusResponse>("/status");
+    const wire = await this.#get<WireStatusResponse>("/v1/system/status");
     return {
       profile: wire.profile,
       role: wire.role,
@@ -1279,7 +1229,7 @@ export class RelataClient {
    * @throws {NetworkError} Server unreachable.
    */
   async auditCount(): Promise<AuditCountResponse> {
-    const wire = await this.#get<WireAuditCountResponse>("/audit/count");
+    const wire = await this.#get<WireAuditCountResponse>("/v1/audit/count");
     return {
       entries: wire.entries,
       chainValid: wire.chain_valid,
@@ -1287,26 +1237,9 @@ export class RelataClient {
   }
 
   /**
-   * Fetch the list of nodes in the Relata cluster.
-   *
-   * Returns a single-element list in `free` and `server` profiles.
-   *
-   * @throws {AuthError} Token missing or invalid.
-   * @throws {NetworkError} Server unreachable.
-   */
-  async clusterNodes(): Promise<ClusterNode[]> {
-    const wire = await this.#get<WireClusterNodesResponse>("/cluster/nodes");
-    return wire.nodes.map((n) => ({
-      nodeId: n.node_id,
-      role: n.role,
-      url: n.url,
-    }));
-  }
-
-  /**
    * Return engine-wide counts for health dashboards.
    *
-   * Wraps `GET /debug/stats`. The shape mirrors the storage-backend contract
+   * Wraps `GET /v1/system/stats`. The shape mirrors the storage-backend contract
    * §9 — `records`, `states`, `snapshotRows`, `logLeaves`, `tokens` — to the
    * extent the server currently distinguishes them. Fields the server does
    * not yet emit come back as `undefined`; the full server payload is on
@@ -1316,7 +1249,7 @@ export class RelataClient {
    * @throws {NetworkError} Server unreachable.
    */
   async stats(): Promise<Stats> {
-    const wire = await this.#get<WireStatsResponse>("/debug/stats");
+    const wire = await this.#get<WireStatsResponse>("/v1/system/stats");
     return {
       records: numOrUndefined(wire.records),
       states: numOrUndefined(wire.states),
@@ -1369,7 +1302,7 @@ export class RelataClient {
   /**
    * Queue a prepared document batch through the generic mixed-type HTTP
    * contract. Extractors and document mapping belong in application adapters;
-   * this helper sends already-prepared governed rows to `/ingest/bulk`.
+   * this helper sends already-prepared governed rows to `/v1/ingest/bulk`.
    *
    * The batch should include its `DocumentSource`, `DocumentChunk` rows and
    * any linked evidence rows, each with `_type` and stable `_pk` identity.
@@ -1393,7 +1326,7 @@ export class RelataClient {
         : {}),
     };
     const wire = await this.#send<WireIngestDocumentResponse>(
-      "POST", "/ingest/bulk", body, undefined, undefined, stringifyIngestBody(body),
+      "POST", "/v1/ingest/bulk", body, undefined, undefined, stringifyIngestBody(body),
     );
     return {
       taskId: wire.task_id ?? "",
@@ -1405,7 +1338,7 @@ export class RelataClient {
   }
 
   /**
-   * Atomically apply 1..64 create/update/delete operations (`POST /commit`,
+   * Atomically apply 1..64 create/update/delete operations (`POST /v1/commit`,
    * #5767). All-or-nothing: every `expectedVersion` is checked before anything
    * is written and the bundle is one durable record. A failed precondition
    * throws `PreconditionFailedError` (`currentVersion`, `failedOperation`) and
@@ -1427,7 +1360,7 @@ export class RelataClient {
     replayed: boolean;
   }> {
     const purpose = opts.purpose ?? this.#defaultPurpose;
-    return this.#post("/commit", {
+    return this.#post("/v1/commit", {
       operations,
       ...(opts.idempotencyKey !== undefined ? { idempotencyKey: opts.idempotencyKey } : {}),
       ...(purpose !== undefined ? { purpose } : {}),
@@ -1435,7 +1368,7 @@ export class RelataClient {
   }
 
   /**
-   * Poll generic mixed-type ingest task progress at `/ingest/tasks/:task_id`.
+   * Poll generic mixed-type ingest task progress at `/v1/ingest/tasks/:task_id`.
    * Persistent local receipts survive restart; unresolved work becomes uncertain
    * without automatic reingestion. Volatile profiles remain process-local.
    * Inspect receipt_durability/recovered in extensions; counters are confirmed
@@ -1443,7 +1376,7 @@ export class RelataClient {
    */
   async ingestDocumentStatus(taskId: string): Promise<IngestDocumentTaskStatus> {
     const wire = await this.#get<WireIngestDocumentTaskStatus>(
-      `/ingest/tasks/${encodeURIComponent(taskId)}`,
+      `/v1/ingest/tasks/${encodeURIComponent(taskId)}`,
     );
     const known = new Set([
       "task_id", "status", "rows_total", "rows_written", "rows_dropped",
@@ -1485,7 +1418,7 @@ export class RelataClient {
       alert_id: string;
       status: "accepted" | "duplicate";
       durability: "local_wal_sync";
-    }>("/alerts/submit", { ...request });
+    }>("/v1/alerts", { ...request });
     return { alertId: wire.alert_id, status: wire.status, durability: wire.durability };
   }
 
@@ -1496,7 +1429,7 @@ export class RelataClient {
    * currently rejects cluster deployments.
    */
   async appendEvent(request: EventAppendRequest): Promise<EventAppendReceipt> {
-    const wire = await this.#post<WireEventAppendReceipt>("/events/append", { ...request });
+    const wire = await this.#post<WireEventAppendReceipt>("/v1/ingest/events", { ...request });
     return {
       eventId: wire.event_id,
       objectType: wire.object_type,
@@ -1509,16 +1442,16 @@ export class RelataClient {
   // Public API — ingest + memory verbs (#751)
   // -------------------------------------------------------------------------
 
-  /** Ingest an array of objects into Relata (`POST /ingest`). */
+  /** Ingest an array of objects into Relata (`POST /v1/ingest`). */
   async ingest(objects: object[]): Promise<IngestResponse> {
-    return this.#post<IngestResponse>("/ingest", { objects });
+    return this.#post<IngestResponse>("/v1/ingest", { objects });
   }
 
   /**
-   * Stream rows from an async iterable into batched `POST /ingest` calls
+   * Stream rows from an async iterable into batched `POST /v1/ingest` calls
    * with backpressure. Memory is O(batchSize), not O(totalRows). Returns the
    * number of input rows in batches whose request returned without throwing.
-   * `/ingest` is queued, so this is not a writer-confirmed count. The helper
+   * `/v1/ingest` is queued, so this is not a writer-confirmed count. The helper
    * discards batch receipts/task IDs and does not inspect row-level errors in
    * a successful response. Call `IngestClient.bulk` per batch and poll each
    * task when completion or per-row error accounting is required. Stops when
@@ -1560,27 +1493,27 @@ export class RelataClient {
   /** Send a batch of objects to the ingest endpoint. */
   async #ingestBatch(objectType: string, purpose: string, batch: object[]): Promise<void> {
     const params = new URLSearchParams({ object_type: objectType, purpose });
-    await this.#post(`/ingest?${params}`, { objects: batch });
+    await this.#post(`/v1/ingest?${params}`, { objects: batch });
   }
 
-  /** Store a memory item (`POST /memory/remember`). */
+  /** Store a memory item (`POST /v1/memory/remember`). */
   async remember(content: string, opts?: RememberOptions): Promise<RememberResponse> {
-    return this.#post<RememberResponse>("/memory/remember", { content, ...opts });
+    return this.#post<RememberResponse>("/v1/memory/remember", { content, ...opts });
   }
 
-  /** Recall memory items matching a query (`GET /memory/recall`). */
+  /** Recall memory items matching a query (`POST /v1/memory/recall`). */
   async recall(query: string, opts?: RecallOptions): Promise<RecallResponse> {
-    const params = new URLSearchParams({ q: query });
-    if (opts?.session_id !== undefined) params.set("session_id", opts.session_id);
-    if (opts?.top_k !== undefined) params.set("top_k", String(opts.top_k));
-    if (opts?.as_of !== undefined) params.set("as_of", opts.as_of);
-    if (opts?.purpose !== undefined) params.set("purpose", opts.purpose);
-    return this.#get<RecallResponse>(`/memory/recall?${params}`);
+    const body: Record<string, unknown> = { q: query };
+    if (opts?.session_id !== undefined) body["session_id"] = opts.session_id;
+    if (opts?.top_k !== undefined) body["top_k"] = opts.top_k;
+    if (opts?.as_of !== undefined) body["as_of"] = opts.as_of;
+    if (opts?.purpose !== undefined) body["purpose"] = opts.purpose;
+    return this.#post<RecallResponse>("/v1/memory/recall", body);
   }
 
-  /** Delete a memory item (`DELETE /memory/forget/:id`). */
+  /** Delete a memory item (`DELETE /v1/memory/forget/:id`). */
   async forget(id: string): Promise<void> {
-    await this.#delete<unknown>(`/memory/forget/${encodeURIComponent(id)}`);
+    await this.#delete<unknown>(`/v1/memory/forget/${encodeURIComponent(id)}`);
   }
 
   // -------------------------------------------------------------------------
@@ -2002,7 +1935,7 @@ export class RelataClient {
 // Wire shapes that are private to the client module
 // ---------------------------------------------------------------------------
 
-/** @internal Wire shape for queued `POST /ingest/bulk`. */
+/** @internal Wire shape for queued `POST /v1/ingest/bulk`. */
 interface WireIngestDocumentResponse {
   task_id?: string;
   rows_queued?: number;
@@ -2011,7 +1944,7 @@ interface WireIngestDocumentResponse {
   queue_depth?: number;
 }
 
-/** @internal Wire shape for `GET /ingest/tasks/:task_id`. */
+/** @internal Wire shape for `GET /v1/ingest/tasks/:task_id`. */
 interface WireIngestDocumentTaskStatus {
   task_id?: string;
   status?: string;
@@ -2056,7 +1989,7 @@ function stringifyIngestBody(value: unknown, ancestors = new Set<object>()): str
   throw new TypeError(`unsupported ingest JSON value: ${typeof value}`);
 }
 
-/** @internal Wire shape for `POST /events/append`. */
+/** @internal Wire shape for `POST /v1/ingest/events`. */
 interface WireEventAppendReceipt {
   event_id: string;
   object_type: string;
@@ -2073,7 +2006,7 @@ interface WireVersionInfo {
   features?: string[];
 }
 
-/** @internal Wire shape for `GET /debug/stats`. */
+/** @internal Wire shape for `GET /v1/system/stats`. */
 interface WireStatsResponse {
   records?: number;
   states?: number;

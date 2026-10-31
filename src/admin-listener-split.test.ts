@@ -1,16 +1,16 @@
 /**
  * Tests for #2321 (ADR-0261): the admin control-plane listener split.
  *
- * /admin/* and /platform/* are mounted ONLY on the loopbound admin listener
+ * /admin/* is mounted ONLY on the loopbound admin listener
  * (RELATA_ADMIN_BIND, default 127.0.0.1:9091) on a hardened server/cluster
  * deployment -- never the main data-plane listener. These tests pin two
  * things:
  *
  * 1. `adminBaseUrl`, when configured (on `RelataClient` or directly on a
- *    typed client's constructor options), routes admin/platform-only
+ *    typed client's constructor options), routes admin-only
  *    requests to the admin listener instead of `baseUrl` -- spot-checked
- *    through the real `BackupClient`/`TenantAdminClient` typed clients.
- * 2. A bare, detail-free 404 against an admin/platform-only path -- the
+ *    through the real `BackupClient` typed client.
+ * 2. A bare, detail-free 404 against an admin-only path -- the
  *    shape the server's own RFC 7807 normalisation leaves behind for a
  *    request that matched no route on the listener that answered --
  *    surfaces a "you're probably pointed at the wrong port" hint instead of
@@ -27,11 +27,10 @@ import { BackupClient, RelataClient, TenantAdminClient } from "./index.ts";
 // Pure helper unit tests
 // ---------------------------------------------------------------------------
 
-test("isAdminOnlyPath matches /admin/* and /platform/* only", () => {
+test("isAdminOnlyPath matches /admin/* only", () => {
   assert.ok(isAdminOnlyPath("/admin/backup"));
-  assert.ok(isAdminOnlyPath("/platform/tenants"));
-  assert.ok(!isAdminOnlyPath("/query"));
-  assert.ok(!isAdminOnlyPath("/tenants/me"));
+  assert.ok(!isAdminOnlyPath("/v1/query"));
+  assert.ok(!isAdminOnlyPath("/v1/tenants/me"));
   assert.ok(!isAdminOnlyPath("/administer")); // no trailing slash after "admin"
 });
 
@@ -113,24 +112,6 @@ test("BackupClient routes to adminBaseUrl when configured", async () => {
   assert.deepEqual(hostsHit, ["admin-plane.example"]);
 });
 
-test("TenantAdminClient splits /tenants/* and /platform/* across planes", async () => {
-  const seenHosts: Record<string, string> = {};
-  const fetch = mockFetchByHost((u) => {
-    seenHosts[u.pathname] = u.host;
-    return { body: { usage: {} } };
-  });
-  const tenants = new TenantAdminClient({
-    baseUrl: "http://data-plane.example",
-    adminBaseUrl: "http://admin-plane.example",
-    fetch,
-  });
-  await tenants.usage(); // /tenants/usage -- ordinary data-plane route
-  await tenants.platformUsage(); // /platform/usage -- admin-listener-only route
-
-  assert.equal(seenHosts["/tenants/usage"], "data-plane.example");
-  assert.equal(seenHosts["/platform/usage"], "admin-plane.example");
-});
-
 test("BackupClient.fromClient inherits adminBaseUrl from the parent RelataClient", async () => {
   const hostsHit: string[] = [];
   const fetch = mockFetchByHost((u) => {
@@ -180,19 +161,19 @@ test("bare 404 against an admin-only path surfaces the wrong-port hint", async (
   );
 });
 
-test("real business 404 on a /platform/* route does not get the hint", async () => {
+test("real business 404 on an /admin/* route does not get the hint", async () => {
   const fetch = mockFetchFixed(404, {
     type: "about:blank",
     status: 404,
     title: "Not Found",
-    detail: "tenant 'acme' not found",
+    detail: "backup 'b1' not found",
   });
-  const tenants = new TenantAdminClient({ baseUrl: "http://x", fetch });
+  const backup = new BackupClient({ baseUrl: "http://x", fetch });
   await assert.rejects(
-    () => tenants.get("acme"),
+    () => backup.list(),
     (err: Error) => {
       assert.ok(!err.message.includes("RELATA_ADMIN_BIND"), err.message);
-      assert.ok(err.message.includes("tenant 'acme' not found"), err.message);
+      assert.ok(err.message.includes("backup 'b1' not found"), err.message);
       return true;
     },
   );
@@ -207,7 +188,7 @@ test("bare 404 on a data-plane path does not get the hint", async () => {
   });
   const tenants = new TenantAdminClient({ baseUrl: "http://x", fetch });
   await assert.rejects(
-    () => tenants.tenantUsage("acme"), // /tenants/:id/usage -- not admin/platform-only
+    () => tenants.me(), // /v1/tenants/me -- not admin-only
     (err: Error) => {
       assert.ok(!err.message.includes("RELATA_ADMIN_BIND"), err.message);
       return true;

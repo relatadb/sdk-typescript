@@ -8,7 +8,7 @@ import { test } from "node:test";
 
 import {
   A2AClient, AuditClient, AuthError, BackupClient, createClient,
-  GovernanceClient, IdentityClient, IngestClient, LogClient, McpClient,
+  GovernanceClient, IdentityClient, IngestClient, McpClient,
   NotFoundError, RelataClient, ServerError, SystemClient, TenantAdminClient,
   TimeoutError, TokenClient, unwrapMcp,
 } from "./index.ts";
@@ -47,7 +47,7 @@ test("fromClient: typed clients inherit baseUrl, bearerToken, tenant, purpose", 
   });
   const gov = GovernanceClient.fromClient(relata);
   await gov.listRules();
-  assert.equal(calls[0]?.url, "http://srv:8080/rules");
+  assert.equal(calls[0]?.url, "http://srv:8080/v1/rules");
   assert.equal(calls[0]?.headers["authorization"], "Bearer tok");
   assert.equal(calls[0]?.headers["x-relata-tenant-id"], "acme");
 });
@@ -195,12 +195,12 @@ test("GovernanceClient: listRules, createRule, placeLegalHold, submitDsar", asyn
 
   const rules = await gov.listRules({ objectType: "Transaction" });
   assert.equal(rules.length, 1);
-  assert.ok(calls[0]?.url.includes("/rules?object_type=Transaction"));
+  assert.ok(calls[0]?.url.includes("/v1/rules?object_type=Transaction"));
 
   const rule = await gov.createRule({ name: "big-xfer", condition_sql: "amount > 10000", target_type: "Transaction" });
   assert.equal(rule["id"], "r2");
   assert.equal(calls[1]?.method, "POST");
-  assert.ok(calls[1]?.url.includes("/rules?purpose=compliance"));
+  assert.ok(calls[1]?.url.includes("/v1/rules?purpose=compliance"));
 
   const hold = await gov.placeLegalHold("c1", "Person", { field: "env", value: "prod" });
   assert.equal(hold["case_id"], "c1");
@@ -213,7 +213,7 @@ test("GovernanceClient: listRules, createRule, placeLegalHold, submitDsar", asyn
 
   const dsar = await gov.submitDsar("alice@x.com", "gdpr-art-15", { scope: "email" });
   assert.equal(dsar["dsar_id"], "d1");
-  assert.ok(calls[3]?.url.includes("/gdpr/dsar?"));
+  assert.ok(calls[3]?.url.includes("/v1/gdpr/dsar?"));
   assert.ok(calls[3]?.url.includes("subject_identity=alice%40x.com"));
   assert.ok(calls[3]?.url.includes("reason=gdpr-art-15"));
   assert.ok(calls[3]?.url.includes("scope=email"));
@@ -248,11 +248,11 @@ test("GovernanceClient: snoozeRule, addRuleException, getRuleTuning", async () =
   assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), { duration_secs: 3600 });
 
   await gov.addRuleException("r1", { entity_id: "e1" });
-  assert.ok(calls[1]?.url.endsWith("/rules/r1/exceptions"));
+  assert.ok(calls[1]?.url.endsWith("/v1/rules/r1/exceptions"));
 
   await gov.getRuleTuning("r1");
   assert.equal(calls[2]?.method, "GET");
-  assert.ok(calls[2]?.url.endsWith("/rules/r1/tuning"));
+  assert.ok(calls[2]?.url.endsWith("/v1/rules/r1/tuning"));
 });
 
 // ---------------------------------------------------------------------------
@@ -628,124 +628,81 @@ test("A2AClient: submitTask, getTask, saveCheckpoint, agentCard", async () => {
 
   const poll = await a2a.getTask("t1");
   assert.equal(poll["status"], "running");
-  assert.equal(calls[1]?.url, "http://x/a2a/tasks/t1");
+  assert.equal(calls[1]?.url, "http://x/v1/a2a/tasks/t1");
 
   const saved = await a2a.saveCheckpoint("th1", "c1", { checkpoint: {} });
   assert.equal(saved["ok"], true);
   assert.equal(calls[2]?.method, "PUT");
-  assert.equal(calls[2]?.url, "http://x/a2a/checkpoints/th1/c1");
+  assert.equal(calls[2]?.url, "http://x/v1/a2a/checkpoints/th1/c1");
 
   const card = await a2a.agentCard();
   assert.deepEqual(card["skills"], []);
   assert.equal(calls[3]?.url, "http://x/.well-known/agent.json");
 });
 
+test("GovernanceClient: erase, deletionStatus, verifyReceipt", async () => {
+  const { fetch, calls } = mockFetch([
+    { body: { operation_id: "op1" } },
+    { body: { operation_id: "op1", revision: "1" } },
+    { body: { valid: true } },
+  ]);
+  const gov = new GovernanceClient({ baseUrl: "http://x", fetch });
+  await gov.erase("subj-1", { reason: "art-17", physical: true });
+  assert.equal(calls[0]?.method, "POST");
+  assert.equal(calls[0]?.url, "http://x/v1/gdpr/erase");
+  assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), { subject_id: "subj-1", reason: "art-17", physical: true });
+  await gov.deletionStatus("op/1");
+  assert.equal(calls[1]?.method, "GET");
+  assert.equal(calls[1]?.url, "http://x/v1/gdpr/deletions/op%2F1");
+  const res = await gov.verifyReceipt({ receipt_id: "r1" });
+  assert.equal(res["valid"], true);
+  assert.equal(calls[2]?.url, "http://x/v1/gdpr/verify-receipt");
+});
+
 // ---------------------------------------------------------------------------
 // TokenClient
 // ---------------------------------------------------------------------------
 
-test("TokenClient: remember, check, revoke, stats", async () => {
+test("TokenClient: listSelf, selfAudit, rotateSelf, revokeSelf", async () => {
   const queue: MockResponse[] = [
-    { body: { newly_inserted: true } }, // remember
-    { body: { present: false } }, // check
-    { body: { revoked: true } }, // revoke
-    { body: { count: 5, oldest_ns: 99, eviction_policy: "lru" } }, // stats
+    { body: { tokens: [] } },
+    { body: { events: [] } },
+    { body: { secret: "new" } },
+    { body: { revoked: true } },
   ];
   const { fetch, calls } = mockFetch(queue);
   const tc = new TokenClient({ baseUrl: "http://x", fetch });
 
-  assert.equal(await tc.remember("tok-1"), true);
-  assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), { id: "tok-1" });
+  await tc.listSelf();
+  assert.equal(calls[0]?.method, "GET");
+  assert.equal(calls[0]?.url, "http://x/v1/auth/tokens/self");
 
-  assert.deepEqual(await tc.check("tok-1"), { present: false });
+  await tc.selfAudit();
+  assert.equal(calls[1]?.url, "http://x/v1/auth/tokens/self/audit");
 
-  assert.equal(await tc.revoke("tok-1"), true);
-  assert.equal(calls[2]?.method, "DELETE");
+  const rotated = await tc.rotateSelf();
+  assert.equal(rotated["secret"], "new");
+  assert.equal(calls[2]?.method, "POST");
+  assert.equal(calls[2]?.url, "http://x/v1/auth/tokens/self/rotate");
 
-  const stats = await tc.stats();
-  assert.equal(stats.count, 5);
-  assert.equal(stats.oldestNs, 99);
-  assert.equal(stats.evictionPolicy, "lru");
-});
-
-// ---------------------------------------------------------------------------
-// LogClient
-// ---------------------------------------------------------------------------
-
-test("LogClient: append, head, loadLeaves (base64 round-trip)", async () => {
-  const queue: MockResponse[] = [
-    { body: { index: 7, commit_ns: 12345 } }, // append
-    { body: { head: 7 } }, // head
-    {
-      body: {
-        leaves: [
-          { index: 5, data_b64: "aGVsbG8=", commit_ns: 100 }, // "hello"
-          { index: 6, data_b64: "d29ybGQ=", commit_ns: 101 }, // "world"
-        ],
-      },
-    },
-  ];
-  const { fetch } = mockFetch(queue);
-  const log = new LogClient({ baseUrl: "http://x", fetch });
-
-  const [index, commitNs] = await log.append("hello");
-  assert.equal(index, 7);
-  assert.equal(commitNs, 12345);
-
-  const head = await log.head();
-  assert.equal(head, 7);
-
-  const leaves = await log.loadLeaves({ since: 4, limit: 10 });
-  assert.equal(leaves.length, 2);
-  assert.equal(leaves[0]?.index, 5);
-  assert.equal(new TextDecoder().decode(leaves[0]?.data ?? new Uint8Array()), "hello");
-  assert.equal(new TextDecoder().decode(leaves[1]?.data ?? new Uint8Array()), "world");
+  await tc.revokeSelf("t/1");
+  assert.equal(calls[3]?.method, "DELETE");
+  assert.equal(calls[3]?.url, "http://x/v1/auth/tokens/self/t%2F1");
 });
 
 // ---------------------------------------------------------------------------
 // AuditClient
 // ---------------------------------------------------------------------------
 
-test("AuditClient: count, entries filters, findByRequestId", async () => {
-  const queue: MockResponse[] = [
-    { body: { entries: 42, chain_valid: true } }, // count
-    {
-      body: {
-        entries: [{ request_id: "r1", action: "query" }],
-        next_cursor: null,
-        chain_valid: true,
-      },
-    }, // findByRequestId
-  ];
-  const { fetch, calls } = mockFetch(queue);
+test("AuditClient: count", async () => {
+  const { fetch, calls } = mockFetch([{ body: { entries: 42, chain_valid: true } }]);
   const audit = new AuditClient({ baseUrl: "http://x", fetch });
-
   const c = await audit.count();
   assert.equal(c["entries"], 42);
-
-  const row = await audit.findByRequestId("r1");
-  assert.notEqual(row, null);
-  assert.equal(row?.["action"], "query");
-  // findByRequestId should have used request_id + limit=1 in the query string
-  assert.ok(calls[1]?.url.includes("request_id=r1"));
-  assert.ok(calls[1]?.url.includes("limit=1"));
+  assert.equal(calls[0]?.url, "http://x/v1/audit/count");
 });
 
-test("AuditClient: findByRequestId ignores an entry for another request", async () => {
-  // A server that ignores the request_id filter answers with the newest entry.
-  const { fetch } = mockFetch([
-    {
-      body: {
-        entries: [{ request_id: "newest", action: "query" }],
-        chain_valid: true,
-      },
-    },
-  ]);
-  const audit = new AuditClient({ baseUrl: "http://x", fetch });
-  assert.equal(await audit.findByRequestId("r1"), null);
-});
-
-test("AuditClient: log hits /audit/log; entries sends since/until", async () => {
+test("AuditClient: log hits /v1/audit/log", async () => {
   const { fetch, calls } = mockFetch([
     { body: { entries: [{ event_id: "e1" }], chain_valid: true } },
     { body: { entries: [], chain_valid: true } },
@@ -754,11 +711,8 @@ test("AuditClient: log hits /audit/log; entries sends since/until", async () => 
   const page = await audit.log({ limit: 5, table: "Person", tenantId: "t1" });
   assert.equal((page["entries"] as unknown[]).length, 1);
   const u = calls[0]!.url;
-  assert.ok(u.includes("/audit/log?"));
+  assert.ok(u.includes("/v1/audit/log?"));
   assert.ok(u.includes("limit=5") && u.includes("table=Person") && u.includes("tenant_id=t1"));
-  await audit.entries({ sinceNs: 10, untilNs: 20 });
-  const e = calls[1]!.url;
-  assert.ok(e.includes("since=10") && e.includes("until=20") && !e.includes("since_ns"));
 });
 
 // ---------------------------------------------------------------------------
@@ -804,45 +758,12 @@ test("BackupClient: create, list, restore, restoreStatus shape mapping", async (
 // TenantAdminClient
 // ---------------------------------------------------------------------------
 
-test("TenantAdminClient: me, create, get, delete, setQuota, createSharing", async () => {
-  const queue: MockResponse[] = [
-    { body: { tenant_id: "acme" } }, // me
-    { body: { tenant_id: "t1", tier: "standard" } }, // create
-    { body: { tenant_id: "t1" } }, // get
-    { body: { deleted: true } }, // delete
-    { body: { quota: 1000 } }, // setQuota
-    { body: { partner_tenant: "p1" } }, // createSharing
-  ];
-  const { fetch, calls } = mockFetch(queue);
+test("TenantAdminClient: me", async () => {
+  const { fetch, calls } = mockFetch([{ body: { tenant_id: "acme" } }]);
   const tenants = new TenantAdminClient({ baseUrl: "http://x", fetch });
-
   const me = await tenants.me();
   assert.equal(me["tenant_id"], "acme");
-
-  const created = await tenants.create("t1", { tier: "premium" });
-  assert.equal(created["tier"], "standard"); // server returns its value
-  assert.deepEqual(JSON.parse(calls[1]?.body ?? "{}"), {
-    id: "t1",
-    tier: "premium",
-  });
-
-  const got = await tenants.get("t1");
-  assert.equal(got["tenant_id"], "t1");
-  assert.equal(calls[2]?.url, "http://x/platform/tenants/t1");
-
-  await tenants.delete("t1");
-  assert.equal(calls[3]?.method, "DELETE");
-
-  await tenants.setQuota("t1", 1000);
-  assert.equal(calls[4]?.method, "PUT");
-  assert.deepEqual(JSON.parse(calls[4]?.body ?? "{}"), { quota: 1000 });
-
-  await tenants.createSharing("t1", "p1", { objectType: "Person" });
-  assert.deepEqual(JSON.parse(calls[5]?.body ?? "{}"), {
-    partner_tenant: "p1",
-    object_type: "Person",
-    action: "read",
-  });
+  assert.equal(calls[0]?.url, "http://x/v1/tenants/me");
 });
 
 // ---------------------------------------------------------------------------
@@ -929,7 +850,7 @@ test("SystemClient: jobsStatus", async () => {
   const { fetch, calls } = mockFetch(queue);
   const sys = new SystemClient({ baseUrl: "http://x", fetch });
   await sys.jobsStatus();
-  assert.equal(calls[0]?.url, "http://x/jobs");
+  assert.equal(calls[0]?.url, "http://x/v1/jobs");
 });
 
 // ---------------------------------------------------------------------------
@@ -946,7 +867,7 @@ test("IngestClient: bulk NDJSON + bulkCsv paths", async () => {
 
   const bulk = await ing.bulk("Person", [{ id: "1" }, { id: "2" }]);
   assert.equal(bulk["accepted"], 2);
-  assert.ok(calls[0]?.url.startsWith("http://x/ingest?"));
+  assert.ok(calls[0]?.url.startsWith("http://x/v1/ingest?"));
   assert.ok(calls[0]?.url.includes("object_type=Person"));
   assert.ok(calls[0]?.url.includes("purpose=p"));
   assert.equal(calls[0]?.headers["content-type"], "application/x-ndjson");
@@ -1032,7 +953,7 @@ test("StreamingClient: queryRows yields parsed NDJSON rows", async () => {
     },
   });
   const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
-    assert.equal(String(url), "http://x/query/stream");
+    assert.equal(String(url), "http://x/v1/query/stream");
     assert.equal(init?.method, "POST");
     assert.equal(new Headers(init?.headers).get("Accept"), "application/x-ndjson");
     assert.equal(new Headers(init?.headers).get("x-tenant-id"), "tenant-a");
@@ -1061,10 +982,28 @@ test("StreamingClient: queryRows yields parsed NDJSON rows", async () => {
   assert.equal(rows[2]?.["id"], "r3");
 });
 
+test("StreamingClient: recallStream consumes GET /v1/memory/recall/stream SSE", async () => {
+  const sse = 'event: row\ndata: {"id":"m1"}\n\nevent: row\ndata: {"id":"m2"}\n\n';
+  const urls: string[] = [];
+  const fetch = (async (url: string | URL | Request) => {
+    urls.push(String(url));
+    return new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } });
+  }) as typeof globalThis.fetch;
+  const relata = new RelataClient({ baseUrl: "http://x", fetch });
+  const { StreamingClient } = await import("./streaming.ts");
+  const out: Record<string, unknown>[] = [];
+  for await (const ev of new StreamingClient(relata).recallStream("hello", "p", { topK: 2 })) out.push(ev);
+  assert.deepEqual(out.map((e) => e["id"]), ["m1", "m2"]);
+  assert.equal(urls.length, 1);
+  assert.ok(urls[0]!.startsWith("http://x/v1/memory/recall/stream?"));
+  assert.ok(urls[0]!.includes("q=hello") && urls[0]!.includes("top_k=2"));
+});
+
 test("retired report/HUMINT methods are absent without removing generic audit/holds", () => {
   for (const name of ["signReceipt", "exportPdf"]) assert.equal(name in AuditClient.prototype, false);
   for (const name of ["requestBreakglass", "approveBreakglass", "breakglassStatus"]) assert.equal(name in GovernanceClient.prototype, false);
-  assert.equal("entries" in AuditClient.prototype, true);
+  assert.equal("entries" in AuditClient.prototype, false);
+  assert.equal("log" in AuditClient.prototype, true);
   assert.equal("placeLegalHold" in GovernanceClient.prototype, true);
 });
 

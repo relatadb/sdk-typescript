@@ -1,5 +1,5 @@
 /**
- * Tests for the typed `/rag/query` client — RAG epic foundational SDK
+ * Tests for the typed `/v1/rag/query` client — RAG epic foundational SDK
  * ticket (#4523, wraps #4514's ADR-0299 contract). Uses a mock fetch, no
  * live server required — the contract is frozen per ADR-0299 regardless of
  * whether #4514 has merged.
@@ -101,7 +101,7 @@ test("buildRagPayload rejects an empty type", () => {
   assert.throws(() => buildRagPayload("q", { type: "" }, "research"));
 });
 
-// ── RagClient.query → POST /rag/query ───────────────────────────────────────
+// ── RagClient.query → POST /v1/rag/query ───────────────────────────────────────
 
 test("RagClient.query posts the full contract and returns typed hits", async () => {
   const capture: { body?: unknown } = {};

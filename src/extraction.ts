@@ -32,12 +32,12 @@ export class ExtractionClient extends TypedClientBase {
     return new ExtractionClient(TypedClientBase.clientToCtor(client));
   }
 
-  /** `POST /ontology/suggestions`: store 1 to 200 suggestions; each result is created, existing or invalid. */
+  /** `POST /v1/ontology/suggestions`: store 1 to 200 suggestions; each result is created, existing or invalid. */
   async submit(suggestions: Doc[]): Promise<Doc> {
-    return this._post<Doc>("/ontology/suggestions", { suggestions });
+    return this._post<Doc>("/v1/ontology/suggestions", { suggestions });
   }
 
-  /** `GET /ontology/suggestions`: the review queue, oldest first. */
+  /** `GET /v1/ontology/suggestions`: the review queue, oldest first. */
   async list(
     opts: {
       state?: "pending" | "accepted" | "rejected" | "corrected";
@@ -58,12 +58,12 @@ export class ExtractionClient extends TypedClientBase {
     if (opts.minConfidence !== undefined) q.set("min_confidence", String(opts.minConfidence));
     if (opts.limit !== undefined) q.set("limit", String(opts.limit));
     const qs = q.toString();
-    return this._get<Doc>(`/ontology/suggestions${qs ? `?${qs}` : ""}`);
+    return this._get<Doc>(`/v1/ontology/suggestions${qs ? `?${qs}` : ""}`);
   }
 
-  /** `GET /ontology/suggestions/{id}`: with its correction and decision history. */
+  /** `GET /v1/ontology/suggestions/{id}`: with its correction and decision history. */
   async get(suggestionId: string): Promise<Doc> {
-    return this._get<Doc>(`/ontology/suggestions/${seg(suggestionId)}`);
+    return this._get<Doc>(`/v1/ontology/suggestions/${seg(suggestionId)}`);
   }
 
   /** `POST .../decision` with `accept`, `reject`, `correct` or `reopen`; idempotent. */
@@ -76,7 +76,7 @@ export class ExtractionClient extends TypedClientBase {
     const body: Doc = { decision, reason };
     if (opts.correction !== undefined) body.correction = opts.correction;
     if (opts.acceptLowConfidence) body.accept_low_confidence = true;
-    return this._post<Doc>(`/ontology/suggestions/${seg(suggestionId)}/decision`, body);
+    return this._post<Doc>(`/v1/ontology/suggestions/${seg(suggestionId)}/decision`, body);
   }
 
   /** Accept a suggestion as extracted. */
@@ -99,20 +99,20 @@ export class ExtractionClient extends TypedClientBase {
     return this.decide(suggestionId, "reopen", reason);
   }
 
-  /** `POST /ontology/suggestions/apply`: fold accepted schema suggestions into the definition's draft. */
+  /** `POST /v1/ontology/suggestions/apply`: fold accepted schema suggestions into the definition's draft. */
   async apply(definition: string, opts: { suggestionIds?: string[] } = {}): Promise<Doc> {
     const body: Doc = { definition };
     if (opts.suggestionIds !== undefined) body.suggestion_ids = opts.suggestionIds;
-    return this._post<Doc>("/ontology/suggestions/apply", body);
+    return this._post<Doc>("/v1/ontology/suggestions/apply", body);
   }
 
   /**
-   * `POST /entities/exists`: for up to 500 `{type, match: {field: value}}` candidates,
+   * `POST /v1/entities/exists`: for up to 500 `{type, match: {field: value}}` candidates,
    * whether a live record matches exactly and with which ids.
    */
   async entitiesExist(candidates: Doc[], opts: { definition?: string } = {}): Promise<Doc> {
     const body: Doc = { candidates };
     if (opts.definition !== undefined) body.definition = opts.definition;
-    return this._post<Doc>("/entities/exists", body);
+    return this._post<Doc>("/v1/entities/exists", body);
   }
 }

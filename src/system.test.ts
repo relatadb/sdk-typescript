@@ -34,12 +34,12 @@ function mockFetch(responses: MockResponse[] | MockResponse) {
 
 const BASE = "http://localhost:9090";
 
-test("jobStatus: GET /jobs/:name", async () => {
+test("jobStatus: GET /v1/jobs/:name", async () => {
   const { fetch, calls } = mockFetch({ body: { name: "c2_beacon", status: "Running" } });
   const s = new SystemClient({ baseUrl: BASE, fetch });
   const got = (await s.jobStatus("c2_beacon")) as { status: string };
   const c = calls[0]!;
   deepEqual(got.status, "Running");
   deepEqual(c.method, "GET");
-  if (!c.url.includes("/jobs/c2_beacon")) throw new Error(`url=${c.url}`);
+  if (!c.url.includes("/v1/jobs/c2_beacon")) throw new Error(`url=${c.url}`);
 });

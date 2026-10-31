@@ -1,6 +1,6 @@
 /**
  * Typed search client — the retrieval-native surface over the governed
- * `POST /search` typed JSON door (#1983, #2169). Mirrors the Python
+ * `POST /v1/search` typed JSON door (#1983, #2169). Mirrors the Python
  * `relata.search.SearchClient`: no SQL on the client side — the door compiles
  * the typed body to a governed plan (PURPOSE / ACL / cell-masking / tenant
  * isolation apply identically to a hand-written query).
@@ -106,8 +106,8 @@ export class SearchClient extends TypedClientBase {
     return new SearchClient(TypedClientBase.clientToCtor(client));
   }
 
-  /** Run a typed search against `q.from` (an object type). Wraps `POST /search`. */
+  /** Run a typed search against `q.from` (an object type). Wraps `POST /v1/search`. */
   async query<T = Record<string, unknown>>(q: SearchQuery): Promise<QueryResult<T>> {
-    return this._post<QueryResult<T>>("/search", buildSearchPayload(q));
+    return this._post<QueryResult<T>>("/v1/search", buildSearchPayload(q));
   }
 }

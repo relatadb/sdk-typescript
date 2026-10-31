@@ -83,12 +83,12 @@ export class GovernanceClient extends TypedClientBase {
 
   /**
    * List detection rules. Optional `objectType` filter.
-   * Wraps `GET /rules`.
+   * Wraps `GET /v1/rules`.
    */
   async listRules(
     opts: { objectType?: string } = {},
   ): Promise<Record<string, unknown>[]> {
-    const path = `/rules${qs({ object_type: opts.objectType })}`;
+    const path = `/v1/rules${qs({ object_type: opts.objectType })}`;
     const data = await this._get<Record<string, unknown>>(path);
     const rules =
       typeof data === "object" && data !== null && Array.isArray(data["rules"])
@@ -103,7 +103,7 @@ export class GovernanceClient extends TypedClientBase {
    * Create a prepared detection rule. The server requires `name`,
    * `condition_sql`, and `target_type`; it accepts optional `severity`,
    * `mitre_technique`, `trigger`, and `action` fields.
-   * Wraps `POST /rules?purpose=<p>`. Returns the created rule record
+   * Wraps `POST /v1/rules?purpose=<p>`. Returns the created rule record
    * including its server-assigned `id`.
    *
    * `purpose` is mandatory server-side — pass it here or via the client
@@ -114,15 +114,15 @@ export class GovernanceClient extends TypedClientBase {
     opts: { purpose?: string } = {},
   ): Promise<Record<string, unknown>> {
     const purpose = this.#effectivePurpose(opts.purpose);
-    return this._post(`/rules${qs({ purpose })}`, rule);
+    return this._post(`/v1/rules${qs({ purpose })}`, rule);
   }
 
   /**
    * Disable (logically delete) a rule by id.
-   * Wraps `DELETE /rules/:id`.
+   * Wraps `DELETE /v1/rules/:id`.
    */
   async disableRule(ruleId: string): Promise<Record<string, unknown>> {
-    return this._delete(`/rules/${encodeURIComponent(ruleId)}`);
+    return this._delete(`/v1/rules/${encodeURIComponent(ruleId)}`);
   }
 
   /** Temporarily disable a rule for `durationSecs` (#967). */
@@ -130,7 +130,7 @@ export class GovernanceClient extends TypedClientBase {
     ruleId: string,
     durationSecs: number,
   ): Promise<Record<string, unknown>> {
-    return this._post(`/rules/${encodeURIComponent(ruleId)}/snooze`, {
+    return this._post(`/v1/rules/${encodeURIComponent(ruleId)}/snooze`, {
       duration_secs: durationSecs,
     });
   }
@@ -146,7 +146,7 @@ export class GovernanceClient extends TypedClientBase {
   ): Promise<Record<string, unknown>> {
     const body: Record<string, unknown> = { entity_id: entityId };
     if (opts.condition !== undefined) body["condition"] = opts.condition;
-    return this._post(`/rules/${encodeURIComponent(ruleId)}/suppress`, body);
+    return this._post(`/v1/rules/${encodeURIComponent(ruleId)}/suppress`, body);
   }
 
   /** Add an exception entry so specific matches are ignored (#967). */
@@ -154,12 +154,12 @@ export class GovernanceClient extends TypedClientBase {
     ruleId: string,
     exception: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this._post(`/rules/${encodeURIComponent(ruleId)}/exceptions`, exception);
+    return this._post(`/v1/rules/${encodeURIComponent(ruleId)}/exceptions`, exception);
   }
 
   /** Retrieve tuning state (snoozes, suppressions, exceptions) (#967). */
   async getRuleTuning(ruleId: string): Promise<Record<string, unknown>> {
-    return this._get(`/rules/${encodeURIComponent(ruleId)}/tuning`);
+    return this._get(`/v1/rules/${encodeURIComponent(ruleId)}/tuning`);
   }
 
   // -------------------------------------------------------------------------
@@ -168,10 +168,10 @@ export class GovernanceClient extends TypedClientBase {
 
   /**
    * List configured retention policies.
-   * Wraps `GET /retention/policies`.
+   * Wraps `GET /v1/retention/policies`.
    */
   async listRetentionPolicies(): Promise<Record<string, unknown>[]> {
-    const data = await this._get<Record<string, unknown>>("/retention/policies");
+    const data = await this._get<Record<string, unknown>>("/v1/retention/policies");
     const policies =
       typeof data === "object" && data !== null && Array.isArray(data["policies"])
         ? data["policies"]
@@ -183,10 +183,10 @@ export class GovernanceClient extends TypedClientBase {
 
   /**
    * List active legal holds.
-   * Wraps `GET /retention/holds`.
+   * Wraps `GET /v1/retention/holds`.
    */
   async listLegalHolds(): Promise<Record<string, unknown>[]> {
-    const data = await this._get<Record<string, unknown>>("/retention/holds");
+    const data = await this._get<Record<string, unknown>>("/v1/retention/holds");
     const holds =
       typeof data === "object" && data !== null && Array.isArray(data["holds"])
         ? data["holds"]
@@ -198,7 +198,7 @@ export class GovernanceClient extends TypedClientBase {
 
   /**
    * Place a legal hold on `objectType` (optionally scoped to rows where
-   * `field` equals `value`). Wraps `POST /retention/holds`.
+   * `field` equals `value`). Wraps `POST /v1/retention/holds`.
    *
    * @param caseId   Caller-supplied case identifier (becomes the hold id).
    * @param objectType Type to hold.
@@ -223,25 +223,25 @@ export class GovernanceClient extends TypedClientBase {
     };
     if (opts.field !== undefined) payload["field"] = opts.field;
     if (opts.value !== undefined) payload["value"] = opts.value;
-    return this._post("/retention/holds", payload);
+    return this._post("/v1/retention/holds", payload);
   }
 
   /**
    * Lift (remove) a legal hold by case id.
-   * Wraps `DELETE /retention/holds/:caseId`.
+   * Wraps `DELETE /v1/retention/holds/:caseId`.
    */
   async liftLegalHold(
     caseId: string,
   ): Promise<Record<string, unknown>> {
-    return this._delete(`/retention/holds/${encodeURIComponent(caseId)}`);
+    return this._delete(`/v1/retention/holds/${encodeURIComponent(caseId)}`);
   }
 
   /**
    * List WORM (write-once-read-many) retention policies.
-   * Wraps `GET /retention/worm`.
+   * Wraps `GET /v1/retention/worm`.
    */
   async listWormPolicies(): Promise<Record<string, unknown>[]> {
-    const data = await this._get<Record<string, unknown>>("/retention/worm");
+    const data = await this._get<Record<string, unknown>>("/v1/retention/worm");
     const policies =
       typeof data === "object" && data !== null && Array.isArray(data["policies"])
         ? data["policies"]
@@ -254,14 +254,14 @@ export class GovernanceClient extends TypedClientBase {
   /**
    * Set WORM retention for `objectType`. Rows cannot be mutated or purged
    * until `retentionSecs` elapses from their `system_from`.
-   * Wraps `POST /retention/worm/:objectType`.
+   * Wraps `POST /v1/retention/worm/:objectType`.
    */
   async setWormPolicy(
     objectType: string,
     retentionSecs: number,
   ): Promise<Record<string, unknown>> {
     return this._post(
-      `/retention/worm/${encodeURIComponent(objectType)}`,
+      `/v1/retention/worm/${encodeURIComponent(objectType)}`,
       { retention_secs: retentionSecs },
     );
   }
@@ -272,7 +272,7 @@ export class GovernanceClient extends TypedClientBase {
 
   /**
    * List alerts, optionally filtered by severity / since-cursor.
-   * Wraps `GET /alerts/list`.
+   * Wraps `GET /v1/alerts`.
    */
   async listAlerts(
     opts: {
@@ -281,7 +281,7 @@ export class GovernanceClient extends TypedClientBase {
       limit?: number;
     } = {},
   ): Promise<Record<string, unknown>[]> {
-    const path = `/alerts/list${qs({
+    const path = `/v1/alerts${qs({
       severity: opts.severity,
       since_ns: opts.sinceNs,
       limit: opts.limit ?? 100,
@@ -298,7 +298,7 @@ export class GovernanceClient extends TypedClientBase {
 
   /**
    * Update an alert (ack, assign, close, add a note).
-   * Wraps `PATCH /alerts/update/:alertId`.
+   * Wraps `PATCH /v1/alerts/:alertId`.
    */
   async updateAlert(
     alertId: string,
@@ -313,7 +313,7 @@ export class GovernanceClient extends TypedClientBase {
     if (opts.assignee !== undefined) payload["assignee"] = opts.assignee;
     if (opts.note !== undefined) payload["note"] = opts.note;
     return this._patch(
-      `/alerts/update/${encodeURIComponent(alertId)}`,
+      `/v1/alerts/${encodeURIComponent(alertId)}`,
       payload,
     );
   }
@@ -324,7 +324,7 @@ export class GovernanceClient extends TypedClientBase {
 
   /**
    * File a GDPR Data Subject Access Request.
-   * Wraps `GET /gdpr/dsar`.
+   * Wraps `GET /v1/gdpr/dsar`.
    *
    * @param subjectIdentity Canonical identifier of the subject
    *        (email, phone, national id, ...).
@@ -336,11 +336,44 @@ export class GovernanceClient extends TypedClientBase {
     reason: string,
     opts: { scope?: string } = {},
   ): Promise<Record<string, unknown>> {
-    const path = `/gdpr/dsar${qs({
+    const path = `/v1/gdpr/dsar${qs({
       subject_identity: subjectIdentity,
       reason,
       scope: opts.scope,
     })}`;
     return this._get(path);
+  }
+
+  /**
+   * File a GDPR erasure for `subjectId`. Wraps `POST /v1/gdpr/erase` and
+   * returns the receipt / operation response.
+   *
+   * @param opts.reason   Recorded on the erasure receipt.
+   * @param opts.tenantId Tenant to erase from (unscoped admin callers only).
+   * @param opts.physical Request physical erasure in addition to the logical tombstone.
+   */
+  async erase(
+    subjectId: string,
+    opts: { reason?: string; tenantId?: string; physical?: boolean } = {},
+  ): Promise<Record<string, unknown>> {
+    const payload: Record<string, unknown> = { subject_id: subjectId };
+    if (opts.reason) payload["reason"] = opts.reason;
+    if (opts.tenantId) payload["tenant_id"] = opts.tenantId;
+    if (opts.physical) payload["physical"] = true;
+    return this._post("/v1/gdpr/erase", payload);
+  }
+
+  /** Progress of a deletion operation. Wraps `GET /v1/gdpr/deletions/:operationId`. */
+  async deletionStatus(operationId: string): Promise<Record<string, unknown>> {
+    return this._get(`/v1/gdpr/deletions/${encodeURIComponent(operationId)}`);
+  }
+
+  /**
+   * Verify a signed erasure receipt. Wraps `POST /v1/gdpr/verify-receipt`.
+   * `receipt` carries `receipt_id`, `subject`, `erased_at`, `rows_shredded`
+   * and `receipt_signature` exactly as returned by {@link erase}.
+   */
+  async verifyReceipt(receipt: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this._post("/v1/gdpr/verify-receipt", receipt);
   }
 }

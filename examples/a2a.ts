@@ -1,13 +1,13 @@
 /**
  * a2a.ts — Agent-to-Agent task lifecycle + checkpoints (#967).
  *
- * The A2A door (`.well-known/agent.json` + `/a2a/tasks/*` + `/a2a/checkpoints/*`)
+ * The A2A door (`.well-known/agent.json` + `/v1/a2a/tasks/*` + `/v1/a2a/checkpoints/*`)
  * lets one agent ask another agent to do work and track its progress.
  *
  * Flow demonstrated:
  *   1. Discover the agent card (GET /.well-known/agent.json)
- *   2. Submit a task (POST /a2a/tasks) with a JSON-RPC-style payload
- *   3. Poll task status (GET /a2a/tasks/:id)
+ *   2. Submit a task (POST /v1/a2a/tasks) with a JSON-RPC-style payload
+ *   3. Poll task status (GET /v1/a2a/tasks/:id)
  *   4. List LangGraph-style checkpoints for a thread
  *
  * Run:
@@ -34,7 +34,7 @@ async function main(): Promise<void> {
   out(`${skills.length} skill(s):`);
   for (const s of skills.slice(0, 5)) out(`  - ${s.id} : ${s.name}`);
 
-  step("2. POST /a2a/tasks");
+  step("2. POST /v1/a2a/tasks");
   const taskPayload = {
     jsonrpc: "2.0",
     method: "tasks/send",
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
   out(`task_id=${taskId}`);
   out(`response: ${JSON.stringify(created).slice(0, 200)}`);
 
-  step(`3. GET /a2a/tasks/${taskId}`);
+  step(`3. GET /v1/a2a/tasks/${taskId}`);
   const status = (await a2a.getTask(taskId)) as StatusResp;
   const state = status.result?.status?.state ?? status.status?.state ?? status.state ?? "unknown";
   out(`state=${state}`);

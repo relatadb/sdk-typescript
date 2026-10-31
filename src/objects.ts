@@ -1,7 +1,7 @@
 /**
  * Object store SDK (#82) — general state-object upsert + load surface.
  *
- * The server's universal upsert path is `POST /ingest?object_type=<Type>`;
+ * The server's universal upsert path is `POST /v1/ingest?object_type=<Type>`;
  * this module wraps it as a typed `ObjectClient` so TypeScript callers don't
  * have to know the ingest envelope shape.
  */
@@ -106,7 +106,7 @@ function preconditionHeaders(expectedVersion?: number, ifAbsent?: boolean): Reco
 }
 
 function objectPath(objectType: string, objectId: string): string {
-  return `/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`;
+  return `/v1/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`;
 }
 
 /** Serialise `rows` as newline-delimited JSON — one row per line. */
@@ -147,9 +147,9 @@ export class ObjectClient extends TypedClientBase {
   /**
    * Upsert a single state object. The `objectId` becomes the row's primary
    * key; re-upserting with the same id supersedes bi-temporally.
-   * Wraps `POST /ingest?object_type=<Type>` with an NDJSON body.
+   * Wraps `POST /v1/ingest?object_type=<Type>` with an NDJSON body.
    *
-   * **Resolves, does not throw, on a schema rejection.** `POST /ingest` is an
+   * **Resolves, does not throw, on a schema rejection.** `POST /v1/ingest` is an
    * asynchronous queue-ack: a row rejected by schema validation still yields
    * a normal resolved promise, e.g.
    * `{ rows_queued: 0, rows_rejected: 1, errors: ["Type.field: minCount 1 not met"] }`.
@@ -160,7 +160,7 @@ export class ObjectClient extends TypedClientBase {
    * **Conditional (#5766).** With `expectedVersion` (replace only if the
    * object is at that `_version`, `If-Match`) or `ifAbsent: true` (create
    * only, `If-None-Match: *`) the call switches to the atomic
-   * `PUT /objects/{type}/{id}` door: durable before it resolves, resolving to
+   * `PUT /v1/objects/{type}/{id}` door: durable before it resolves, resolving to
    * an {@link ObjectWriteResult} with the new `version`, and rejecting with
    * {@link PreconditionFailedError} (`currentVersion`) when the race is lost.
    *
@@ -210,7 +210,7 @@ export class ObjectClient extends TypedClientBase {
 
   /**
    * Bulk upsert. Each row must carry its own `id` key.
-   * Wraps `POST /ingest?object_type=<Type>` with an NDJSON body.
+   * Wraps `POST /v1/ingest?object_type=<Type>` with an NDJSON body.
    *
    * Like `upsert`, per-row rejections are reported in the returned receipt
    * rather than thrown — inspect its rejected count and `errors`.
@@ -231,7 +231,7 @@ export class ObjectClient extends TypedClientBase {
 
   /**
    * Fetch a single state object by type and id.
-   * Wraps `GET /objects/{type}/{id}`.
+   * Wraps `GET /v1/objects/{type}/{id}`.
    *
    * @returns The object fields, or `null` if not found (404).
    */
@@ -261,7 +261,7 @@ export class ObjectClient extends TypedClientBase {
 
   /**
    * Delete a state object by type and id.
-   * Wraps `DELETE /objects/{type}/{id}`.
+   * Wraps `DELETE /v1/objects/{type}/{id}`.
    *
    * With `opts.expectedVersion` the delete is conditional (`If-Match`, #5766):
    * a different live version rejects with {@link PreconditionFailedError} and
@@ -283,7 +283,7 @@ export class ObjectClient extends TypedClientBase {
 
   /**
    * Atomically apply 1..64 create/update/delete operations
-   * (`POST /commit`, #5767). All of them become durable and visible, or none
+   * (`POST /v1/commit`, #5767). All of them become durable and visible, or none
    * do; every `expectedVersion` is checked before anything is written. A
    * failed precondition rejects with {@link PreconditionFailedError}
    * (`currentVersion`, `failedOperation`). A retry with the same
@@ -294,7 +294,7 @@ export class ObjectClient extends TypedClientBase {
     opts: { idempotencyKey?: string; purpose?: string } = {},
   ): Promise<CommitResult> {
     const purpose = opts.purpose ?? this.#purpose;
-    return this._post<CommitResult>("/commit", {
+    return this._post<CommitResult>("/v1/commit", {
       operations,
       ...(opts.idempotencyKey !== undefined ? { idempotencyKey: opts.idempotencyKey } : {}),
       ...(purpose !== undefined ? { purpose } : {}),
@@ -302,7 +302,7 @@ export class ObjectClient extends TypedClientBase {
   }
 
   /**
-   * Read one page of the object change feed (`GET /object-changes`, #5716).
+   * Read one page of the object change feed (`GET /v1/changes`, #5716).
    * Persist `nextCursor` only after every event in the page is processed;
    * delivery is at-least-once, so dedupe on `eventId`. Events carry identity,
    * `version` and `kind`, never field values. A cursor the server can no
@@ -316,7 +316,7 @@ export class ObjectClient extends TypedClientBase {
     if (opts.limit !== undefined) params["limit"] = opts.limit;
     if (opts.type !== undefined) params["type"] = opts.type;
     if (opts.start !== undefined) params["start"] = opts.start;
-    return this._get<ChangesPage>(`/object-changes${qs(params)}`);
+    return this._get<ChangesPage>(`/v1/changes${qs(params)}`);
   }
 
   /**
@@ -340,7 +340,7 @@ export class ObjectClient extends TypedClientBase {
 
   /**
    * List state objects of a given type with optional pagination.
-   * Wraps `GET /objects/{type}?limit=N&cursor=C`.
+   * Wraps `GET /v1/objects/{type}?limit=N&cursor=C`.
    *
    * @returns Paginated result with `items`, optional `cursor`, optional `total`.
    */
@@ -351,7 +351,7 @@ export class ObjectClient extends TypedClientBase {
     const params: Record<string, string | number | undefined> = {};
     if (opts.limit !== undefined) params["limit"] = opts.limit;
     if (opts.cursor !== undefined) params["cursor"] = opts.cursor;
-    const path = `/objects/${encodeURIComponent(objectType)}${qs(params)}`;
+    const path = `/v1/objects/${encodeURIComponent(objectType)}${qs(params)}`;
     return this._get<ListObjectsResponse<T>>(path);
   }
 
@@ -362,7 +362,7 @@ export class ObjectClient extends TypedClientBase {
     purposeOverride: string | undefined,
   ): Promise<Record<string, unknown>> {
     const effPurpose = purposeOverride ?? this.#purpose;
-    const path = `/ingest${qs({
+    const path = `/v1/ingest${qs({
       object_type: objectType,
       purpose: effPurpose,
     })}`;

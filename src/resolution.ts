@@ -16,7 +16,7 @@ import { type TypedClientCtor, TypedClientBase } from "./_typed-http.ts";
 
 type Doc = Record<string, unknown>;
 
-const BASE = "/resolution";
+const BASE = "/v1/resolution";
 const seg = (s: string | number): string => encodeURIComponent(String(s));
 
 /** Resolution client. */
@@ -30,18 +30,18 @@ export class ResolutionClient extends TypedClientBase {
     return new ResolutionClient(TypedClientBase.clientToCtor(client));
   }
 
-  /** `GET /resolution/rulesets`. */
+  /** `GET /v1/resolution/rulesets`. */
   async listRulesets(): Promise<Doc> {
     return this._get<Doc>(`${BASE}/rulesets`);
   }
 
-  /** `GET /resolution/rulesets/{name}` (latest, or `version`). */
+  /** `GET /v1/resolution/rulesets/{name}` (latest, or `version`). */
   async getRuleset(name: string, opts: { version?: number } = {}): Promise<Doc> {
     const qs = opts.version === undefined ? "" : `?version=${Math.trunc(opts.version)}`;
     return this._get<Doc>(`${BASE}/rulesets/${seg(name)}${qs}`);
   }
 
-  /** `PUT /resolution/rulesets/{name}` under the `expectedVersion` precondition. */
+  /** `PUT /v1/resolution/rulesets/{name}` under the `expectedVersion` precondition. */
   async publishRuleset(name: string, definition: Doc, opts: { expectedVersion?: number } = {}): Promise<Doc> {
     return this._put<Doc>(`${BASE}/rulesets/${seg(name)}`, {
       expected_version: Math.trunc(opts.expectedVersion ?? 0),
@@ -62,7 +62,7 @@ export class ResolutionClient extends TypedClientBase {
     return this._post<Doc>(`${BASE}/rulesets/${seg(name)}/evaluate`, body);
   }
 
-  /** `GET /resolution/candidates`. */
+  /** `GET /v1/resolution/candidates`. */
   async listCandidates(opts: { ruleset?: string; state?: string; limit?: number } = {}): Promise<Doc> {
     const q = new URLSearchParams();
     if (opts.ruleset !== undefined) q.set("ruleset", opts.ruleset);
@@ -72,7 +72,7 @@ export class ResolutionClient extends TypedClientBase {
     return this._get<Doc>(`${BASE}/candidates${qs ? `?${qs}` : ""}`);
   }
 
-  /** `GET /resolution/candidates/{id}`: evidence, history and live values. */
+  /** `GET /v1/resolution/candidates/{id}`: evidence, history and live values. */
   async getCandidate(candidateId: string): Promise<Doc> {
     return this._get<Doc>(`${BASE}/candidates/${seg(candidateId)}`);
   }
@@ -97,12 +97,12 @@ export class ResolutionClient extends TypedClientBase {
     return this.decide(candidateId, "unmerge", reason);
   }
 
-  /** `GET /resolution/entities/{canonical}`: follows merge aliases. */
+  /** `GET /v1/resolution/entities/{canonical}`: follows merge aliases. */
   async getEntity(canonicalId: string): Promise<Doc> {
     return this._get<Doc>(`${BASE}/entities/${seg(canonicalId)}`);
   }
 
-  /** `GET /resolution/lookup`: the canonical id of a source record. */
+  /** `GET /v1/resolution/lookup`: the canonical id of a source record. */
   async lookup(type: string, id: string): Promise<Doc> {
     const q = new URLSearchParams({ type, id });
     return this._get<Doc>(`${BASE}/lookup?${q.toString()}`);

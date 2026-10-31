@@ -255,7 +255,7 @@ export interface RunRagAnswerOptions {
   /** Forwarded to {@link storeReasoningTrace}. */
   durationMs?: number;
   /**
-   * Forwarded to every `/rag/query` call made by {@link runAgenticLoop} or
+   * Forwarded to every `/v1/rag/query` call made by {@link runAgenticLoop} or
    * {@link runSubagentFanout} (`topK`, `rerank`, `searchMode`,
    * `embeddingSlot`, `filters`, `asOf`, `expandWindow`, `graphHops`).
    */

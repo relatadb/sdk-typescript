@@ -192,7 +192,7 @@ test("iteration 0 heuristic pass makes zero LLM calls", async () => {
 
   assert.equal(result.stoppedReason, "heuristic_pass");
   assert.equal(result.llmCalls, 0);
-  assert.equal(queryCallCount, 1); // exactly one /rag/query call, nothing more
+  assert.equal(queryCallCount, 1); // exactly one /v1/rag/query call, nothing more
   assert.deepEqual(graderCalls, []); // graderFn never invoked
   assert.deepEqual(hydeCalls, []); // hypothesisFn never invoked
   assert.equal(result.iterations.length, 1);
@@ -501,7 +501,7 @@ test("rejects more than five strategies", async () => {
   );
 });
 
-// ── every strategy issues exactly one /rag/query call, nothing more ────────
+// ── every strategy issues exactly one /v1/rag/query call, nothing more ────────
 
 test("each strategy issues exactly one call", async () => {
   let callCount = 0;

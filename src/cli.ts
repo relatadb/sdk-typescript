@@ -9,7 +9,6 @@
  *   health          Check server health
  *   status          Show server status
  *   audit           Show audit log count and chain validity
- *   nodes           List cluster nodes
  *   query <sql>     Execute a SQL query
  *
  * Options:
@@ -65,7 +64,6 @@ Commands:
   health          Check server health
   status          Show server status
   audit           Show audit log count and chain validity
-  nodes           List cluster nodes
   query <sql>     Execute a SQL query
 
 Options:
@@ -213,10 +211,6 @@ export async function runCommand(
           err("Audit chain integrity failure — investigate immediately.");
           return 2;
         }
-        return 0;
-      }
-      case "nodes": {
-        outJson(await client.clusterNodes(), rawJson);
         return 0;
       }
       case "query": {

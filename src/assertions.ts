@@ -30,12 +30,12 @@ export class AssertionsClient extends TypedClientBase {
     return new AssertionsClient(TypedClientBase.clientToCtor(client));
   }
 
-  /** `POST /assertions`: record a claim; idempotent on claim, source version and derivation. */
+  /** `POST /v1/assertions`: record a claim; idempotent on claim, source version and derivation. */
   async record(assertion: Doc): Promise<Doc> {
-    return this._post<Doc>("/assertions", assertion);
+    return this._post<Doc>("/v1/assertions", assertion);
   }
 
-  /** `GET /assertions`. */
+  /** `GET /v1/assertions`. */
   async list(
     opts: { subjectType?: string; subjectId?: string; predicate?: string; state?: string; limit?: number } = {},
   ): Promise<Doc> {
@@ -46,17 +46,17 @@ export class AssertionsClient extends TypedClientBase {
     if (opts.state !== undefined) q.set("state", opts.state);
     if (opts.limit !== undefined) q.set("limit", String(opts.limit));
     const qs = q.toString();
-    return this._get<Doc>(`/assertions${qs ? `?${qs}` : ""}`);
+    return this._get<Doc>(`/v1/assertions${qs ? `?${qs}` : ""}`);
   }
 
-  /** `GET /assertions/{id}`. */
+  /** `GET /v1/assertions/{id}`. */
   async get(assertionId: string): Promise<Doc> {
-    return this._get<Doc>(`/assertions/${seg(assertionId)}`);
+    return this._get<Doc>(`/v1/assertions/${seg(assertionId)}`);
   }
 
   /** `POST .../decision` with `confirm` or `reject`; idempotent. */
   async decide(assertionId: string, decision: "confirm" | "reject", reason: string): Promise<Doc> {
-    return this._post<Doc>(`/assertions/${seg(assertionId)}/decision`, { decision, reason });
+    return this._post<Doc>(`/v1/assertions/${seg(assertionId)}/decision`, { decision, reason });
   }
 
   /** Confirm an assertion. */
@@ -71,10 +71,10 @@ export class AssertionsClient extends TypedClientBase {
 
   /** `POST .../revoke`: replace the assertion with a content-free tombstone. */
   async revoke(assertionId: string, reason: string): Promise<Doc> {
-    return this._post<Doc>(`/assertions/${seg(assertionId)}/revoke`, { reason });
+    return this._post<Doc>(`/v1/assertions/${seg(assertionId)}/revoke`, { reason });
   }
 
-  /** `POST /assertion-relations` (#5721): link two assertions with a rationale and optional locator. */
+  /** `POST /v1/assertions/relations` (#5721): link two assertions with a rationale and optional locator. */
   async relate(
     fromId: string,
     kind: "supports" | "contradicts" | "derived_from" | "similar_to" | "same_group_as" | "distinct_from",
@@ -89,12 +89,12 @@ export class AssertionsClient extends TypedClientBase {
     const body: Doc = { from: fromId, to: toId, kind, rationale };
     if (opts.locator !== undefined) body.locator = opts.locator;
     if (opts.similarity !== undefined) body.similarity = opts.similarity;
-    return this._post<Doc>("/assertion-relations", body);
+    return this._post<Doc>("/v1/assertions/relations", body);
   }
 
-  /** `POST /assertion-relations/{id}/revoke`: withdraw a relation. */
+  /** `POST /v1/assertions/relations/{id}/revoke`: withdraw a relation. */
   async unrelate(relationId: string, reason: string): Promise<Doc> {
-    return this._post<Doc>(`/assertion-relations/${seg(relationId)}/revoke`, { reason });
+    return this._post<Doc>(`/v1/assertions/relations/${seg(relationId)}/revoke`, { reason });
   }
 
   /** `POST .../assessment`: an analyst judgment, kept apart from source reliability and model confidence. */
@@ -103,7 +103,7 @@ export class AssertionsClient extends TypedClientBase {
     judgment: "corroborated" | "disputed" | "inconclusive",
     reason: string,
   ): Promise<Doc> {
-    return this._post<Doc>(`/assertions/${seg(assertionId)}/assessment`, { judgment, reason });
+    return this._post<Doc>(`/v1/assertions/${seg(assertionId)}/assessment`, { judgment, reason });
   }
 
   /** `GET .../evidence-graph`: bounded authorized neighbourhood plus the corroboration summary. */
@@ -120,24 +120,24 @@ export class AssertionsClient extends TypedClientBase {
     }
     if (opts.minSimilarity !== undefined) q.set("min_similarity", String(opts.minSimilarity));
     const qs = q.toString();
-    return this._get<Doc>(`/assertions/${seg(assertionId)}/evidence-graph${qs ? `?${qs}` : ""}`);
+    return this._get<Doc>(`/v1/assertions/${seg(assertionId)}/evidence-graph${qs ? `?${qs}` : ""}`);
   }
 
-  /** `PUT /assertion-policies/{name}` under the `expectedVersion` precondition. */
+  /** `PUT /v1/assertions/policies/{name}` under the `expectedVersion` precondition. */
   async publishPolicy(name: string, definition: Doc, opts: { expectedVersion?: number } = {}): Promise<Doc> {
-    return this._put<Doc>(`/assertion-policies/${seg(name)}`, {
+    return this._put<Doc>(`/v1/assertions/policies/${seg(name)}`, {
       expected_version: Math.trunc(opts.expectedVersion ?? 0),
       definition,
     });
   }
 
-  /** `GET /assertion-policies/{name}` (latest, or `version`). */
+  /** `GET /v1/assertions/policies/{name}` (latest, or `version`). */
   async getPolicy(name: string, opts: { version?: number } = {}): Promise<Doc> {
     const qs = opts.version === undefined ? "" : `?version=${Math.trunc(opts.version)}`;
-    return this._get<Doc>(`/assertion-policies/${seg(name)}${qs}`);
+    return this._get<Doc>(`/v1/assertions/policies/${seg(name)}${qs}`);
   }
 
-  /** `GET /assertion-resolve`: the value at `validAt` as known at `recordedAsOf`, with an explanation. */
+  /** `GET /v1/assertions/resolve`: the value at `validAt` as known at `recordedAsOf`, with an explanation. */
   async resolve(
     subjectType: string,
     subjectId: string,
@@ -156,6 +156,6 @@ export class AssertionsClient extends TypedClientBase {
       q.set("policy", opts.policy);
       if (opts.policyVersion !== undefined) q.set("policy_version", String(Math.trunc(opts.policyVersion)));
     }
-    return this._get<Doc>(`/assertion-resolve?${q.toString()}`);
+    return this._get<Doc>(`/v1/assertions/resolve?${q.toString()}`);
   }
 }

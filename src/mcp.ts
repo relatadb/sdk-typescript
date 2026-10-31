@@ -1,7 +1,7 @@
 /**
  * MCP client — Model Context Protocol tool surface (#77 Phase 2).
  *
- * Wraps `/mcp/initialize`, `/mcp/tools`, `/mcp/tools/call`. The server
+ * Wraps `/v1/mcp/initialize`, `/v1/mcp/tools`, `/v1/mcp/tools/call`. The server
  * responds with the MCP envelope
  * `{"content": [{"type": "text", "text": "..."}], "isError": false}`;
  * the `unwrapMcp` helper extracts the inner JSON.
@@ -70,7 +70,7 @@ export class McpClient extends TypedClientBase {
   // -------------------------------------------------------------------------
 
   /**
-   * Send the MCP initialize handshake. Wraps `POST /mcp/initialize`.
+   * Send the MCP initialize handshake. Wraps `POST /v1/mcp/initialize`.
    *
    * `clientId`/`version` are accepted for API stability but currently have
    * no server-side effect: `mcp_initialize` (`crates/relata-cli/src/serve/mcp.rs`)
@@ -80,16 +80,16 @@ export class McpClient extends TypedClientBase {
     opts: { clientId?: string; version?: string } = {},
   ): Promise<Record<string, unknown>> {
     return unwrapMcp(
-      await this._post("/mcp/initialize", {
+      await this._post("/v1/mcp/initialize", {
         client_id: opts.clientId ?? "relata-typescript-sdk",
         version: opts.version ?? "1.0",
       }),
     );
   }
 
-  /** List every MCP tool the server exposes (30+). Wraps `GET /mcp/tools`. */
+  /** List every MCP tool the server exposes (30+). Wraps `GET /v1/mcp/tools`. */
   async listTools(): Promise<Record<string, unknown>[]> {
-    const data = unwrapMcp(await this._get("/mcp/tools"));
+    const data = unwrapMcp(await this._get("/v1/mcp/tools"));
     const tools =
       typeof data === "object" && data !== null && Array.isArray(data["tools"])
         ? data["tools"]
@@ -101,7 +101,7 @@ export class McpClient extends TypedClientBase {
 
   /**
    * Invoke an MCP tool by name with a typed arguments map.
-   * Wraps `POST /mcp/tools/call`.
+   * Wraps `POST /v1/mcp/tools/call`.
    */
   async callTool(
     name: string,
@@ -109,7 +109,7 @@ export class McpClient extends TypedClientBase {
   ): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = { name };
     if (args !== undefined) payload["arguments"] = args;
-    return unwrapMcp(await this._post("/mcp/tools/call", payload));
+    return unwrapMcp(await this._post("/v1/mcp/tools/call", payload));
   }
 
   // -------------------------------------------------------------------------
@@ -459,7 +459,7 @@ export class McpClient extends TypedClientBase {
 
   // --- Memory (the cognitive verbs are reachable via MCP too) ---
   // The dedicated `Memory` class is the typed surface; these MCP wrappers
-  // exist for parity when an agent drives everything through /mcp/tools/call.
+  // exist for parity when an agent drives everything through /v1/mcp/tools/call.
 
   /** `remember` MCP tool — store a memory (same shape as `Memory.add`). */
   async remember(
@@ -767,7 +767,7 @@ export class McpClient extends TypedClientBase {
   /**
    * `create_rule` — create a detection rule (ADR-162).
    *
-   * The underlying `POST /rules` handler (`rules_create_handler`,
+   * The underlying `POST /v1/rules` handler (`rules_create_handler`,
    * `crates/relata-cli/src/serve/rules.rs`) requires `target_type` with no
    * default — every call 400ed without it (#4656). `description` has been
    * dropped: it is never read anywhere in `rules.rs` (a dead parameter,

@@ -2,8 +2,8 @@
  * Provider-neutral natural-language query composition.
  *
  * The callback is owned by the application. Schema context comes from the
- * authenticated, ACL-filtered `/query/schema` endpoint, and every generated
- * statement still runs through the governed `/query` endpoint.
+ * authenticated, ACL-filtered `/v1/query/schema` endpoint, and every generated
+ * statement still runs through the governed `/v1/query` endpoint.
  */
 import type { RelataClient } from "./client.ts";
 import type { QueryResult } from "./types.ts";

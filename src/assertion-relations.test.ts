@@ -21,15 +21,15 @@ test("evidence relation calls hit their documented routes with exact bodies", as
   assert.deepEqual(seen, [
     [
       "POST",
-      "/assertion-relations",
+      "/v1/assertions/relations",
       "",
       { from: "asr_a", to: "asr_b", kind: "supports", rationale: "same passage", locator: { pointer: "page=3" } },
     ],
-    ["POST", "/assertion-relations", "", { from: "asr_a", to: "asr_b", kind: "contradicts", rationale: "dates differ" }],
-    ["POST", "/assertion-relations/rel%2F1/revoke", "", { reason: "misread" }],
-    ["POST", "/assertions/asr_a/assessment", "", { judgment: "disputed", reason: "two witnesses disagree" }],
-    ["GET", "/assertions/asr_a/evidence-graph", "", null],
-    ["GET", "/assertions/asr%2Fa/evidence-graph", "?depth=3&limit=10&policy=trust&policy_version=2", null],
+    ["POST", "/v1/assertions/relations", "", { from: "asr_a", to: "asr_b", kind: "contradicts", rationale: "dates differ" }],
+    ["POST", "/v1/assertions/relations/rel%2F1/revoke", "", { reason: "misread" }],
+    ["POST", "/v1/assertions/asr_a/assessment", "", { judgment: "disputed", reason: "two witnesses disagree" }],
+    ["GET", "/v1/assertions/asr_a/evidence-graph", "", null],
+    ["GET", "/v1/assertions/asr%2Fa/evidence-graph", "?depth=3&limit=10&policy=trust&policy_version=2", null],
   ]);
 });
 

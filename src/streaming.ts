@@ -2,12 +2,13 @@
  * Streaming SDK (#75) — SSE consumers + NDJSON row streams + Arrow IPC.
  *
  * The server ships streaming surfaces at:
- * - `POST /query/arrow` → Arrow IPC stream (columnar).
- * - `POST /query/stream` with `Accept: text/event-stream` (or application/x-ndjson) → row stream.
- * - `GET /watch/stream` → finite SSE polls — emits governed query-result
+ * - `POST /v1/query/arrow` → Arrow IPC stream (columnar).
+ * - `POST /v1/query/stream` with `Accept: text/event-stream` (or application/x-ndjson) → row stream.
+ * - `GET /v1/watch/stream` → finite SSE polls — emits governed query-result
  *   notifications from the server's bounded background evaluator.
- * - `GET /alerts/stream` → SSE — pushes alerts to subscribed principals.
- * - `GET /a2a/tasks/:id/stream` → SSE — A2A task lifecycle events.
+ * - `GET /v1/alerts/stream` → SSE — pushes alerts to subscribed principals.
+ * - `GET /v1/a2a/tasks/:id/stream` → SSE — A2A task lifecycle events.
+ * - `GET /v1/memory/recall/stream` → SSE — streaming memory recall.
  *
  * TypeScript is async-native, so every surface is exposed as an
  * `AsyncIterable<T>`. SSE consumers parse the
@@ -70,7 +71,7 @@ export class StreamingClient {
     opts: { purpose?: string } = {},
   ): AsyncIterable<Record<string, unknown>> {
     const purpose = this.#purpose(opts.purpose);
-    const url = `${this.#client.baseUrl}/query/stream`;
+    const url = `${this.#client.baseUrl}/v1/query/stream`;
     const response = await this.#client.fetchImpl(url, {
       method: "POST",
       headers: this.#headers({ "Content-Type": "application/json", Accept: "application/x-ndjson" }),
@@ -90,7 +91,7 @@ export class StreamingClient {
   // -------------------------------------------------------------------------
 
   /**
-   * Stream the raw Arrow IPC byte stream from `POST /query/arrow`.
+   * Stream the raw Arrow IPC byte stream from `POST /v1/query/arrow`.
    * Yields raw byte chunks. Wrap with a columnar reader for typed
    * record-batch consumption.
    */
@@ -99,7 +100,7 @@ export class StreamingClient {
     opts: { purpose?: string } = {},
   ): AsyncIterable<Uint8Array> {
     const purpose = this.#purpose(opts.purpose);
-    const url = `${this.#client.baseUrl}/query/arrow`;
+    const url = `${this.#client.baseUrl}/v1/query/arrow`;
     const response = await this.#fetchImpl()(url, {
       method: "POST",
       headers: this.#headers({ "Content-Type": "application/json" }),
@@ -131,7 +132,7 @@ export class StreamingClient {
   // -------------------------------------------------------------------------
 
   /**
-   * SSE poll consumer for `GET /watch/stream`. The server emits
+   * SSE poll consumer for `GET /v1/watch/stream`. The server emits
    * `result_changed` hashes, `gap`, and `evaluation_failed` notifications;
    * it does not stream changed row contents. Reconnects poll the same
    * consumptive queue for this authenticated principal, so concurrent polls
@@ -148,19 +149,36 @@ export class StreamingClient {
   ): AsyncIterable<Record<string, unknown>> {
     const params = new URLSearchParams({ sql, purpose });
     yield* this.sseStream(
-      `/watch/stream?${params}`,
+      `/v1/watch/stream?${params}`,
       opts.reconnect ?? true,
     );
   }
 
   /**
-   * SSE consumer for `GET /alerts/stream`. Yields alert events addressed to
+   * SSE consumer for `GET /v1/alerts/stream`. Yields alert events addressed to
    * the caller's principal / tenant.
    */
   async *alerts(
     opts: { reconnect?: boolean } = {},
   ): AsyncIterable<Record<string, unknown>> {
-    yield* this.sseStream("/alerts/stream", opts.reconnect ?? true);
+    yield* this.sseStream("/v1/alerts/stream", opts.reconnect ?? true);
+  }
+
+  /**
+   * SSE consumer for `GET /v1/memory/recall/stream`. Yields the recall rows
+   * as they are produced. A recall is finite, so `reconnect` defaults to
+   * `false`.
+   */
+  async *recallStream(
+    query: string,
+    purpose: string,
+    opts: { topK?: number; sessionId?: string; asOf?: string; reconnect?: boolean } = {},
+  ): AsyncIterable<Record<string, unknown>> {
+    const params = new URLSearchParams({ q: query, purpose });
+    if (opts.topK !== undefined) params.set("top_k", String(opts.topK));
+    if (opts.sessionId) params.set("session_id", opts.sessionId);
+    if (opts.asOf) params.set("as_of", opts.asOf);
+    yield* this.sseStream(`/v1/memory/recall/stream?${params}`, opts.reconnect ?? false);
   }
 
   /** @internal Generic SSE consumer with optional exponential-backoff reconnect. */

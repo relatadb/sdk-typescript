@@ -40,30 +40,30 @@ test("every call hits its documented route with exact bodies", async () => {
   await c.runSavedSearch("ss-1");
   await c.runSavedSearch("ss-1", { params: [1, null] });
   assert.deepEqual(seen, [
-    ["GET", "/alerts/a%2F1/evidence", "", null],
-    ["GET", "/alerts/a1/evidence", "?max_events=5&deadline_ms=900", null],
-    ["GET", "/alerts/a1/timeline", "", null],
-    ["GET", "/alerts/a1/timeline", "?deadline_ms=10", null],
-    ["POST", "/alerts/a1/pivot", "", {}],
+    ["GET", "/v1/alerts/a%2F1/evidence", "", null],
+    ["GET", "/v1/alerts/a1/evidence", "?max_events=5&deadline_ms=900", null],
+    ["GET", "/v1/alerts/a1/timeline", "", null],
+    ["GET", "/v1/alerts/a1/timeline", "?deadline_ms=10", null],
+    ["POST", "/v1/alerts/a1/pivot", "", {}],
     [
       "POST",
-      "/alerts/a1/pivot",
+      "/v1/alerts/a1/pivot",
       "",
       { field: "user", value: "alice", target_field: "owner", target_types: ["Session"], limit: 3, deadline_ms: 50 },
     ],
     [
       "POST",
-      "/searches/saved",
+      "/v1/search/saved",
       "",
       { name: "n", sql: "SELECT 1", purpose: "audit", description: "d", params: ["x"] },
     ],
-    ["GET", "/searches/saved", "", null],
-    ["GET", "/searches/saved", "?q=fail&limit=7", null],
-    ["GET", "/searches/saved/ss%2F1", "", null],
-    ["PUT", "/searches/saved/ss-1", "", { name: "n", sql: "SELECT 2", expected_version: 3 }],
-    ["DELETE", "/searches/saved/ss-1", "", null],
-    ["POST", "/searches/saved/ss-1/run", "", {}],
-    ["POST", "/searches/saved/ss-1/run", "", { params: [1, null] }],
+    ["GET", "/v1/search/saved", "", null],
+    ["GET", "/v1/search/saved", "?q=fail&limit=7", null],
+    ["GET", "/v1/search/saved/ss%2F1", "", null],
+    ["PUT", "/v1/search/saved/ss-1", "", { name: "n", sql: "SELECT 2", expected_version: 3 }],
+    ["DELETE", "/v1/search/saved/ss-1", "", null],
+    ["POST", "/v1/search/saved/ss-1/run", "", {}],
+    ["POST", "/v1/search/saved/ss-1/run", "", { params: [1, null] }],
   ]);
 });
 

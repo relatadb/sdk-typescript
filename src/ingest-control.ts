@@ -2,9 +2,9 @@
  * Ingestion control plane: source checkpoints, data contracts, quarantine
  * (#5689, #5714).
  *
- * Wraps `GET /ingest/checkpoints/{source}`, `GET /ingest/contracts`,
- * `GET|PUT /ingest/contracts/{dataset}`, `GET /ingest/contracts/{dataset}/quality`,
- * `GET /ingest/quarantine` and `DELETE /ingest/quarantine/{id}`. These routes use
+ * Wraps `GET /v1/ingest/checkpoints/{source}`, `GET /v1/ingest/contracts`,
+ * `GET|PUT /v1/ingest/contracts/{dataset}`, `GET /v1/ingest/contracts/{dataset}/quality`,
+ * `GET /v1/ingest/quarantine` and `DELETE /v1/ingest/quarantine/{id}`. These routes use
  * the data-plane credential and are scoped to the caller's tenant.
  */
 
@@ -25,36 +25,36 @@ export class IngestControlClient extends TypedClientBase {
     return new IngestControlClient(TypedClientBase.clientToCtor(client));
   }
 
-  /** `GET /ingest/checkpoints/{source}`: last durably committed checkpoint. */
+  /** `GET /v1/ingest/checkpoints/{source}`: last durably committed checkpoint. */
   async checkpoint(source: string): Promise<Record<string, unknown>> {
-    return this._get(`/ingest/checkpoints/${seg(source)}`);
+    return this._get(`/v1/ingest/checkpoints/${seg(source)}`);
   }
 
-  /** `GET /ingest/contracts`: `{ contracts: [{ dataset, latest_version }] }`. */
+  /** `GET /v1/ingest/contracts`: `{ contracts: [{ dataset, latest_version }] }`. */
   async listContracts(): Promise<Record<string, unknown>> {
-    return this._get("/ingest/contracts");
+    return this._get("/v1/ingest/contracts");
   }
 
-  /** `GET /ingest/contracts/{dataset}`: every retained contract version. */
+  /** `GET /v1/ingest/contracts/{dataset}`: every retained contract version. */
   async getContract(dataset: string): Promise<Record<string, unknown>> {
-    return this._get(`/ingest/contracts/${seg(dataset)}`);
+    return this._get(`/v1/ingest/contracts/${seg(dataset)}`);
   }
 
   /**
-   * `PUT /ingest/contracts/{dataset}`: define the next contract version. The
+   * `PUT /v1/ingest/contracts/{dataset}`: define the next contract version. The
    * server checks backward compatibility; `contract` is sent verbatim.
    */
   async putContract(dataset: string, contract: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this._put(`/ingest/contracts/${seg(dataset)}`, contract);
+    return this._put(`/v1/ingest/contracts/${seg(dataset)}`, contract);
   }
 
-  /** `GET /ingest/contracts/{dataset}/quality`: validation counts, freshness, drift. */
+  /** `GET /v1/ingest/contracts/{dataset}/quality`: validation counts, freshness, drift. */
   async contractQuality(dataset: string): Promise<Record<string, unknown>> {
-    return this._get(`/ingest/contracts/${seg(dataset)}/quality`);
+    return this._get(`/v1/ingest/contracts/${seg(dataset)}/quality`);
   }
 
   /**
-   * `GET /ingest/quarantine`: a page of quarantined records. Pass the previous
+   * `GET /v1/ingest/quarantine`: a page of quarantined records. Pass the previous
    * page's `next_after_id` as `afterId` to continue.
    */
   async listQuarantine(
@@ -65,12 +65,12 @@ export class IngestControlClient extends TypedClientBase {
     if (opts.afterId !== undefined) params.set("after_id", String(Math.trunc(opts.afterId)));
     if (opts.limit !== undefined) params.set("limit", String(Math.trunc(opts.limit)));
     const q = params.toString();
-    return this._get(`/ingest/quarantine${q ? `?${q}` : ""}`);
+    return this._get(`/v1/ingest/quarantine${q ? `?${q}` : ""}`);
   }
 
-  /** `DELETE /ingest/quarantine/{id}`: discard one record (404 when unknown). */
+  /** `DELETE /v1/ingest/quarantine/{id}`: discard one record (404 when unknown). */
   async deleteQuarantine(id: number): Promise<void> {
-    const response = await this._sendBytes("DELETE", `/ingest/quarantine/${Math.trunc(id)}`);
+    const response = await this._sendBytes("DELETE", `/v1/ingest/quarantine/${Math.trunc(id)}`);
     if (response.status !== 204) {
       throw new RelataError(
         `Quarantine DELETE expected HTTP 204, got ${response.status}`,

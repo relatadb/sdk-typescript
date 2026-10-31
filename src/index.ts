@@ -96,8 +96,6 @@ export type { SortDirection } from "./query.ts";
 
 export type {
   AuditCountResponse,
-  ClusterNode,
-  ClusterNodesResponse,
   EventAppendReceipt,
   EventAppendRequest,
   AlertSubmitRequest,
@@ -167,7 +165,7 @@ export { A2AClient } from "./a2a.ts";
 export { SearchClient, buildSearchPayload } from "./search.ts";
 export type { SearchQuery, SearchFilter, SearchRankBy } from "./search.ts";
 
-// RAG epic — typed /rag/query client (#4523, foundational; #4514/ADR-0299).
+// RAG epic — typed /v1/rag/query client (#4523, foundational; #4514/ADR-0299).
 // Thin pass-through only per ADR-0298 — the canonical agentic-loop
 // implementation lives in sdks/python's relata.rag.
 export { RagClient, buildRagPayload, RAG_DEFAULT_TOP_K } from "./rag.ts";
@@ -197,7 +195,7 @@ export type {
   EntailmentFn,
 } from "./synthesis.ts";
 
-// Session-scoped coreference (anaphora) resolution over `/rag/query` turns
+// Session-scoped coreference (anaphora) resolution over `/v1/rag/query` turns
 // (#4530, #4580 TS/Go parity). Port of `sdks/python/relata/coref.py`.
 export { CorefResolver, hasUnresolvedPronoun, subjectFromHit } from "./coref.ts";
 
@@ -288,7 +286,7 @@ export type {
 // deterministic (non-LLM) merge (#4526), TS/Go parity port of
 // sdks/python/relata/rag_loop.py (#4582, epic #4576). Heuristic gate ->
 // corrective retrieval grading -> loop-confidence stop, capped at
-// MAX_ITERATIONS; 2-5 parallel /rag/query strategies merged by strict
+// MAX_ITERATIONS; 2-5 parallel /v1/rag/query strategies merged by strict
 // confidence argmax, never an LLM arbitration call.
 export {
   HEURISTIC_PASS_THRESHOLD,
@@ -404,10 +402,6 @@ export type { FreshnessIndex, FreshnessOptions } from "./freshness.ts";
 export { TokenClient } from "./tokens.ts";
 export { AppPrimitivesClient } from "./app-primitives.ts";
 export type { EnqueueOptions } from "./app-primitives.ts";
-export type { TokenStats } from "./tokens.ts";
-
-export { LogClient } from "./log.ts";
-export type { LogLeaf } from "./log.ts";
 
 export { ObservabilityClient } from "./observability.ts";
 export type { ObservabilityEvent } from "./observability.ts";

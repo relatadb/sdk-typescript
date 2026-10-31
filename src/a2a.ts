@@ -1,9 +1,9 @@
 /**
  * A2A client — Agent-to-Agent task surface (#77 Phase 3).
  *
- * Wraps `/a2a/tasks` (create), `/a2a/tasks/:id` (status),
- * `/a2a/tasks/:id/stream` (SSE tail — pairs with the streaming ticket), and
- * `/a2a/checkpoints/:threadId` (process-local LangGraph checkpoint endpoints).
+ * Wraps `/v1/a2a/tasks` (create), `/v1/a2a/tasks/:id` (status),
+ * `/v1/a2a/tasks/:id/stream` (SSE tail — pairs with the streaming ticket), and
+ * `/v1/a2a/checkpoints/:threadId` (process-local LangGraph checkpoint endpoints).
  */
 
 import { RelataClient } from "./client.ts";
@@ -28,32 +28,32 @@ export class A2AClient extends TypedClientBase {
    * The returned record is available only while retained in the server's
    * bounded, process-local task history; it is not a durable job receipt.
    * Payloads typically contain `name`, `input`, and `skill`.
-   * Wraps `POST /a2a/tasks`.
+   * Wraps `POST /v1/a2a/tasks`.
    */
   async submitTask(
     payload: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this._post("/a2a/tasks", payload);
+    return this._post("/v1/a2a/tasks", payload);
   }
 
   /**
    * Poll a task's status.
-   * Wraps `GET /a2a/tasks/:id`. Returns
+   * Wraps `GET /v1/a2a/tasks/:id`. Returns
    * `{"id": ..., "status": ..., "result": ..., "error": ...}`.
    */
   async getTask(taskId: string): Promise<Record<string, unknown>> {
-    return this._get(`/a2a/tasks/${encodeURIComponent(taskId)}`);
+    return this._get(`/v1/a2a/tasks/${encodeURIComponent(taskId)}`);
   }
 
   /**
    * List the LangGraph checkpoints for a thread.
-   * Wraps `GET /a2a/checkpoints/:threadId`.
+   * Wraps `GET /v1/a2a/checkpoints/:threadId`.
    */
   async listCheckpoints(
     threadId: string,
   ): Promise<Record<string, unknown>[]> {
     const data = await this._get<Record<string, unknown>>(
-      `/a2a/checkpoints/${encodeURIComponent(threadId)}`,
+      `/v1/a2a/checkpoints/${encodeURIComponent(threadId)}`,
     );
     const checkpoints =
       typeof data === "object" && data !== null && Array.isArray(data["checkpoints"])
@@ -66,20 +66,20 @@ export class A2AClient extends TypedClientBase {
 
   /**
    * Load a specific checkpoint by id.
-   * Wraps `GET /a2a/checkpoints/:threadId/:checkpointId`.
+   * Wraps `GET /v1/a2a/checkpoints/:threadId/:checkpointId`.
    */
   async loadCheckpoint(
     threadId: string,
     checkpointId: string,
   ): Promise<Record<string, unknown>> {
     return this._get(
-      `/a2a/checkpoints/${encodeURIComponent(threadId)}/${encodeURIComponent(checkpointId)}`,
+      `/v1/a2a/checkpoints/${encodeURIComponent(threadId)}/${encodeURIComponent(checkpointId)}`,
     );
   }
 
   /**
    * Save (PUT) a checkpoint.
-   * Wraps `PUT /a2a/checkpoints/:threadId/:checkpointId`. The `payload`
+   * Wraps `PUT /v1/a2a/checkpoints/:threadId/:checkpointId`. The `payload`
    * matches the LangGraph checkpointer shape
    * (`{"checkpoint": ..., "metadata": ...}`). Returns the server's save
    * receipt.
@@ -90,7 +90,7 @@ export class A2AClient extends TypedClientBase {
     payload: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
     return this._put(
-      `/a2a/checkpoints/${encodeURIComponent(threadId)}/${encodeURIComponent(checkpointId)}`,
+      `/v1/a2a/checkpoints/${encodeURIComponent(threadId)}/${encodeURIComponent(checkpointId)}`,
       payload,
     );
   }

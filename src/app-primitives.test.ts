@@ -23,7 +23,7 @@ function make(calls: Call[], reply: unknown): AppPrimitivesClient {
 test("sequenceNext sends camelCase body to the encoded name", async () => {
   const calls: Call[] = [];
   await make(calls, { start: 1, end: 5 }).sequenceNext("inv", { count: 5, idempotencyKey: "k" });
-  assert.equal(calls[0].path, "/sequences/inv/next");
+  assert.equal(calls[0].path, "/v1/sequences/inv/next");
   assert.equal(calls[0].method, "POST");
   assert.deepEqual(calls[0].body, { count: 5, idempotencyKey: "k" });
 });
@@ -35,13 +35,13 @@ test("claim returns jobs and complete carries the fencing token", async () => {
   assert.equal(jobs[0].fencingToken, 7);
   await c.complete("j1", 7, { result: { ok: true } });
   assert.deepEqual(calls[0].body, { workerId: "w1", leaseMs: 1000, max: 2 });
-  assert.equal(calls[1].path, "/jobs/j1/complete");
+  assert.equal(calls[1].path, "/v1/jobs/j1/complete");
   assert.deepEqual(calls[1].body, { fencingToken: 7, result: { ok: true } });
 });
 
 test("listJobs builds the query string", async () => {
   const calls: Call[] = [];
   await make(calls, { jobs: [] }).listJobs("q", { state: "dead", limit: 5 });
-  assert.equal(calls[0].path, "/queues/q/jobs");
+  assert.equal(calls[0].path, "/v1/queues/q/jobs");
   assert.equal(calls[0].search, "?state=dead&limit=5");
 });

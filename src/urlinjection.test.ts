@@ -9,7 +9,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { RelataClient, pathSegment } from "./client.ts";
-import { TenantAdminClient } from "./tenants.ts";
 import { GovernanceClient } from "./governance.ts";
 import { A2AClient } from "./a2a.ts";
 
@@ -34,25 +33,18 @@ test("pathSegment encodes reserved characters", () => {
   assert.equal(pathSegment("plain"), "plain");
 });
 
-test("url injection: tenant delete path is percent-encoded", async () => {
-  const { fetch, calls } = mockFetch();
-  const relata = new RelataClient({ baseUrl: BASE, bearerToken: "t", fetch });
-  await TenantAdminClient.fromClient(relata).delete("../x");
-  assert.equal(calls[0]?.url, `${BASE}/platform/tenants/..%2Fx`);
-});
-
 test("url injection: governance disable path is percent-encoded", async () => {
   const { fetch, calls } = mockFetch();
   const relata = new RelataClient({ baseUrl: BASE, bearerToken: "t", defaultPurpose: "p", fetch });
   await GovernanceClient.fromClient(relata).disableRule("a?b#c&d");
-  assert.equal(calls[0]?.url, `${BASE}/rules/a%3Fb%23c%26d`);
+  assert.equal(calls[0]?.url, `${BASE}/v1/rules/a%3Fb%23c%26d`);
 });
 
 test("url injection: a2a getTask path is percent-encoded", async () => {
   const { fetch, calls } = mockFetch();
   const relata = new RelataClient({ baseUrl: BASE, bearerToken: "t", fetch });
   await A2AClient.fromClient(relata).getTask("a#b?c&d/../e");
-  assert.equal(calls[0]?.url, `${BASE}/a2a/tasks/a%23b%3Fc%26d%2F..%2Fe`);
+  assert.equal(calls[0]?.url, `${BASE}/v1/a2a/tasks/a%23b%3Fc%26d%2F..%2Fe`);
 });
 
 test("url injection: exportData query params are percent-encoded", async () => {
@@ -60,7 +52,7 @@ test("url injection: exportData query params are percent-encoded", async () => {
   const relata = new RelataClient({ baseUrl: BASE, bearerToken: "t", fetch });
   await relata.exportData("Person&purpose=admin");
   const url = new URL(calls[0]?.url ?? "");
-  assert.equal(url.pathname, "/export");
+  assert.equal(url.pathname, "/v1/export");
   // The '&' in the type must be percent-encoded so it cannot smuggle a second
   // 'purpose' query parameter.
   assert.equal(url.searchParams.get("type"), "Person&purpose=admin");
@@ -68,15 +60,11 @@ test("url injection: exportData query params are percent-encoded", async () => {
   assert.ok(!calls[0]?.url.includes("Person&purpose=admin&"));
 });
 
-test("url injection: flat-client rule/session/webhook paths are percent-encoded", async () => {
+test("url injection: flat-client rule/session paths are percent-encoded", async () => {
   const { fetch, calls } = mockFetch();
   const relata = new RelataClient({ baseUrl: BASE, bearerToken: "t", fetch });
   await relata.disableRule("../r");
-  await relata.deleteWebhook("w?1");
   await relata.sessionDiff("s#1");
-  await relata.clusterDrain("n&1");
-  assert.equal(calls[0]?.url, `${BASE}/rules/..%2Fr`);
-  assert.equal(calls[1]?.url, `${BASE}/webhooks/w%3F1`);
-  assert.equal(calls[2]?.url, `${BASE}/session/s%231/diff`);
-  assert.equal(calls[3]?.url, `${BASE}/cluster/drain/n%261`);
+  assert.equal(calls[0]?.url, `${BASE}/v1/rules/..%2Fr`);
+  assert.equal(calls[1]?.url, `${BASE}/v1/sessions/s%231/diff`);
 });

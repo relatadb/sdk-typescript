@@ -23,7 +23,7 @@ interface Row {
 }
 
 /**
- * Minimal in-process fake reproducing the `/memory/*` contract this module
+ * Minimal in-process fake reproducing the `/v1/memory/*` contract this module
  * depends on: `remember` inserts, `consolidate` supersedes (pop old id,
  * insert new), and `recall` filters by exact `session_id` match.
  */
@@ -51,14 +51,14 @@ class FakeMemoryServer {
         isError: false,
       });
 
-    if (path === "/memory/remember") {
+    if (path === "/v1/memory/remember") {
       this.rememberCalls += 1;
       const body = JSON.parse(String(init?.body ?? "{}"));
       const id = this.#newId();
       this.rows.set(id, { content: body.content, session_id: body.session_id });
       return new Response(mcp({ id, session_id: body.session_id }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
-    if (path === "/memory/consolidate") {
+    if (path === "/v1/memory/consolidate") {
       this.consolidateCalls += 1;
       const body = JSON.parse(String(init?.body ?? "{}"));
       const old = this.rows.get(body.id);
@@ -68,9 +68,9 @@ class FakeMemoryServer {
       this.rows.set(newId, { content: body.content, session_id: sessionId });
       return new Response(mcp({ new_id: newId }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
-    if (path === "/memory/recall") {
+    if (path === "/v1/memory/recall") {
       this.recallCalls += 1;
-      const sid = u.searchParams.get("session_id") ?? "";
+      const sid = (JSON.parse(String(init?.body ?? "{}")).session_id as string | undefined) ?? "";
       const rows = [...this.rows.entries()]
         .filter(([, r]) => r.session_id === sid)
         .map(([id, r]) => ({ id, content: r.content, session_id: r.session_id }));

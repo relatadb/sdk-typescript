@@ -1,5 +1,5 @@
 /**
- * Media work hand-off for OpenETL (`/media/work`, #5938).
+ * Media work hand-off for OpenETL (`/v1/media/work`, #5938).
  *
  * Lease items with {@link MediaWorkClient.claim}, keep the lease with
  * {@link MediaWorkClient.heartbeat}, write extracted rows through
@@ -20,13 +20,13 @@ const STATES = ["queued", "claimed", "writing", "completed", "dead_letter", "can
 /** Work item lifecycle states accepted by {@link MediaWorkClient.list}. */
 export type MediaWorkState = (typeof STATES)[number];
 
-/** `X-Relata-Claim` header for a raw `POST /ingest/bulk` write-back. */
+/** `X-Relata-Claim` header for a raw `POST /v1/ingest/bulk` write-back. */
 export function mediaWorkClaimHeaders(claimId: number): Record<string, string> {
   return { [MEDIA_WORK_CLAIM_HEADER]: String(Math.trunc(claimId)) };
 }
 
 const item = (workId: string, suffix = ""): string =>
-  `/media/work/${encodeURIComponent(workId)}${suffix}`;
+  `/v1/media/work/${encodeURIComponent(workId)}${suffix}`;
 
 /** Media work client. */
 export class MediaWorkClient extends TypedClientBase {
@@ -39,7 +39,7 @@ export class MediaWorkClient extends TypedClientBase {
     return new MediaWorkClient(TypedClientBase.clientToCtor(client));
   }
 
-  /** `GET /media/work`: the tenant's work items, optionally filtered by state. */
+  /** `GET /v1/media/work`: the tenant's work items, optionally filtered by state. */
   async list(opts: { state?: MediaWorkState; limit?: number } = {}): Promise<Record<string, unknown>> {
     const params = new URLSearchParams();
     if (opts.state !== undefined) {
@@ -48,16 +48,16 @@ export class MediaWorkClient extends TypedClientBase {
     }
     if (opts.limit !== undefined) params.set("limit", String(Math.trunc(opts.limit)));
     const q = params.toString();
-    return this._get<Record<string, unknown>>(`/media/work${q ? `?${q}` : ""}`);
+    return this._get<Record<string, unknown>>(`/v1/media/work${q ? `?${q}` : ""}`);
   }
 
-  /** `GET /media/work/{id}`: durable status; 404 when unknown. */
+  /** `GET /v1/media/work/{id}`: durable status; 404 when unknown. */
   async get(workId: string): Promise<Record<string, unknown>> {
     return this._get<Record<string, unknown>>(item(workId));
   }
 
   /**
-   * `POST /media/work/claim`: lease up to `maxItems` items (`{ items: [...] }`).
+   * `POST /v1/media/work/claim`: lease up to `maxItems` items (`{ items: [...] }`).
    * An empty list means nothing is deliverable now (no long poll).
    */
   async claim(
@@ -67,10 +67,10 @@ export class MediaWorkClient extends TypedClientBase {
     const body: Record<string, unknown> = { claimant };
     if (opts.maxItems !== undefined) body["max_items"] = Math.trunc(opts.maxItems);
     if (opts.leaseMs !== undefined) body["lease_ms"] = Math.trunc(opts.leaseMs);
-    return this._post<Record<string, unknown>>("/media/work/claim", body);
+    return this._post<Record<string, unknown>>("/v1/media/work/claim", body);
   }
 
-  /** `POST /media/work/{id}/heartbeat`: extend the lease (409 once it lapsed). */
+  /** `POST /v1/media/work/{id}/heartbeat`: extend the lease (409 once it lapsed). */
   async heartbeat(
     workId: string,
     claimId: number,
@@ -81,7 +81,7 @@ export class MediaWorkClient extends TypedClientBase {
     return this._post<Record<string, unknown>>(item(workId, "/heartbeat"), body);
   }
 
-  /** `POST /media/work/{id}/complete`: 409 when counts differ from what is stored. */
+  /** `POST /v1/media/work/{id}/complete`: 409 when counts differ from what is stored. */
   async complete(
     workId: string,
     claimId: number,
@@ -95,7 +95,7 @@ export class MediaWorkClient extends TypedClientBase {
     });
   }
 
-  /** `POST /media/work/{id}/fail`: `retryable` is redelivered, `permanent` dead-letters. */
+  /** `POST /v1/media/work/{id}/fail`: `retryable` is redelivered, `permanent` dead-letters. */
   async fail(
     workId: string,
     claimId: number,
@@ -108,5 +108,13 @@ export class MediaWorkClient extends TypedClientBase {
     if (opts.code !== undefined) body["code"] = opts.code;
     if (opts.detail !== undefined) body["detail"] = opts.detail;
     return this._post<Record<string, unknown>>(item(workId, "/fail"), body);
+  }
+
+  /**
+   * `POST /v1/media/work/{id}/requeue`: return an item to the queue (for example a
+   * dead-lettered one) so it is delivered again.
+   */
+  async requeue(workId: string): Promise<Record<string, unknown>> {
+    return this._post<Record<string, unknown>>(item(workId, "/requeue"), {});
   }
 }

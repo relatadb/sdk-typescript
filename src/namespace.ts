@@ -10,7 +10,7 @@
  * const relata = createClient("http://localhost:9090", { defaultPurpose: "rag" });
  * const docs = relata.namespace("Document");
  *
- * // Schemaless write — POST /ingest/auto auto-creates the type with fields
+ * // Schemaless write — POST /v1/ingest/auto auto-creates the type with fields
  * // inferred from the rows (T6, #1988 — no DDL):
  * await docs.write([
  *   { id: "d1", title: "Knowledge graphs 101", body: "..." },
@@ -133,7 +133,7 @@ export class Namespace {
   /**
    * Schemaless upsert — auto-create the type with inferred fields.
    *
-   * POSTs `{object_type, rows, schema?, purpose?}` to `/ingest/auto`
+   * POSTs `{object_type, rows, schema?, purpose?}` to `/v1/ingest/auto`
    * (T6, #1988). If the type does not yet exist the server creates it with
    * field types inferred from the rows; the response carries `type_created`
    * and `inferred_schema`. Optional `schema` overrides pin a field's type.
@@ -184,25 +184,5 @@ export class Namespace {
       ...(opts.purpose !== undefined ? { purpose: opts.purpose } : {}),
     });
     return { deleted: ids.length };
-  }
-
-  /**
-   * Create this namespace as a copy-on-write branch of `sourceNamespace`.
-   *
-   * Targets `POST /v1/namespaces/{name}/branch` (T10, #1992). The
-   * server-side door is pending #1992; this client method is ready for it.
-   */
-  async branchFrom(
-    sourceNamespace: string,
-    opts: { purpose?: string } = {},
-  ): Promise<Record<string, unknown>> {
-    validateNamespaceName(sourceNamespace);
-    const body: Record<string, unknown> = { from: sourceNamespace };
-    if (opts.purpose !== undefined) body["purpose"] = opts.purpose;
-    return this.#client.request<Record<string, unknown>>(
-      "POST",
-      `/v1/namespaces/${encodeURIComponent(this.name)}/branch`,
-      body,
-    );
   }
 }

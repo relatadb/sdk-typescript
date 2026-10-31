@@ -2,7 +2,7 @@
  * Tests for the LlamaIndex.TS memory adapter (#2312).
  *
  * LlamaIndex is not imported (the adapter is framework-agnostic); these tests
- * drive it through a mocked Relata `/memory/*` surface, mirroring
+ * drive it through a mocked Relata `/v1/memory/*` surface, mirroring
  * `sdks/python/tests/test_adapters.py::test_llamaindex_put_get_reset`.
  */
 
@@ -21,20 +21,20 @@ function mockMemoryServer(): { fetch: typeof globalThis.fetch; paths: string[] }
   const fetch = (async (url: string | URL | Request): Promise<Response> => {
     const path = new URL(typeof url === "string" ? url : url.toString()).pathname;
     calls.push(path);
-    if (path === "/memory/remember") {
+    if (path === "/v1/memory/remember") {
       nextId += 1;
       return new Response(JSON.stringify(mcpEnvelope({ id: `mem-${nextId}` })), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
     }
-    if (path === "/memory/recall") {
+    if (path === "/v1/memory/recall") {
       return new Response(
         JSON.stringify(mcpEnvelope({ rows: [{ id: "a", content: "dark mode", score: 0.9 }] })),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }
-    if (path.startsWith("/memory/forget/")) {
+    if (path.startsWith("/v1/memory/forget/")) {
       return new Response(
         JSON.stringify(mcpEnvelope({ memory_item_id: path.split("/").pop() })),
         { status: 200, headers: { "content-type": "application/json" } },
@@ -57,7 +57,7 @@ test("RelataMemory (llamaindex): put stores a message and records its role", asy
   const { fetch, paths } = mockMemoryServer();
   const mem = new RelataMemory({ baseUrl: "http://x", purpose: "agent", fetch });
   await mem.put([{ role: "user", content: "remember dark mode" }]);
-  assert.equal(paths.filter((p) => p === "/memory/remember").length, 1);
+  assert.equal(paths.filter((p) => p === "/v1/memory/remember").length, 1);
 });
 
 test("RelataMemory (llamaindex): get recalls relevant memories from the last message", async () => {
@@ -66,7 +66,7 @@ test("RelataMemory (llamaindex): get recalls relevant memories from the last mes
 
   const hits = await mem.get([{ role: "user", content: "theme preference" }]);
   assert.equal(hits[0]?.["content"], "dark mode");
-  assert.ok(paths.includes("/memory/recall"));
+  assert.ok(paths.includes("/v1/memory/recall"));
 });
 
 test("RelataMemory (llamaindex): get with no messages returns [] and skips the round-trip", async () => {
@@ -87,5 +87,5 @@ test("RelataMemory (llamaindex): reset retracts every memory this instance store
   const mem = new RelataMemory({ baseUrl: "http://x", purpose: "agent", fetch });
   await mem.put({ role: "user", content: "dark mode" });
   await mem.reset();
-  assert.ok(paths.some((p) => p.startsWith("/memory/forget/")));
+  assert.ok(paths.some((p) => p.startsWith("/v1/memory/forget/")));
 });

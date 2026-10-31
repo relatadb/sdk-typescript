@@ -102,7 +102,7 @@ test("ObjectClient.upsert: ifAbsent sends PUT with If-None-Match: *", async () =
   const out = await client.upsert("Doc", "a", { n: "x" }, { ifAbsent: true });
   assert.equal(out["version"], 7);
   assert.equal(calls[0]!.init.method, "PUT");
-  assert.ok(calls[0]!.url.endsWith("/objects/Doc/a?purpose=audit"), calls[0]!.url);
+  assert.ok(calls[0]!.url.endsWith("/v1/objects/Doc/a?purpose=audit"), calls[0]!.url);
   assert.equal(headerOf(calls[0]!.init, "if-none-match"), "*");
   assert.deepEqual(JSON.parse(calls[0]!.init.body as string), { n: "x" });
 });
@@ -142,11 +142,11 @@ test("ObjectClient.upsert: the two preconditions are mutually exclusive", async 
   );
 });
 
-test("ObjectClient.upsert: without a precondition it still uses /ingest", async () => {
+test("ObjectClient.upsert: without a precondition it still uses /v1/ingest", async () => {
   const { client, calls } = capturingClient(200, { rows_queued: 1 });
   await client.upsert("Doc", "a", { n: "x" });
   assert.equal(calls[0]!.init.method, "POST");
-  assert.ok(calls[0]!.url.includes("/ingest?"), calls[0]!.url);
+  assert.ok(calls[0]!.url.includes("/v1/ingest?"), calls[0]!.url);
 });
 
 test("ObjectClient.delete: expectedVersion is a conditional DELETE", async () => {
@@ -177,7 +177,7 @@ test("ObjectClient.commit: posts the bundle with the idempotency key", async () 
   );
   assert.equal(out.commitId, "c1");
   assert.equal(calls[0]!.init.method, "POST");
-  assert.ok(calls[0]!.url.endsWith("/commit"));
+  assert.ok(calls[0]!.url.endsWith("/v1/commit"));
   assert.deepEqual(JSON.parse(calls[0]!.init.body as string), {
     operations: [{ op: "update", type: "Doc", id: "a", expectedVersion: 2, data: { n: "y" } }],
     idempotencyKey: "k1",
@@ -204,7 +204,7 @@ test("ObjectClient.commit: a failed bundle reports the failing operation", async
   );
 });
 
-test("ObjectClient.changes: sends cursor/limit/type/start to /object-changes", async () => {
+test("ObjectClient.changes: sends cursor/limit/type/start to /v1/changes", async () => {
   const seen: string[] = [];
   const fakeFetch = async (url: string, _init?: RequestInit): Promise<Response> => {
     seen.push(String(url));
@@ -221,7 +221,7 @@ test("ObjectClient.changes: sends cursor/limit/type/start to /object-changes", a
   const page = await client.changes({ cursor: "f:2", limit: 50, type: "Doc" });
   assert.equal(page.nextCursor, "f:3");
   const url = new URL(seen[0]!);
-  assert.equal(url.pathname, "/object-changes");
+  assert.equal(url.pathname, "/v1/changes");
   assert.equal(url.searchParams.get("cursor"), "f:2");
   assert.equal(url.searchParams.get("limit"), "50");
   assert.equal(url.searchParams.get("type"), "Doc");

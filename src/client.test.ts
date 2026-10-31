@@ -240,10 +240,10 @@ test("stats / version / ready / ingestDocument: map wire shapes", async () => {
   assert.equal(ingest.queueDepth, 2);
 
   // Verify the paths
-  assert.equal(calls[0]?.url, "http://x/debug/stats");
+  assert.equal(calls[0]?.url, "http://x/v1/system/stats");
   assert.equal(calls[1]?.url, "http://x/version");
   assert.equal(calls[2]?.url, "http://x/health/ready");
-  assert.equal(calls[3]?.url, "http://x/ingest/bulk");
+  assert.equal(calls[3]?.url, "http://x/v1/ingest/bulk");
   // Verify the ingest payload
   assert.deepEqual(JSON.parse(calls[3]?.body ?? "{}"), {
     objects: documentRows,
@@ -317,7 +317,7 @@ test("ingestDocumentStatus preserves every server task outcome and GET path", as
   assert.equal(pendingDerived.retryable, false);
   // GET path encodes the task id.
   assert.equal(calls[0]?.method, "GET");
-  assert.equal(calls[0]?.url, "http://x/ingest/tasks/t-1");
+  assert.equal(calls[0]?.url, "http://x/v1/ingest/tasks/t-1");
 });
 
 test("ingestDocument encodes bigint fields as exact JSON integers", async () => {
@@ -396,7 +396,7 @@ test("appendEvent sends the generic event contract and maps its receipt", async 
     purpose: "rag-usage",
     attributes: { cited: true },
   });
-  assert.equal(calls[0]?.url, "http://x/events/append");
+  assert.equal(calls[0]?.url, "http://x/v1/ingest/events");
   assert.equal(calls[0]?.method, "POST");
   assert.equal(calls[0]?.headers["x-relata-tenant-id"], "tenant-a");
   assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), {
@@ -449,7 +449,7 @@ test("retry: does NOT retry on 401 (non-retryable)", async () => {
 });
 
 test("retry (#2489): POST is NOT retried on 503 — irreversible-op guard", async () => {
-  // POST /query with a retryable 503 must surface immediately: a gateway
+  // POST /v1/query with a retryable 503 must surface immediately: a gateway
   // timeout after commit risks double-execution of irreversible operations.
   // Non-idempotent requests are not retried, matching the Go SDK policy.
   const { fetch, calls } = mockFetch([
@@ -463,7 +463,7 @@ test("retry (#2489): POST is NOT retried on 503 — irreversible-op guard", asyn
     retryBackoffMs: 1,
   });
   await assert.rejects(
-    () => relata.query("POST /query is non-idempotent"),
+    () => relata.query("POST /v1/query is non-idempotent"),
     (err: unknown) => err instanceof ServerError,
   );
   assert.equal(calls.length, 1, "POST must NOT be retried on 503 (#2489)");
@@ -767,7 +767,7 @@ test("createRule: attaches purpose as a query param and requires one", async () 
   const { fetch, calls } = mockFetch({ body: { id: "r1" } });
   const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "audit", fetch });
   await relata.createRule({ name: "r1", condition_sql: "age > 18", target_type: "Person" });
-  assert.ok(calls[0]?.url.includes("/rules?purpose=audit"));
+  assert.ok(calls[0]?.url.includes("/v1/rules?purpose=audit"));
 
   const { fetch: fetch2 } = mockFetch({ body: {} });
   const noPurpose = new RelataClient({ baseUrl: "http://x", fetch: fetch2 });
@@ -796,8 +796,17 @@ test("submitAlert preserves identity and maps durable duplicate receipt", async 
   const request = { matched_key: "_pk", idempotency_key: "run-1", purpose: "detection", alert_type: "app-signal",
     severity: "high", matched_type: "Event", matched_row_id: "row-1", context: { count: 2 } };
   const receipt = await client.submitAlert(request);
-  assert.equal(calls[0]?.url, "http://x/alerts/submit");
+  assert.equal(calls[0]?.url, "http://x/v1/alerts");
   assert.equal(calls[0]?.headers["x-relata-tenant-id"], "tenant-a");
   assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), request);
   assert.deepEqual(receipt, { alertId: "alert-stable", status: "duplicate", durability: "local_wal_sync" });
+});
+
+test("RelataClient.recall posts to POST /v1/memory/recall", async () => {
+  const { fetch, calls } = mockFetch([{ body: { rows: [] } }]);
+  const relata = new RelataClient({ baseUrl: "http://x", fetch });
+  await relata.recall("hello", { top_k: 3, purpose: "p" });
+  assert.equal(calls[0]?.method, "POST");
+  assert.equal(calls[0]?.url, "http://x/v1/memory/recall");
+  assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), { q: "hello", top_k: 3, purpose: "p" });
 });

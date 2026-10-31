@@ -11,7 +11,7 @@
  * 1. **Inline citation injection** — the synthesis LLM call is prompted to
  *    attach a `[chunk_id]` marker to each claim *as it writes it* (not
  *    appended afterward as a separate pass), grounded in the citation-grade
- *    fields `/rag/query` (#4514, ADR-0299) already returns on every
+ *    fields `/v1/rag/query` (#4514, ADR-0299) already returns on every
  *    `RagHit`: `chunk_id`, `section_path`, `page_start`/`page_end`. Every
  *    marker in the raw completion is resolved against the actual hit set the
  *    answer was synthesized from — a marker that doesn't match a real
@@ -228,7 +228,7 @@ export interface SynthesizeOptions {
 }
 
 /**
- * Synthesize a governed, citation-injected answer from a `/rag/query`
+ * Synthesize a governed, citation-injected answer from a `/v1/rag/query`
  * response (#4514), then faithfulness-check it (#4527).
  */
 export async function synthesize(

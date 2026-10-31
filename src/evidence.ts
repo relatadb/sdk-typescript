@@ -1,7 +1,7 @@
 /**
  * Retrieval evidence (`relata.evidence/v1`, #5707).
  *
- * Send {@link evidenceHeaders} with a `/query`, `/search`, `/graphql` or MCP
+ * Send {@link evidenceHeaders} with a `/v1/query`, `/v1/search`, `/v1/graphql` or MCP
  * read to record version-pinned citations for its result, then fetch the
  * record with {@link EvidenceClient.get} and re-read every citation under the
  * caller's current authorization with {@link EvidenceClient.replay}. Replay
@@ -31,20 +31,20 @@ export class EvidenceClient extends TypedClientBase {
     return new EvidenceClient(TypedClientBase.clientToCtor(client));
   }
 
-  /** `GET /evidence`: the caller's unexpired records, newest first. */
+  /** `GET /v1/evidence`: the caller's unexpired records, newest first. */
   async list(opts: { limit?: number } = {}): Promise<Record<string, unknown>> {
     const q = opts.limit === undefined ? "" : `?limit=${Math.trunc(opts.limit)}`;
-    return this._get<Record<string, unknown>>(`/evidence${q}`);
+    return this._get<Record<string, unknown>>(`/v1/evidence${q}`);
   }
 
-  /** `GET /evidence/{id}`: 404 when unknown, 410 once expired. */
+  /** `GET /v1/evidence/{id}`: 404 when unknown, 410 once expired. */
   async get(id: string): Promise<Record<string, unknown>> {
-    return this._get<Record<string, unknown>>(`/evidence/${encodeURIComponent(id)}`);
+    return this._get<Record<string, unknown>>(`/v1/evidence/${encodeURIComponent(id)}`);
   }
 
-  /** `POST /evidence/{id}/replay`: per-citation verified/hash_mismatch/missing/denied/deleted. */
+  /** `POST /v1/evidence/{id}/replay`: per-citation verified/hash_mismatch/missing/denied/deleted. */
   async replay(id: string, opts: { includeContent?: boolean } = {}): Promise<Record<string, unknown>> {
     const body: Record<string, unknown> = opts.includeContent ? { include_content: true } : {};
-    return this._post<Record<string, unknown>>(`/evidence/${encodeURIComponent(id)}/replay`, body);
+    return this._post<Record<string, unknown>>(`/v1/evidence/${encodeURIComponent(id)}/replay`, body);
   }
 }
