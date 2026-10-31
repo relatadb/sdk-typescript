@@ -95,9 +95,12 @@ export class AuditClient extends TypedClientBase {
         : undefined;
     if (Array.isArray(entries) && entries.length > 0) {
       const first = entries[0];
-      return typeof first === "object" && first !== null
-        ? (first as Record<string, unknown>)
-        : null;
+      if (typeof first !== "object" || first === null) return null;
+      const row = first as Record<string, unknown>;
+      // Never return a different request's entry (e.g. a server that ignores
+      // the `request_id` filter answers with the newest entry).
+      if ("request_id" in row && row["request_id"] !== requestId) return null;
+      return row;
     }
     return null;
   }
