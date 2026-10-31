@@ -162,9 +162,40 @@ export class GovernanceClient extends TypedClientBase {
     return this._get(`/v1/rules/${encodeURIComponent(ruleId)}/tuning`);
   }
 
+  /** Fetch one detection rule by id (`GET /v1/rules/:id`). */
+  async getRule(ruleId: string): Promise<Record<string, unknown>> {
+    return this._get(`/v1/rules/${encodeURIComponent(ruleId)}`);
+  }
+
+  /** Remove a tuning exception (`DELETE /v1/rules/:id/exceptions/:eid`). */
+  async removeRuleException(
+    ruleId: string,
+    exceptionId: string,
+  ): Promise<Record<string, unknown>> {
+    return this._delete(
+      `/v1/rules/${encodeURIComponent(ruleId)}/exceptions/${encodeURIComponent(exceptionId)}`,
+    );
+  }
+
   // -------------------------------------------------------------------------
   // Retention (#74)
   // -------------------------------------------------------------------------
+
+  /**
+   * Set a retention policy for a type (`POST /v1/retention/policies`).
+   * `action` is `"delete"` (default) or `"tier:cold"`.
+   */
+  async setRetentionPolicy(
+    objectType: string,
+    maxAgeDays: number,
+    action = "delete",
+  ): Promise<Record<string, unknown>> {
+    return this._post("/v1/retention/policies", {
+      object_type: objectType,
+      max_age_days: maxAgeDays,
+      action,
+    });
+  }
 
   /**
    * List configured retention policies.

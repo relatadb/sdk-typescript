@@ -422,4 +422,17 @@ export class IngestClient extends TypedClientBase {
   ): Promise<Record<string, unknown>> {
     return this._post(this.purposePath("/v1/metrics", opts.purpose), payload);
   }
+
+  /**
+   * Import a STIX 2.1 bundle via `POST /v1/ingest/import?format=stix`. The
+   * mirror image of `GET /v1/export?format=stix`; per-type guard failures are
+   * reported in the response rather than failing the whole bundle.
+   */
+  async importStix(
+    bundle: Record<string, unknown>,
+    opts: { purpose?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const purpose = opts.purpose ?? this.#purpose;
+    return this._post(`/v1/ingest/import${qs({ format: "stix", purpose })}`, bundle);
+  }
 }
