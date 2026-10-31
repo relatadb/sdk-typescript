@@ -395,6 +395,7 @@ export { MediaWorkClient, mediaWorkClaimHeaders } from "./media-work.ts";
 export { OntologyDefinitionsClient } from "./ontology-definitions.ts";
 export type { PublishOptions as OntologyPublishOptions } from "./ontology-definitions.ts";
 export { AssertionsClient } from "./assertions.ts";
+export { ExtractionClient } from "./extraction.ts";
 export { ResolutionClient } from "./resolution.ts";
 export { FreshnessClient, freshnessHeaders } from "./freshness.ts";
 export type { FreshnessIndex, FreshnessOptions } from "./freshness.ts";
