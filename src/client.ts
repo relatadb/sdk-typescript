@@ -126,45 +126,12 @@ export function pathSegment(s: string): string {
 export const DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
 /**
- * Build a bare `FACE_SEARCH(...)` ticket (#2251, #5492). Mirrors the server
- * operator in `relata_query::parser`: `FACE_SEARCH('<csv floats>', '<gallery>',
- * K => n, THRESHOLD => f)` (defaults K=10, THRESHOLD=0.7). The engine's
- * "OPERATOR(…) keyword dispatch" (`parser/wireup.rs`) only recognizes this
- * form as a bare top-level statement, not wrapped in `SELECT * FROM` (#5492).
- * @internal
- */
-export function buildFaceSearchSql(
-  galleryId: string,
-  embedding: number[] | string,
-  opts: { k?: number; threshold?: number } = {},
-): string {
-  const csv = typeof embedding === "string" ? embedding : embedding.map((x) => Number(x)).join(",");
-  const k = opts.k ?? 10;
-  const threshold = opts.threshold ?? 0.7;
-  return `FACE_SEARCH(${sqlLiteral(csv)}, ${sqlLiteral(galleryId)}, K => ${k}, THRESHOLD => ${threshold})`;
-}
-
-/**
- * Build a bare `MATCH_PDQ(...)` ticket (#2251, #5492). Mirrors
- * `MATCH_PDQ('<hash>', '<corpus>', THRESHOLD => f)` (default 0.9). Bare
- * top-level form only — see {@link buildFaceSearchSql}'s #5492 note.
- * @internal
- */
-export function buildMatchPdqSql(
-  corpusId: string,
-  queryHash: string,
-  threshold = 0.9,
-): string {
-  return `MATCH_PDQ(${sqlLiteral(queryHash)}, ${sqlLiteral(corpusId)}, THRESHOLD => ${threshold})`;
-}
-
-/**
  * Build a bare `SIMILAR_IMAGE(...)` ticket (#2840, PR #2859, #5492). Mirrors
  * the server operator in `relata_query::parser`: `SIMILAR_IMAGE('<media_ref>',
  * THRESHOLD => f, INDEX => '<index>')` (default THRESHOLD=0.9; `INDEX` is
  * omitted from the SQL entirely when not supplied, matching the parser's
  * `Option<String>` for the corpus/index scope). Bare top-level form only —
- * see {@link buildFaceSearchSql}'s #5492 note.
+ * the engine only dispatches it as a bare top-level statement (#5492).
  * @internal
  */
 export function buildSimilarImageSql(
@@ -1169,59 +1136,8 @@ export class RelataClient {
   // Both route through `POST /query` so PURPOSE / ACL / cell-masking / tenant
   // isolation apply identically to a hand-written query. The server operators
   // are registered in `relata_query::parser`:
-  //  - FACE_SEARCH('<csv floats>', '<gallery>', K => n, THRESHOLD => f)
-  //  - MATCH_PDQ('<hash>', '<corpus>', THRESHOLD => f)
-
-  /**
-   * Biometric face k-NN search against a gallery (#2251, ADR-030).
-   *
-   * Executes `FACE_SEARCH(...)` through the governed `/query` door.
-   *
-   * @param galleryId - Gallery to search (matches `MediaEmbedding.gallery_id`).
-   * @param embedding - Probe face embedding as a number array, or a
-   *   pre-formatted comma-separated string.
-   * @param opts - `k` (max candidates, default 10), `threshold` (minimum
-   *   cosine similarity 0–1, default 0.7), `purpose` override.
-   *
-   * @example
-   * ```typescript
-   * const r = await relata.faceSearch("gallery-1", [0.1, 0.2, 0.3],
-   *   { k: 5, threshold: 0.6, purpose: "investigation" });
-   * r.rows[0]?.score; // number | undefined
-   * ```
-   */
-  async faceSearch<T = Record<string, unknown>>(
-    galleryId: string,
-    embedding: number[] | string,
-    opts?: { k?: number; threshold?: number; purpose?: string },
-  ): Promise<QueryResult<T>> {
-    const sql = buildFaceSearchSql(galleryId, embedding, opts);
-    const queryOpts: { purpose?: string } = {};
-    if (opts?.purpose !== undefined) queryOpts.purpose = opts.purpose;
-    return this.query<T>(sql, queryOpts);
-  }
-
-  /**
-   * Perceptual-hash (PDQ) near-duplicate search over a corpus (#2251).
-   *
-   * Executes `MATCH_PDQ(...)` through the governed `/query` door. PDQ
-   * near-duplicates differ by ≤ 31 bits (ADR-187).
-   *
-   * @param corpusId - Hash corpus (matches `MediaHash.corpus_id`).
-   * @param queryHash - PDQ hash as a hex string.
-   * @param opts - `threshold` (minimum Hamming similarity 0–1, default 0.9),
-   *   `purpose` override.
-   */
-  async matchPdq<T = Record<string, unknown>>(
-    corpusId: string,
-    queryHash: string,
-    opts?: { threshold?: number; purpose?: string },
-  ): Promise<QueryResult<T>> {
-    const sql = buildMatchPdqSql(corpusId, queryHash, opts?.threshold);
-    const queryOpts: { purpose?: string } = {};
-    if (opts?.purpose !== undefined) queryOpts.purpose = opts.purpose;
-    return this.query<T>(sql, queryOpts);
-  }
+  //  - SIMILAR_IMAGE('<media_ref>', THRESHOLD => f, INDEX => '<corpus>')
+  // FACE_SEARCH / MATCH_PDQ were retired from core (#5935).
 
   /**
    * Near-duplicate/similar-image search against a media reference (#2840,
