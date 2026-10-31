@@ -236,6 +236,20 @@ test("Memory: forget DELETEs /memory/forget/:id?purpose=...", async () => {
   assert.equal(decision["policy"], "retention");
 });
 
+test("Memory: review POSTs the decision to /memory/review/:id", async () => {
+  const { fetch, calls } = mockFetch({
+    body: { id: "m1", review_status: "rejected", changed: true },
+  });
+  const m = new Memory("http://x", { purpose: "p", fetch });
+  const out = await m.review("m1", "reject", { reason: "poisoned" });
+  assert.equal(calls[0]?.method, "POST");
+  assert.equal(calls[0]?.url, "http://x/memory/review/m1");
+  const body = JSON.parse(calls[0]?.body ?? "{}");
+  assert.equal(body["decision"], "reject");
+  assert.equal(body["reason"], "poisoned");
+  assert.equal(out["review_status"], "rejected");
+});
+
 test("Memory: associate posts relation + confidence", async () => {
   const { fetch, calls } = mockFetch({
     body: mcpEnvelope({ source_id: "s", target_id: "t", relation: "causes" }),

@@ -381,6 +381,24 @@ export class Memory {
     return unwrapMcp(await this.#delete(path));
   }
 
+  /**
+   * Approve or reject a pending memory (`decision` is `"approve"` or `"reject"`).
+   *
+   * Wraps `POST /memory/review/{id}`. Memory stored with an `external:` origin
+   * is `pending` and hidden from recall until reviewed; the row is superseded
+   * by a reviewed copy, so `asOf` recall still sees the earlier state. Returns
+   * `id`, `review_status`, `previous_review_status` and `changed`.
+   */
+  async review(
+    memoryId: string,
+    decision: "approve" | "reject",
+    opts: { reason?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const payload: Record<string, unknown> = { decision, purpose: this.#purpose };
+    if (opts.reason) payload.reason = opts.reason;
+    return unwrapMcp(await this.#post(`/memory/review/${enc(memoryId)}`, payload));
+  }
+
   // -------------------------------------------------------------------------
   // v1.1 — five cognitive verbs (#77)
   // -------------------------------------------------------------------------
