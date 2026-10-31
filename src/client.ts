@@ -720,6 +720,23 @@ export class RelataClient {
     return this.#get("/v1/types/edges");
   }
 
+  /** List per-type SmartIngest detector-pack configs — `GET /v1/types/detect-config`. */
+  async listTypeDetectConfigs(): Promise<Record<string, unknown>> {
+    return this.#get("/v1/types/detect-config");
+  }
+
+  /**
+   * Configure SmartIngest detector packs for a type (admin token required) —
+   * `POST /v1/types/detect-config` with `{type, packs}`. `packs` takes the
+   * `RELATA_DETECT_PACKS` grammar (`["all"]`, `["none"]`, `[]`, or pack names).
+   */
+  async setTypeDetectConfig(
+    typeName: string,
+    packs: string[],
+  ): Promise<Record<string, unknown>> {
+    return this.#post("/v1/types/detect-config", { type: typeName, packs });
+  }
+
   /**
    * Register an edge (link) type — `POST /v1/types/edges` with a
    * `{"from_type", "to_type", "label"}` body (#2497). Mirrors the Rust flat

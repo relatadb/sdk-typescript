@@ -6,7 +6,7 @@
  */
 
 import { RelataClient } from "./client.ts";
-import { type TypedClientCtor, TypedClientBase } from "./_typed-http.ts";
+import { type TypedClientCtor, TypedClientBase, qs } from "./_typed-http.ts";
 
 /** System / runtime client for generic operator surfaces. */
 export class SystemClient extends TypedClientBase {
@@ -59,5 +59,36 @@ export class SystemClient extends TypedClientBase {
 
   async deleteNotificationRule(id: string): Promise<Record<string, unknown>> {
     return this._delete(`/v1/notification-rules/${encodeURIComponent(id)}`);
+  }
+
+  /** Update fields of a notification rule (`PATCH /v1/notification-rules/:id`). */
+  async updateNotificationRule(
+    id: string,
+    patch: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return this._patch(`/v1/notification-rules/${encodeURIComponent(id)}`, patch);
+  }
+
+  // ── runtime configuration, specs, MCP sessions ───────────
+
+  /** Runtime feature configuration. Wraps `GET /v1/system/config`. */
+  async systemConfig(): Promise<Record<string, unknown>> {
+    return this._get("/v1/system/config");
+  }
+
+  /** Capability specification map. Wraps `GET /v1/system/specs`. */
+  async systemSpecs(): Promise<Record<string, unknown>> {
+    return this._get("/v1/system/specs");
+  }
+
+  /**
+   * List MCP agent sessions with their tool-call history
+   * (`GET /v1/mcp/sessions`). `sessionId` filters to one session; `limit`
+   * caps the result (server default 20, max 100).
+   */
+  async mcpSessions(
+    opts: { sessionId?: string; limit?: number } = {},
+  ): Promise<Record<string, unknown>> {
+    return this._get(`/v1/mcp/sessions${qs({ session_id: opts.sessionId, limit: opts.limit })}`);
   }
 }

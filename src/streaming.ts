@@ -165,6 +165,35 @@ export class StreamingClient {
   }
 
   /**
+   * SSE consumer for `GET /v1/graph/changes` (real-time graph change stream).
+   * `type` narrows to one object type; `tenantId` must match the caller's
+   * authenticated tenant when supplied.
+   */
+  async *graphChanges(
+    opts: { type?: string; tenantId?: string; reconnect?: boolean } = {},
+  ): AsyncIterable<Record<string, unknown>> {
+    const params = new URLSearchParams();
+    if (opts.type) params.set("type", opts.type);
+    if (opts.tenantId) params.set("tenant_id", opts.tenantId);
+    const q = params.toString();
+    yield* this.sseStream(`/v1/graph/changes${q ? `?${q}` : ""}`, opts.reconnect ?? true);
+  }
+
+  /**
+   * SSE consumer for `GET /v1/a2a/tasks/:id/stream` (A2A task lifecycle
+   * events). A task stream is finite, so `reconnect` defaults to `false`.
+   */
+  async *a2aTaskStream(
+    taskId: string,
+    opts: { reconnect?: boolean } = {},
+  ): AsyncIterable<Record<string, unknown>> {
+    yield* this.sseStream(
+      `/v1/a2a/tasks/${encodeURIComponent(taskId)}/stream`,
+      opts.reconnect ?? false,
+    );
+  }
+
+  /**
    * SSE consumer for `GET /v1/memory/recall/stream`. Yields the recall rows
    * as they are produced. A recall is finite, so `reconnect` defaults to
    * `false`.
