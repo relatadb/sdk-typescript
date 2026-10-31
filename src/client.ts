@@ -780,6 +780,46 @@ export class RelataClient {
     });
   }
 
+  /**
+   * Bulk-create up to 5000 edges in one idempotent, durable request
+   * (`POST /links/batch`). Edges are keyed by `(linkName, sourceId, targetId)`
+   * within the tenant: an existing current edge is reported as
+   * `already_present` and never written twice, so retrying after a timeout or
+   * crash cannot duplicate. `idempotencyKey` additionally replays the first
+   * response; `durability` is `"sync"` (server default when persistent) or
+   * `"async"`.
+   */
+  async createLinks(
+    edges: Array<{
+      linkName: string;
+      sourceId: string;
+      sourceType: string;
+      targetId: string;
+      targetType: string;
+      weight?: number;
+    }>,
+    opts: { idempotencyKey?: string; durability?: "sync" | "async" } = {},
+  ): Promise<Record<string, unknown>> {
+    const headers: Record<string, string> = {};
+    if (opts.idempotencyKey !== undefined) headers["Idempotency-Key"] = opts.idempotencyKey;
+    if (opts.durability !== undefined) headers["X-Relata-Durability"] = opts.durability;
+    return this.#post(
+      "/links/batch",
+      {
+        edges: edges.map((e) => ({
+          link_name: e.linkName,
+          source_id: e.sourceId,
+          source_type: e.sourceType,
+          target_id: e.targetId,
+          target_type: e.targetType,
+          ...(e.weight !== undefined ? { weight: e.weight } : {}),
+        })),
+      },
+      undefined,
+      headers,
+    );
+  }
+
   /** Close matching current native edges in the caller's tenant; preserves history. */
   async deleteLink(params: { linkName: string; sourceId: string; targetId: string }): Promise<Record<string, unknown>> {
     return this.#send("DELETE", "/links", {
