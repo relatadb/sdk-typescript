@@ -360,7 +360,14 @@ export class RelataClient {
 
     const wire = await this.#post<WireQueryResponse>(
       "/query",
-      { purpose, sql: injectMatcherHint(sql, options?.matcher) },
+      {
+        purpose,
+        sql: injectMatcherHint(sql, options?.matcher),
+        ...(options?.queryVector !== undefined ? { query_vector: options.queryVector } : {}),
+        ...(options?.queryVectorModel !== undefined
+          ? { query_vector_model: options.queryVectorModel }
+          : {}),
+      },
       options?.timeoutMs,
       options?.dialect ? { "x-query-dialect": options.dialect } : undefined,
     );

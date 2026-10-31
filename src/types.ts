@@ -260,6 +260,20 @@ export type Matcher = "auto" | "vf3" | "bfs";
  */
 export interface QueryOptions {
   /**
+   * Ready query embedding (at most 8192 numbers) for `HYBRID_SEARCH` /
+   * `RAG_RETRIEVE` (ADR-0309). When set the server makes no embedding call and
+   * needs no embedding endpoint. Sent as `query_vector`.
+   */
+  queryVector?: number[];
+
+  /**
+   * Model tag `queryVector` was produced with, sent as `query_vector_model`.
+   * A tag matching none of the type's indexed models is HTTP 409
+   * `query-embedding-model-mismatch`.
+   */
+  queryVectorModel?: string;
+
+  /**
    * Purpose token declared for this query.
    * Falls back to `RelataClientOptions.defaultPurpose` when omitted.
    *
