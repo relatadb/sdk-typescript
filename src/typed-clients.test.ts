@@ -936,7 +936,7 @@ test("SystemClient: jobsStatus", async () => {
 // IngestClient
 // ---------------------------------------------------------------------------
 
-test("IngestClient: bulk NDJSON + bulkCsv + mediaStatus paths", async () => {
+test("IngestClient: bulk NDJSON + bulkCsv paths", async () => {
   const queue: MockResponse[] = [
     { body: { accepted: 2, rejected: 0 } }, // bulk
     { body: { accepted: 3, rejected: 0 } }, // bulkCsv
