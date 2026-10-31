@@ -422,12 +422,4 @@ export class IngestClient extends TypedClientBase {
   ): Promise<Record<string, unknown>> {
     return this._post(this.purposePath("/v1/metrics", opts.purpose), payload);
   }
-
-  /**
-   * Poll the status of a multipart media upload (paired with #76).
-   * Wraps `GET /ingest/media/:taskId`.
-   */
-  async mediaStatus(taskId: string): Promise<Record<string, unknown>> {
-    return this._get(`/ingest/media/${encodeURIComponent(taskId)}`);
-  }
 }

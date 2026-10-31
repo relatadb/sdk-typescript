@@ -556,9 +556,9 @@ for await (const chunk of streaming.queryArrowRaw(
 console.log(`Received ${totalBytes} Arrow IPC bytes`);
 ```
 
-`IngestClient` exposes media task status, and `McpClient.ingestMedia()` calls
-the MCP media tool with its documented payload. There is no raw byte upload
-method for `/ingest/media` in this TypeScript SDK.
+`POST /ingest/media` was removed (#5942), together with
+`IngestClient.mediaStatus()` and `McpClient.ingestMedia()`; poll OpenETL work
+items with `MediaWorkClient.get()`.
 
 ### Governed Files client — v3.0 candidate, SDK 2.7.1
 
@@ -587,7 +587,7 @@ default. The server upload ceiling is 128 MiB; GET is subject to the inherited
 response cap (64 MiB by default). PUT and DELETE are not automatically retried,
 so reconcile uncertain outcomes before retrying. The client does not expose
 immutable versions, conditional writes, range requests, physical/global-copy
-deletion guarantees, or `/ingest/media` processing.
+deletion guarantees, or media processing.
 The inherited request timeout bounds the client request, and abort/stream
 cleanup applies to the client request; neither promises that server work
 already accepted by the engine is aborted or rolled back. See
@@ -694,7 +694,6 @@ or via the builder:
 | `WITH PROVENANCE` | Attach PROV-O provenance to rows |
 | `PATHS_BETWEEN(a, b, max_hops => 4)` | Shortest graph paths |
 | `NETWORK_EXPAND(seed_id => ..., hops => 3)` | Network expansion |
-| `MATCH_FACE(image_bytes => ..., threshold => 0.70)` | Face recognition |
 | `LOOKUP_IDENTITY(column, value)` | IdentityIndex universal lookup |
 | `HYBRID_SCORE(...)` | Combined BM25 + vector similarity |
 | `PREGEL_BFS(seed_id => ..., max_rounds => 4)` | Iterative graph BFS |
@@ -751,7 +750,6 @@ const result = await pool.query("SELECT * FROM Person LIMIT 5", "analytics");
 | `RELATA_TOKEN` | — | Bearer token for authentication |
 | `RELATA_PURPOSE` | — | Default purpose (CLI helper) |
 | `RELATA_URL` | `http://localhost:9090` | Server URL (examples / CLI) |
-| `PROBE_IMAGE` | — | Path to probe JPEG for face-search example |
 
 ## Examples
 
@@ -761,7 +759,6 @@ See [`examples/`](./examples/) for runnable workflows:
 |---|---|
 | `basic-query.ts` | Health check, raw SQL, typed query, fluent builder |
 | `analytics.ts` | Full analytics workflow (identity, cases, financials, graph) |
-| `face-search.ts` | `MATCH_FACE` operator with co-occurrence detection |
 | `hybrid-search.ts` | `VectorClient.hybridSearch()` — embed, ingest, BM25-only vs. vector-only vs. fused (RRF) search |
 | `graph-traversal.ts` | `PATHS_BETWEEN`, `NETWORK_EXPAND`, `MATCH`, Pregel BFS |
 | `audit.ts` | Audit chain verification, anomaly detection, compliance report |
