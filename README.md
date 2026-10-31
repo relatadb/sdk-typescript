@@ -23,8 +23,8 @@ Go). Other languages use the HTTP API and its OpenAPI reference at
 
 The v3 SDK accepts prepared detection rules through `GovernanceClient.createRule`
 or MCP `createRule`. Raw Sigma YAML parsing/import is no longer an SDK or MCP
-server method. Use the former `relata-connectors import-sigma` application
-workflow for YAML conversion, or convert externally and submit the prepared
+server method. Convert YAML in OpenETL (the former `relata-connectors import-sigma`
+was removed), or convert externally and submit the prepared
 `name`, `condition_sql`, and `target_type` JSON fields through `/rules`.
 
 TypeScript is **async-native**, so every SDK method returns a `Promise`. There are no
@@ -177,9 +177,9 @@ const relata = createClient("http://localhost:9090", {
 `ingestDocument` accepts application-prepared governed rows (for example a
 `DocumentSource`, linked `DocumentChunk` rows, and optional evidence rows with
 `_type` and stable `_pk` fields). It does not parse raw documents or datagrep
-extractor files. Use the former `relata-connectors prepare-document` adapter
-to turn an extractor JSONL/manifest pair into an `objects` array, then pass
-that array to this method. Queue admission returns a process-local receipt;
+extractor files. Parse and chunk extractor output in OpenETL (the former
+`relata-connectors prepare-document` adapter was removed) to produce an `objects`
+array, then pass that array to this method. Queue admission returns a process-local receipt;
 it is not crash-durable, so poll `ingestDocumentStatus` and use its
 `status` and row counts to distinguish complete, partial, failed, uncertain, and incomplete outcomes. `code: "derived-write-incomplete"` and `derivedError` can appear while `status` is still `pending`; once all primary batches are accounted for, the status becomes `incomplete`. If the primary outcome is uncertain, `uncertain` takes precedence as the status. A recorded derived-write failure has `retryable: false` and no completion watermark. An uncertain outcome is unresolved and must not be blindly retried (`outcomeUncertain: true`, `retryable: false`). A receipt is queue admission, not durable/indexed completion. The distinct
 MCP `ingest_document(source, text, ...)` tool remains a source/text application
