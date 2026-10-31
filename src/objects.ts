@@ -27,6 +27,39 @@ export interface ListObjectsResponse<T = RelataRow> {
 }
 
 /** One operation of an atomic `commit` bundle (#5767). */
+export interface ChangesOptions {
+  /** `nextCursor` of the previous page (an event id). */
+  cursor?: string;
+  /** Events per page, 1 to 1000 (server default 100). */
+  limit?: number;
+  /** Only events of this object type. */
+  type?: string;
+  /** `latest`: with no cursor, skip history and return the current position. */
+  start?: "latest";
+}
+
+export interface ChangeEvent {
+  eventId: string;
+  seq: number;
+  kind: "create" | "update" | "delete";
+  type: string;
+  id: string;
+  version: number;
+  commitId: string;
+  opIndex: number;
+  committedAtNs: number;
+}
+
+export interface ChangesPage {
+  feedId: string;
+  events: ChangeEvent[];
+  nextCursor: string;
+  hasMore: boolean;
+  head: number;
+  oldest?: number;
+  withheld: number;
+}
+
 export interface CommitOperation {
   op: "create" | "update" | "delete";
   type: string;
@@ -258,6 +291,24 @@ export class ObjectClient extends TypedClientBase {
       ...(opts.idempotencyKey !== undefined ? { idempotencyKey: opts.idempotencyKey } : {}),
       ...(purpose !== undefined ? { purpose } : {}),
     });
+  }
+
+  /**
+   * Read one page of the object change feed (`GET /object-changes`, #5716).
+   * Persist `nextCursor` only after every event in the page is processed;
+   * delivery is at-least-once, so dedupe on `eventId`. Events carry identity,
+   * `version` and `kind`, never field values. A cursor the server can no
+   * longer serve rejects with the API error for `410`
+   * (`change-feed-resync-required`): re-read state, then call with
+   * `start: "latest"`.
+   */
+  async changes(opts: ChangesOptions = {}): Promise<ChangesPage> {
+    const params: Record<string, string | number | undefined> = {};
+    if (opts.cursor !== undefined) params["cursor"] = opts.cursor;
+    if (opts.limit !== undefined) params["limit"] = opts.limit;
+    if (opts.type !== undefined) params["type"] = opts.type;
+    if (opts.start !== undefined) params["start"] = opts.start;
+    return this._get<ChangesPage>(`/object-changes${qs(params)}`);
   }
 
   /**

@@ -203,3 +203,28 @@ test("ObjectClient.commit: a failed bundle reports the failing operation", async
     },
   );
 });
+
+test("ObjectClient.changes: sends cursor/limit/type/start to /object-changes", async () => {
+  const seen: string[] = [];
+  const fakeFetch = async (url: string, _init?: RequestInit): Promise<Response> => {
+    seen.push(String(url));
+    return new Response(
+      JSON.stringify({ feedId: "f", events: [], nextCursor: "f:3", hasMore: false, head: 3, withheld: 0 }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  };
+  const client = new ObjectClient({
+    baseUrl: "http://localhost:9090",
+    bearerToken: "t",
+    fetch: fakeFetch as typeof globalThis.fetch,
+  });
+  const page = await client.changes({ cursor: "f:2", limit: 50, type: "Doc" });
+  assert.equal(page.nextCursor, "f:3");
+  const url = new URL(seen[0]!);
+  assert.equal(url.pathname, "/object-changes");
+  assert.equal(url.searchParams.get("cursor"), "f:2");
+  assert.equal(url.searchParams.get("limit"), "50");
+  assert.equal(url.searchParams.get("type"), "Doc");
+  await client.changes({ start: "latest" });
+  assert.equal(new URL(seen[1]!).search, "?start=latest");
+});
