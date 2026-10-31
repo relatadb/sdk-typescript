@@ -106,3 +106,40 @@ test("Files timeout aborts a body stalled after headers and a subsequent GET wor
   assert.equal(captured.signal?.aborted, true);
   assert.equal(new TextDecoder().decode((await files.get("k")).data), "ok");
 });
+
+test("Files.upload resumes after a transient failure and sends chunk digests", async () => {
+  const payload = Uint8Array.from({ length: 10 }, (_, i) => i);
+  const server = { data: [] as number[], failAt: 4 as number | null, size: 0, completed: null as number[] | null, digests: [] as string[], statusReads: 0 };
+  const session = () => ({ upload_id: "u1", bucket: "b", key: "k", size: server.size, offset: server.data.length,
+    complete: server.data.length === server.size, sha256: null, expires_ns: 1, max_chunk_bytes: 4 });
+  const fetchImpl: typeof globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const method = init!.method!;
+    if (method === "POST" && url.pathname === "/files/uploads") {
+      const body = JSON.parse(new TextDecoder().decode(init!.body as ArrayBuffer));
+      assert.match(body.sha256, /^[0-9a-f]{64}$/);
+      server.size = body.size;
+      return Response.json(session(), { status: 201 });
+    }
+    if (method === "PUT") {
+      if (server.failAt === server.data.length) {
+        server.failAt = null;
+        return Response.json({ detail: "busy", code: "busy", retryable: true }, { status: 503, headers: { "Content-Type": "application/problem+json" } });
+      }
+      assert.equal(Number(url.searchParams.get("offset")), server.data.length);
+      server.digests.push(new Headers(init!.headers).get("X-Relata-Chunk-Sha256")!);
+      server.data.push(...new Uint8Array(init!.body as ArrayBuffer));
+      return Response.json(session());
+    }
+    if (method === "GET") { server.statusReads++; return Response.json(session()); }
+    server.completed = [...server.data];
+    return Response.json({ key: "k", size: server.size, etag: '"h"' }, { status: 201 });
+  };
+  const files = new FilesClient({ baseUrl: "http://example.invalid", fetch: fetchImpl });
+  const meta = await files.upload("k", payload, { chunkSize: 4 });
+  assert.equal(meta.size, 10);
+  assert.deepEqual(server.completed, [...payload]);
+  assert.equal(server.statusReads, 1);
+  assert.equal(server.digests.length, 3);
+  assert.ok(server.digests.every(d => /^[0-9a-f]{64}$/.test(d)));
+});

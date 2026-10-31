@@ -471,7 +471,7 @@ export type {
 // ---------------------------------------------------------------------------
 
 export { FilesClient } from "./files.ts";
-export type { FilesOptions, FilePutOptions, FileMetadata, FileContent } from "./files.ts";
+export type { FilesOptions, FilePutOptions, FileMetadata, FileContent, UploadSession, UploadSource, UploadOptions } from "./files.ts";
 
 import { RelataClient } from "./client.ts";
 import type { RelataClientOptions } from "./types.ts";
