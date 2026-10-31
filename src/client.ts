@@ -648,6 +648,11 @@ export class RelataClient {
     return this.#get(`/types/${pathSegment(name)}`);
   }
 
+  /** Lifecycle progress of a type (#5724): recent register/alter/deregister outcomes plus derived-index progress. */
+  async typeLifecycle(name: string): Promise<Record<string, unknown>> {
+    return this.#get(`/types/${pathSegment(name)}/lifecycle`);
+  }
+
   /**
    * Online schema evolution — `PATCH /types/:name/schema` (#1307). `action` is
    * "add_column" | "remove_column" | "rename_column" | "change_type"; `column`
