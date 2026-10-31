@@ -685,12 +685,20 @@ export class RelataClient {
     name: string,
     action: string,
     column: string,
-    opts: { newColumn?: string; colType?: string; optional?: boolean } = {},
+    opts: {
+      newColumn?: string;
+      colType?: string;
+      optional?: boolean;
+      /** Compare-and-set against `typeDetail(name).schema_version` (#5724); stale -> 412. */
+      expectedSchemaVersion?: string;
+    } = {},
   ): Promise<Record<string, unknown>> {
     const body: Record<string, unknown> = { action, column };
     if (opts.newColumn !== undefined) body["new_column"] = opts.newColumn;
     if (opts.colType !== undefined) body["col_type"] = opts.colType;
     if (opts.optional !== undefined) body["optional"] = opts.optional;
+    if (opts.expectedSchemaVersion !== undefined)
+      body["expected_schema_version"] = opts.expectedSchemaVersion;
     return this.#patch(`/types/${pathSegment(name)}/schema`, body);
   }
 
