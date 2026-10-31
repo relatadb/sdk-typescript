@@ -253,3 +253,77 @@ test("ObjectClient.changePages: follows hasMore until caught up", async () => {
   assert.deepEqual(pages, ["f:1", "f:2"]);
   assert.deepEqual(cursors, [null, "f:1"]);
 });
+
+test("ObjectClient.followChanges: reconnects after an outage and resumes from the last cursor", async () => {
+  const cursors: Array<string | null> = [];
+  const script: Array<number | "net"> = ["net", 503];
+  const fakeFetch = async (url: string, _init?: RequestInit): Promise<Response> => {
+    const cursor = new URL(String(url)).searchParams.get("cursor");
+    cursors.push(cursor);
+    if (cursor === "f:1" && script.length > 0) {
+      const fail = script.shift()!;
+      if (fail === "net") throw new TypeError("fetch failed");
+      return new Response(JSON.stringify({ detail: "down" }), {
+        status: fail,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const page =
+      cursor === null
+        ? { feedId: "f", events: [{ eventId: "f:1" }], nextCursor: "f:1", hasMore: true }
+        : { feedId: "f", events: [{ eventId: "f:2" }], nextCursor: "f:2", hasMore: false };
+    return new Response(JSON.stringify(page), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const client = new ObjectClient({
+    baseUrl: "http://localhost:9090",
+    bearerToken: "t",
+    fetch: fakeFetch as typeof globalThis.fetch,
+  });
+  const ac = new AbortController();
+  const ids: string[] = [];
+  for await (const page of client.followChanges({
+    signal: ac.signal,
+    pollIntervalSeconds: 0,
+    reconnectBackoffSeconds: 0,
+  })) {
+    ids.push(page.events[0]!.eventId);
+    if (ids.length === 2) ac.abort();
+  }
+  assert.deepEqual(ids, ["f:1", "f:2"], "no gap and no duplicate across the outage");
+  assert.deepEqual(cursors, [null, "f:1", "f:1", "f:1"]);
+});
+
+test("ObjectClient.followChanges: gives up after maxReconnects and does not retry a 410", async () => {
+  const mk = (status: number, counter: { n: number }) =>
+    new ObjectClient({
+      baseUrl: "http://localhost:9090",
+      bearerToken: "t",
+      fetch: (async () => {
+        counter.n += 1;
+        return new Response(JSON.stringify({ detail: "x" }), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }) as typeof globalThis.fetch,
+    });
+  const down = { n: 0 };
+  await assert.rejects(async () => {
+    for await (const _p of mk(503, down).followChanges({
+      maxReconnects: 2,
+      reconnectBackoffSeconds: 0,
+    })) {
+      /* never yields */
+    }
+  });
+  assert.equal(down.n, 3, "1 attempt + 2 reconnects");
+  const gone = { n: 0 };
+  await assert.rejects(async () => {
+    for await (const _p of mk(410, gone).followChanges({ reconnectBackoffSeconds: 0 })) {
+      /* never yields */
+    }
+  });
+  assert.equal(gone.n, 1, "a 410 resync is the caller's decision");
+});
