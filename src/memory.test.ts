@@ -250,7 +250,7 @@ test("Memory: review POSTs the decision to /memory/review/:id", async () => {
   assert.equal(out["review_status"], "rejected");
 });
 
-test("Memory: associate posts relation + confidence", async () => {
+test("Memory: associate posts the server's from_id/to_id fields", async () => {
   const { fetch, calls } = mockFetch({
     body: mcpEnvelope({ source_id: "s", target_id: "t", relation: "causes" }),
   });
@@ -258,10 +258,11 @@ test("Memory: associate posts relation + confidence", async () => {
   await m.associate("s", "t", "causes", { confidence: 0.7 });
   assert.equal(calls[0]?.url, "http://x/memory/associate");
   const body = JSON.parse(calls[0]?.body ?? "{}");
-  assert.equal(body["source_id"], "s");
-  assert.equal(body["target_id"], "t");
+  assert.equal(body["from_id"], "s");
+  assert.equal(body["to_id"], "t");
+  assert.equal(body["source_id"], undefined);
   assert.equal(body["relation"], "causes");
-  assert.equal(body["confidence"], 0.7);
+  assert.equal(body["purpose"], "p");
 });
 
 test("Memory: episodes builds query string and returns rows", async () => {
@@ -304,8 +305,8 @@ test("Memory: justify, resolve, summarise hit the right paths", async () => {
   assert.equal(calls[2]?.url, "http://x/memory/summarise");
 
   const summariseBody = JSON.parse(calls[2]?.body ?? "{}");
-  assert.deepEqual(summariseBody["source_ids"], ["a", "b"]);
-  assert.equal(summariseBody["summary_content"], "the summary");
+  assert.deepEqual(summariseBody["ids"], ["a", "b"]);
+  assert.deepEqual(summariseBody["contents"], ["the summary"]);
 });
 
 test("Memory: close is a no-op that resolves", async () => {

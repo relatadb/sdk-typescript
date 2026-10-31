@@ -84,6 +84,17 @@ export class FilesClient extends TypedClientBase {
     return JSON.parse(new TextDecoder().decode(response.data)) as FileMetadata;
   }
 
+  /** Create a folder marker (`POST /files/folders`); resolves with 201 metadata (`is_folder` true). */
+  async createFolder(key: string, opts: { bucket?: string } = {}): Promise<FileMetadata> {
+    const body: Record<string, string> = { key };
+    if (opts.bucket !== undefined) body["bucket"] = opts.bucket;
+    const response = await this._sendBytes(
+      "POST", "/files/folders", new TextEncoder().encode(JSON.stringify(body)), "application/json",
+    );
+    this.expectStatus(response.status, 201, "POST folder");
+    return JSON.parse(new TextDecoder().decode(response.data)) as FileMetadata;
+  }
+
   /** Read bytes within the inherited response cap (64 MiB by default). */
   async get(key: string, opts: FilesOptions = {}): Promise<FileContent> {
     const response = await this._sendBytes("GET", this.path(key, opts));

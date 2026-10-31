@@ -7,6 +7,18 @@ workspace `Cargo.toml`'s `[workspace.package].version`, mirrored into
 
 ## [Unreleased]
 
+### Added
+
+- `IngestControlClient` (checkpoints, data contracts, contract quality,
+  quarantine), `MediaWorkClient.qualification()`, `Memory.associateBatch()`,
+  `FilesClient.createFolder()` -- wrappers for routes that had no SDK method.
+
+### Fixed
+
+- `Memory.associate()` sent `source_id`/`target_id` and `Memory.summarise()`
+  sent `source_ids`/`summary_content`; the server reads `from_id`/`to_id` and
+  `ids`/`contents`, so both calls were rejected or silently ignored.
+
 ### Changed (behaviour)
 
 - **`IdentityClient.eraseSubject` omitted `certify` now defaults to the safe

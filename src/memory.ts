@@ -406,8 +406,9 @@ export class Memory {
   /**
    * Link two memories with a typed relation.
    *
-   * Wraps `POST /memory/associate`. Returns the association record
-   * (`source_id`, `target_id`, `relation`, `confidence`).
+   * Wraps `POST /memory/associate`. The server reads `from_id` / `to_id` /
+   * `relation` (`confidence` is not part of the server schema and is ignored).
+   * Returns the association record.
    */
   async associate(
     sourceId: string,
@@ -416,13 +417,31 @@ export class Memory {
     opts: { confidence?: number } = {},
   ): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = {
-      source_id: sourceId,
-      target_id: targetId,
+      from_id: sourceId,
+      to_id: targetId,
       relation,
-      confidence: opts.confidence ?? 1.0,
       purpose: this.#purpose,
     };
     return unwrapMcp(await this.#post("/memory/associate", payload));
+  }
+
+  /**
+   * Link many memory pairs in one request.
+   *
+   * Wraps `POST /memory/associate/batch`. Each item is
+   * `{ from_id, to_id, relation?, confidence?, purpose? }`; the client's purpose
+   * fills any item that omits it. Resolves with
+   * `{ stored, submitted, results }` (`stored` below `submitted` means some
+   * items were rejected; see `results`).
+   */
+  async associateBatch(items: Array<Record<string, unknown>>): Promise<Record<string, unknown>> {
+    const out = items.map(item => {
+      if (!item["from_id"] || !item["to_id"]) {
+        throw new Error("each association needs non-empty 'from_id' and 'to_id'");
+      }
+      return { purpose: this.#purpose, ...item };
+    });
+    return unwrapMcp(await this.#post("/memory/associate/batch", { items: out }));
   }
 
   /**
@@ -482,11 +501,11 @@ export class Memory {
     opts: { summaryContent?: string } = {},
   ): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = {
-      source_ids: sourceIds,
+      ids: sourceIds,
       purpose: this.#purpose,
     };
     if (opts.summaryContent !== undefined) {
-      payload["summary_content"] = opts.summaryContent;
+      payload["contents"] = [opts.summaryContent];
     }
     return unwrapMcp(await this.#post("/memory/summarise", payload));
   }
