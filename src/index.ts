@@ -390,6 +390,7 @@ export { BackupClient } from "./backup.ts";
 export type { BackupRef, RestoreStatus } from "./backup.ts";
 
 export { EvidenceClient, evidenceHeaders } from "./evidence.ts";
+export { MediaWorkClient, mediaWorkClaimHeaders } from "./media-work.ts";
 export { OntologyDefinitionsClient } from "./ontology-definitions.ts";
 export type { PublishOptions as OntologyPublishOptions } from "./ontology-definitions.ts";
 export { AssertionsClient } from "./assertions.ts";

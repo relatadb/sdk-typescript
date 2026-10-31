@@ -261,8 +261,11 @@ export class IngestClient extends TypedClientBase {
    *   synchronous write (requires `durability: "sync"`).
    * - `contract` — `{ dataset, version? }`: validate against a data contract
    *   (#5714); invalid rows are quarantined server-side.
-   * Any of `onConflict`, `idempotencyKey`, `sourceCheckpoint` or `contract`
-   * routes the call to `POST /ingest/bulk`.
+   * - `mediaWorkClaim` — the `claim_id` from `MediaWorkClient.claim`, sent as
+   *   `X-Relata-Claim`. Required when `sourceCheckpoint` names an
+   *   `openetl/media/<work_id>` source (the server fences stale holders).
+   * Any of `onConflict`, `idempotencyKey`, `sourceCheckpoint`, `contract` or
+   * `mediaWorkClaim` routes the call to `POST /ingest/bulk`.
    */
   async bulk(
     objectType: string,
@@ -276,9 +279,11 @@ export class IngestClient extends TypedClientBase {
       durability?: "sync";
       sourceCheckpoint?: { source: string; position: string; expected_position?: string };
       contract?: { dataset: string; version?: number };
+      mediaWorkClaim?: number;
     } = {},
   ): Promise<Record<string, unknown>> {
     if (
+      opts.mediaWorkClaim !== undefined ||
       opts.onConflict !== undefined ||
       opts.idempotencyKey !== undefined ||
       opts.sourceCheckpoint !== undefined ||
@@ -298,6 +303,9 @@ export class IngestClient extends TypedClientBase {
       const headers: Record<string, string> = { ...(this.#detectHeader(opts.detectPacks) ?? {}) };
       if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
       if (opts.durability) headers["X-Relata-Durability"] = opts.durability;
+      if (opts.mediaWorkClaim !== undefined) {
+        headers["X-Relata-Claim"] = String(Math.trunc(opts.mediaWorkClaim));
+      }
       return this._sendRaw(
         "POST",
         "/ingest/bulk",
