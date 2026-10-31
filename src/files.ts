@@ -24,11 +24,49 @@ export interface FileMetadata {
   download_url: string;
 }
 
+/** Server view of a resumable upload; `offset` is the next byte the server expects. */
+export interface UploadSession {
+  upload_id: string;
+  bucket: string;
+  key: string;
+  size: number;
+  offset: number;
+  complete: boolean;
+  sha256: string | null;
+  expires_ns: number;
+  max_chunk_bytes?: number;
+}
+
+/** Random-access source for `upload`, so only one chunk is ever held in memory. */
+export interface UploadSource {
+  size: number;
+  read(offset: number, length: number): Promise<Uint8Array>;
+}
+
+export interface UploadOptions extends FilePutOptions {
+  /** Bytes per chunk; also capped by the server's `max_chunk_bytes` (default 8 MiB). */
+  chunkSize?: number;
+  /** Consecutive retryable failures tolerated before giving up (default 5). */
+  maxAttempts?: number;
+  /** Continue an existing session instead of starting one. */
+  uploadId?: string;
+  /** Whole-file SHA-256 (hex). Computed automatically for `Uint8Array` sources. */
+  sha256?: string;
+}
+
 export interface FileContent {
   data: Uint8Array;
   etag: string | null;
   contentType: string | null;
   size: number;
+}
+
+const DEFAULT_CHUNK = 8 * 1024 * 1024;
+const RESUMABLE = new Set([409, 422, 429, 502, 503, 504]);
+
+async function sha256Hex(data: Uint8Array): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", Uint8Array.from(data));
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** Tenant-owned bytes through the core Files API, with inherited auth and limits. */
@@ -62,6 +100,78 @@ export class FilesClient extends TypedClientBase {
   async delete(key: string, opts: FilesOptions = {}): Promise<void> {
     const response = await this._sendBytes("DELETE", this.path(key, opts));
     this.expectStatus(response.status, 204, "DELETE");
+  }
+
+  /** Open a resumable upload; nothing is visible until `completeUpload`. */
+  async startUpload(key: string, size: number, opts: FilePutOptions & { sha256?: string } = {}): Promise<UploadSession> {
+    const body = new TextEncoder().encode(JSON.stringify({
+      key, size, bucket: opts.bucket, content_type: opts.contentType, sha256: opts.sha256,
+    }));
+    const response = await this._sendBytes("POST", "/files/uploads", body, "application/json");
+    this.expectStatus(response.status, 201, "POST upload");
+    return JSON.parse(new TextDecoder().decode(response.data)) as UploadSession;
+  }
+
+  /** Append a chunk at `offset` (digest-checked by the server); a wrong offset is a typed 409. */
+  async uploadChunk(uploadId: string, offset: number, data: Uint8Array): Promise<UploadSession> {
+    const response = await this._sendBytes(
+      "PUT", `/files/uploads/${encodeURIComponent(uploadId)}${qs({ offset })}`, data, undefined,
+      { "X-Relata-Chunk-Sha256": await sha256Hex(data) },
+    );
+    this.expectStatus(response.status, 200, "PUT upload chunk");
+    return JSON.parse(new TextDecoder().decode(response.data)) as UploadSession;
+  }
+
+  /** Durable next-expected offset of an upload (survives server restarts). */
+  async uploadStatus(uploadId: string): Promise<UploadSession> {
+    const response = await this._sendBytes("GET", `/files/uploads/${encodeURIComponent(uploadId)}`);
+    this.expectStatus(response.status, 200, "GET upload");
+    return JSON.parse(new TextDecoder().decode(response.data)) as UploadSession;
+  }
+
+  /** Verify and commit staged bytes; never retried automatically. */
+  async completeUpload(uploadId: string): Promise<FileMetadata> {
+    const response = await this._sendBytes("POST", `/files/uploads/${encodeURIComponent(uploadId)}/complete`);
+    this.expectStatus(response.status, 201, "POST upload complete");
+    return JSON.parse(new TextDecoder().decode(response.data)) as FileMetadata;
+  }
+
+  /** Discard an upload and its staged data (idempotent). */
+  async abortUpload(uploadId: string): Promise<void> {
+    const response = await this._sendBytes("DELETE", `/files/uploads/${encodeURIComponent(uploadId)}`);
+    this.expectStatus(response.status, 204, "DELETE upload");
+  }
+
+  /**
+   * Resumable chunked upload with one chunk in memory. After a retryable failure
+   * (409/422/429/5xx) the server offset is re-read and the upload continues from
+   * there; after `maxAttempts` consecutive failures the session is left in place
+   * (pass its id as `uploadId` to continue) and the error is rethrown.
+   */
+  async upload(key: string, source: Uint8Array | UploadSource, opts: UploadOptions = {}): Promise<FileMetadata> {
+    const src: UploadSource = source instanceof Uint8Array
+      ? { size: source.byteLength, read: async (o, n) => source.subarray(o, o + n) }
+      : source;
+    const sha256 = opts.sha256 ?? (source instanceof Uint8Array ? await sha256Hex(source) : undefined);
+    let session = opts.uploadId !== undefined
+      ? await this.uploadStatus(opts.uploadId)
+      : await this.startUpload(key, src.size, { ...opts, sha256 });
+    const step = Math.min(opts.chunkSize ?? DEFAULT_CHUNK, session.max_chunk_bytes ?? DEFAULT_CHUNK);
+    const maxAttempts = opts.maxAttempts ?? 5;
+    let failures = 0;
+    while (session.offset < src.size) {
+      const piece = await src.read(session.offset, Math.min(step, src.size - session.offset));
+      try {
+        session = await this.uploadChunk(session.upload_id, session.offset, piece);
+        failures = 0;
+      } catch (error) {
+        failures++;
+        const status = error instanceof RelataError ? error.statusCode : 0;
+        if (!RESUMABLE.has(status) || failures >= maxAttempts) throw error;
+        session = await this.uploadStatus(session.upload_id);
+      }
+    }
+    return this.completeUpload(session.upload_id);
   }
 
   private path(key: string, opts: FilesOptions): string {
