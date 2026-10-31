@@ -693,31 +693,6 @@ export class McpClient extends TypedClientBase {
     });
   }
 
-  /** `ingest_media` — ingest an image/audio/video (base64) or text payload. */
-  async ingestMedia(
-    objectType: string,
-    opts: {
-      modality?: string;
-      codec?: string;
-      bytesB64?: string;
-      text?: string;
-      tenantId?: string;
-      partitionKey?: string;
-    } = {},
-  ): Promise<Record<string, unknown>> {
-    const args: Record<string, unknown> = {
-      object_type: objectType,
-      modality: opts.modality ?? "image",
-    };
-    if (opts.codec !== undefined) args["codec"] = opts.codec;
-    if (opts.bytesB64 !== undefined) args["bytes_b64"] = opts.bytesB64;
-    if (opts.text !== undefined) args["text"] = opts.text;
-    if (opts.tenantId !== undefined) args["tenant_id"] = opts.tenantId;
-    if (opts.partitionKey !== undefined)
-      args["partition_key"] = opts.partitionKey;
-    return this.callTool("ingest_media", args);
-  }
-
   /** `similar_multimodal` — governed cross-modal similarity search (ADR-106). */
   async similarMultimodal(
     entityType: string,

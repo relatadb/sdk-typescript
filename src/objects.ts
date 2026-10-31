@@ -42,8 +42,14 @@ export interface ChangeEvent {
   eventId: string;
   seq: number;
   kind: "create" | "update" | "delete";
+  /** `object` for object changes, `link` for graph edges (then `type` is the link name). */
+  entity: "object" | "link";
   type: string;
   id: string;
+  /** Link events only. */
+  sourceId?: string;
+  /** Link events only. */
+  targetId?: string;
   version: number;
   commitId: string;
   opIndex: number;
@@ -58,6 +64,8 @@ export interface ChangesPage {
   head: number;
   oldest?: number;
   withheld: number;
+  /** Events whose durable journal row failed (served from memory only). */
+  journalFailures?: number;
 }
 
 export interface CommitOperation {
@@ -309,6 +317,25 @@ export class ObjectClient extends TypedClientBase {
     if (opts.type !== undefined) params["type"] = opts.type;
     if (opts.start !== undefined) params["start"] = opts.start;
     return this._get<ChangesPage>(`/object-changes${qs(params)}`);
+  }
+
+  /**
+   * Iterate successive change-feed pages until the consumer is caught up
+   * (the first page with `hasMore === false`). Persist each page's
+   * `nextCursor` only after its events are processed. The feed captures every
+   * write path (objects, ingest, SQL, links, deletes) and is off unless the
+   * server sets `RELATA_CHANGE_FEED_ENABLE`; a disabled feed rejects with the
+   * API error for `404 change-feed-disabled`.
+   */
+  async *changePages(opts: ChangesOptions = {}): AsyncGenerator<ChangesPage, void, undefined> {
+    let next: ChangesOptions = { ...opts };
+    for (;;) {
+      const page = await this.changes(next);
+      yield page;
+      if (!page.hasMore) return;
+      const { start: _start, ...rest } = next;
+      next = { ...rest, cursor: page.nextCursor };
+    }
   }
 
   /**
