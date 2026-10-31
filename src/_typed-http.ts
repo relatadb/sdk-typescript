@@ -277,13 +277,15 @@ export class TypedClientBase {
 
   /** @internal Binary Files responses use the same capped, authenticated dispatcher. */
   protected async _sendBytes(
-    method: "GET" | "PUT" | "DELETE",
+    method: "GET" | "PUT" | "POST" | "DELETE",
     path: string,
     body?: Uint8Array,
     contentType = "application/octet-stream",
+    extraHeaders?: Record<string, string>,
   ): Promise<{ data: Uint8Array; status: number; headers: Headers }> {
     const headers = this.#buildHeaders();
     headers["Accept"] = method === "GET" ? "application/octet-stream" : "application/json";
+    Object.assign(headers, extraHeaders);
     const init: RequestInit = { method, headers, redirect: "manual" };
     if (body !== undefined) {
       headers["Content-Type"] = contentType;
