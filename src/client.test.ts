@@ -137,6 +137,24 @@ test("query: matcher 'bfs' prefixes the hint comment", async () => {
   assert.equal(sent.sql, `/*+ matcher=bfs */ ${MATCHER_CYPHER}`);
 });
 
+test("query: queryVector/queryVectorModel are sent as query_vector/query_vector_model", async () => {
+  const { fetch, calls } = mockFetch({ body: { data: [], query_id: "q", elapsed_ms: 1 } });
+  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "p", fetch });
+  await relata.query("SELECT 1", { queryVector: [0.25, -1, 3], queryVectorModel: "m1" });
+  const sent = JSON.parse(calls[0]!.body!) as Record<string, unknown>;
+  assert.deepEqual(sent["query_vector"], [0.25, -1, 3]);
+  assert.equal(sent["query_vector_model"], "m1");
+});
+
+test("query: vector fields are omitted when not supplied", async () => {
+  const { fetch, calls } = mockFetch({ body: { data: [], query_id: "q", elapsed_ms: 1 } });
+  const relata = new RelataClient({ baseUrl: "http://x", defaultPurpose: "p", fetch });
+  await relata.query("SELECT 1");
+  const sent = JSON.parse(calls[0]!.body!) as Record<string, unknown>;
+  assert.ok(!("query_vector" in sent));
+  assert.ok(!("query_vector_model" in sent));
+});
+
 test("query: matcher 'auto' and omitted send the query unchanged", async () => {
   const { fetch, calls } = mockFetch([
     { body: { data: [], query_id: "q", elapsed_ms: 1 } },
