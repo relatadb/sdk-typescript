@@ -23,7 +23,7 @@ Go). Other languages use the HTTP API and its OpenAPI reference at
 
 The v3 SDK accepts prepared detection rules through `GovernanceClient.createRule`
 or MCP `createRule`. Raw Sigma YAML parsing/import is no longer an SDK or MCP
-server method. Use the optional `relata-connectors import-sigma` application
+server method. Use the former `relata-connectors import-sigma` application
 workflow for YAML conversion, or convert externally and submit the prepared
 `name`, `condition_sql`, and `target_type` JSON fields through `/rules`.
 
@@ -177,7 +177,7 @@ const relata = createClient("http://localhost:9090", {
 `ingestDocument` accepts application-prepared governed rows (for example a
 `DocumentSource`, linked `DocumentChunk` rows, and optional evidence rows with
 `_type` and stable `_pk` fields). It does not parse raw documents or datagrep
-extractor files. Use the optional `relata-connectors prepare-document` adapter
+extractor files. Use the former `relata-connectors prepare-document` adapter
 to turn an extractor JSONL/manifest pair into an `objects` array, then pass
 that array to this method. Queue admission returns a process-local receipt;
 it is not crash-durable, so poll `ingestDocumentStatus` and use its
