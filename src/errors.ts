@@ -654,9 +654,14 @@ export function mapHttpError(
       // Purpose-specific detection — works for both legacy and problem+json.
       // Matches the Python `_classify_error` heuristic.
       const lc = serverMessage.toLowerCase();
+      // A query-engine `REL_*` code is authoritative: a SQL parse error (`REL_PARSE`) echoes the
+      // statement, which carries its `PURPOSE '...'` clause, and must not read as a purpose
+      // rejection (#5666). The free-text hint still applies to every other code and to legacy bodies.
       const isPurpose =
-        (code !== undefined && code.toLowerCase().includes("purpose")) ||
-        lc.includes("purpose");
+        code !== undefined && code.startsWith("REL_")
+          ? code.toLowerCase().includes("purpose")
+          : (code !== undefined && code.toLowerCase().includes("purpose")) ||
+            lc.includes("purpose");
       if (isPurpose) {
         // PurposeError retains its narrower constructor for back-compat.
         return new PurposeError(purpose, serverMessage, queryId, rfc7807);

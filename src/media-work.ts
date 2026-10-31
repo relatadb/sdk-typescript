@@ -39,15 +39,6 @@ export class MediaWorkClient extends TypedClientBase {
     return new MediaWorkClient(TypedClientBase.clientToCtor(client));
   }
 
-  /**
-   * `GET /media/qualification`: supported media tasks and the strongest claim the
-   * recorded evidence supports for each (`stored_only`, `extracted_features` or
-   * `evaluated_retrieval`).
-   */
-  async qualification(): Promise<Record<string, unknown>> {
-    return this._get<Record<string, unknown>>("/media/qualification");
-  }
-
   /** `GET /media/work`: the tenant's work items, optionally filtered by state. */
   async list(opts: { state?: MediaWorkState; limit?: number } = {}): Promise<Record<string, unknown>> {
     const params = new URLSearchParams();

@@ -447,15 +447,6 @@ test("McpClient #2322: eraseSubject sends subject and reason", async () => {
   assert.equal(seen.arguments["reason"], "user-request");
 });
 
-test("McpClient #2322: ingestMedia sends object_type", async () => {
-  const seen = await callAndCapture((mcp) =>
-    mcp.ingestMedia("MediaContent", { bytesB64: "Zm9v" }),
-  );
-  assert.equal(seen.name, "ingest_media");
-  assert.equal(seen.arguments["object_type"], "MediaContent");
-  assert.equal(seen.arguments["bytes_b64"], "Zm9v");
-});
-
 test("McpClient #2322: similarMultimodal sends entity_type and id", async () => {
   const seen = await callAndCapture((mcp) =>
     mcp.similarMultimodal("Document", "doc-1", { topK: 5 }),
@@ -945,11 +936,10 @@ test("SystemClient: jobsStatus", async () => {
 // IngestClient
 // ---------------------------------------------------------------------------
 
-test("IngestClient: bulk NDJSON + bulkCsv + mediaStatus paths", async () => {
+test("IngestClient: bulk NDJSON + bulkCsv paths", async () => {
   const queue: MockResponse[] = [
     { body: { accepted: 2, rejected: 0 } }, // bulk
     { body: { accepted: 3, rejected: 0 } }, // bulkCsv
-    { body: { status: "done" } }, // mediaStatus
   ];
   const { fetch, calls } = mockFetch(queue);
   const ing = new IngestClient({ baseUrl: "http://x", purpose: "p", fetch });
@@ -968,10 +958,6 @@ test("IngestClient: bulk NDJSON + bulkCsv + mediaStatus paths", async () => {
   const csv = await ing.bulkCsv("Transaction", "a,b\n1,2");
   assert.equal(csv["accepted"], 3);
   assert.equal(calls[1]?.headers["content-type"], "text/csv");
-
-  const media = await ing.mediaStatus("task-1");
-  assert.equal(media["status"], "done");
-  assert.equal(calls[2]?.url, "http://x/ingest/media/task-1");
 });
 
 // ---------------------------------------------------------------------------

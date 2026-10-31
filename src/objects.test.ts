@@ -228,3 +228,28 @@ test("ObjectClient.changes: sends cursor/limit/type/start to /object-changes", a
   await client.changes({ start: "latest" });
   assert.equal(new URL(seen[1]!).search, "?start=latest");
 });
+
+test("ObjectClient.changePages: follows hasMore until caught up", async () => {
+  const cursors: Array<string | null> = [];
+  const fakeFetch = async (url: string, _init?: RequestInit): Promise<Response> => {
+    const cursor = new URL(String(url)).searchParams.get("cursor");
+    cursors.push(cursor);
+    const page =
+      cursor === null
+        ? { feedId: "f", events: [], nextCursor: "f:1", hasMore: true, head: 2, withheld: 0 }
+        : { feedId: "f", events: [], nextCursor: "f:2", hasMore: false, head: 2, withheld: 0 };
+    return new Response(JSON.stringify(page), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const client = new ObjectClient({
+    baseUrl: "http://localhost:9090",
+    bearerToken: "t",
+    fetch: fakeFetch as typeof globalThis.fetch,
+  });
+  const pages: string[] = [];
+  for await (const page of client.changePages({ limit: 1 })) pages.push(page.nextCursor);
+  assert.deepEqual(pages, ["f:1", "f:2"]);
+  assert.deepEqual(cursors, [null, "f:1"]);
+});
