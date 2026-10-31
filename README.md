@@ -556,9 +556,9 @@ for await (const chunk of streaming.queryArrowRaw(
 console.log(`Received ${totalBytes} Arrow IPC bytes`);
 ```
 
-`IngestClient` exposes media task status, and `McpClient.ingestMedia()` calls
-the MCP media tool with its documented payload. There is no raw byte upload
-method for `/ingest/media` in this TypeScript SDK.
+`POST /ingest/media` was removed (#5942), together with
+`IngestClient.mediaStatus()` and `McpClient.ingestMedia()`; poll OpenETL work
+items with `MediaWorkClient.get()`.
 
 ### Governed Files client — v3.0 candidate, SDK 2.7.1
 
@@ -587,7 +587,7 @@ default. The server upload ceiling is 128 MiB; GET is subject to the inherited
 response cap (64 MiB by default). PUT and DELETE are not automatically retried,
 so reconcile uncertain outcomes before retrying. The client does not expose
 immutable versions, conditional writes, range requests, physical/global-copy
-deletion guarantees, or `/ingest/media` processing.
+deletion guarantees, or media processing.
 The inherited request timeout bounds the client request, and abort/stream
 cleanup applies to the client request; neither promises that server work
 already accepted by the engine is aborted or rolled back. See

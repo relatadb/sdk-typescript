@@ -77,13 +77,18 @@ export class AssertionsClient extends TypedClientBase {
   /** `POST /assertion-relations` (#5721): link two assertions with a rationale and optional locator. */
   async relate(
     fromId: string,
-    kind: "supports" | "contradicts" | "derived_from",
+    kind: "supports" | "contradicts" | "derived_from" | "similar_to" | "same_group_as" | "distinct_from",
     toId: string,
     rationale: string,
-    opts: { locator?: { evidence_id?: string; pointer?: string } } = {},
+    opts: {
+      locator?: { evidence_id?: string; pointer?: string };
+      /** Required for `similar_to`: a score in [0, 1] and the method that produced it. */
+      similarity?: { score: number; method: string };
+    } = {},
   ): Promise<Doc> {
     const body: Doc = { from: fromId, to: toId, kind, rationale };
     if (opts.locator !== undefined) body.locator = opts.locator;
+    if (opts.similarity !== undefined) body.similarity = opts.similarity;
     return this._post<Doc>("/assertion-relations", body);
   }
 
@@ -104,7 +109,7 @@ export class AssertionsClient extends TypedClientBase {
   /** `GET .../evidence-graph`: bounded authorized neighbourhood plus the corroboration summary. */
   async evidenceGraph(
     assertionId: string,
-    opts: { depth?: number; limit?: number; policy?: string; policyVersion?: number } = {},
+    opts: { depth?: number; limit?: number; policy?: string; policyVersion?: number; minSimilarity?: number } = {},
   ): Promise<Doc> {
     const q = new URLSearchParams();
     if (opts.depth !== undefined) q.set("depth", String(Math.trunc(opts.depth)));
@@ -113,6 +118,7 @@ export class AssertionsClient extends TypedClientBase {
       q.set("policy", opts.policy);
       if (opts.policyVersion !== undefined) q.set("policy_version", String(Math.trunc(opts.policyVersion)));
     }
+    if (opts.minSimilarity !== undefined) q.set("min_similarity", String(opts.minSimilarity));
     const qs = q.toString();
     return this._get<Doc>(`/assertions/${seg(assertionId)}/evidence-graph${qs ? `?${qs}` : ""}`);
   }

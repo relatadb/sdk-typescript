@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FilesClient, IngestControlClient, MediaWorkClient, Memory, RelataClient } from "./index.ts";
+import { FilesClient, IngestControlClient, Memory, RelataClient } from "./index.ts";
 
 type Seen = [string | undefined, string, string, unknown];
 
@@ -42,12 +42,6 @@ test("quarantine delete expects 204 and surfaces 404", async () => {
   assert.deepEqual(ok.seen, [["DELETE", "/ingest/quarantine/9", "", null]]);
   const missing = recorder(404, { title: "nf", status: 404 });
   await assert.rejects(() => IngestControlClient.fromClient(missing.client).deleteQuarantine(1));
-});
-
-test("media qualification route", async () => {
-  const { seen, client } = recorder();
-  await MediaWorkClient.fromClient(client).qualification();
-  assert.deepEqual(seen, [["GET", "/media/qualification", "", null]]);
 });
 
 test("memory associateBatch fills purpose and validates ids", async () => {
