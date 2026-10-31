@@ -694,7 +694,6 @@ or via the builder:
 | `WITH PROVENANCE` | Attach PROV-O provenance to rows |
 | `PATHS_BETWEEN(a, b, max_hops => 4)` | Shortest graph paths |
 | `NETWORK_EXPAND(seed_id => ..., hops => 3)` | Network expansion |
-| `MATCH_FACE(image_bytes => ..., threshold => 0.70)` | Face recognition |
 | `LOOKUP_IDENTITY(column, value)` | IdentityIndex universal lookup |
 | `HYBRID_SCORE(...)` | Combined BM25 + vector similarity |
 | `PREGEL_BFS(seed_id => ..., max_rounds => 4)` | Iterative graph BFS |
@@ -751,7 +750,6 @@ const result = await pool.query("SELECT * FROM Person LIMIT 5", "analytics");
 | `RELATA_TOKEN` | — | Bearer token for authentication |
 | `RELATA_PURPOSE` | — | Default purpose (CLI helper) |
 | `RELATA_URL` | `http://localhost:9090` | Server URL (examples / CLI) |
-| `PROBE_IMAGE` | — | Path to probe JPEG for face-search example |
 
 ## Examples
 
@@ -761,7 +759,6 @@ See [`examples/`](./examples/) for runnable workflows:
 |---|---|
 | `basic-query.ts` | Health check, raw SQL, typed query, fluent builder |
 | `analytics.ts` | Full analytics workflow (identity, cases, financials, graph) |
-| `face-search.ts` | `MATCH_FACE` operator with co-occurrence detection |
 | `hybrid-search.ts` | `VectorClient.hybridSearch()` — embed, ingest, BM25-only vs. vector-only vs. fused (RRF) search |
 | `graph-traversal.ts` | `PATHS_BETWEEN`, `NETWORK_EXPAND`, `MATCH`, Pregel BFS |
 | `audit.ts` | Audit chain verification, anomaly detection, compliance report |
