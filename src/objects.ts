@@ -8,7 +8,7 @@
 
 import { RelataClient } from "./client.ts";
 import { type TypedClientCtor, TypedClientBase, qs } from "./_typed-http.ts";
-import type { PreconditionFailedError } from "./errors.ts";
+import { RelataError, type PreconditionFailedError } from "./errors.ts";
 
 /** Row shape accepted by `upsert` / `batchUpsert`. */
 export type RelataRow = Record<string, unknown>;
@@ -36,6 +36,35 @@ export interface ChangesOptions {
   type?: string;
   /** `latest`: with no cursor, skip history and return the current position. */
   start?: "latest";
+}
+
+/** Options for {@link ObjectClient.followChanges}. */
+export interface FollowChangesOptions extends ChangesOptions {
+  /** Seconds to wait before polling again once caught up (default 1). */
+  pollIntervalSeconds?: number;
+  /** Consecutive transient failures tolerated before the error is thrown (default 8). */
+  maxReconnects?: number;
+  /** First reconnect delay in seconds, doubling per failure (default 0.5). */
+  reconnectBackoffSeconds?: number;
+  /** Upper bound for one reconnect delay in seconds (default 30). */
+  maxBackoffSeconds?: number;
+  /** Stop following when aborted. */
+  signal?: AbortSignal;
+}
+
+const TRANSIENT_STATUS = new Set([0, 429, 500, 502, 503, 504]);
+
+function sleepSeconds(seconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (seconds <= 0 || signal?.aborted) return resolve();
+    const t = setTimeout(done, seconds * 1000);
+    function done(): void {
+      clearTimeout(t);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    }
+    signal?.addEventListener("abort", done, { once: true });
+  });
 }
 
 export interface ChangeEvent {
@@ -335,6 +364,54 @@ export class ObjectClient extends TypedClientBase {
       if (!page.hasMore) return;
       const { start: _start, ...rest } = next;
       next = { ...rest, cursor: page.nextCursor };
+    }
+  }
+
+  /**
+   * Follow the change feed indefinitely, reconnecting and resuming by cursor.
+   *
+   * Yields each non-empty page. The cursor advances only after the consumer
+   * asks for the next page, so persist `page.nextCursor` once its events are
+   * processed and pass it back as `cursor` after a crash (at-least-once, no
+   * gap). When caught up it waits `pollIntervalSeconds`. A transient failure
+   * (network loss, 429, 5xx) is retried from the last delivered cursor with
+   * exponential backoff (honouring a server `retryAfterSeconds`); after
+   * `maxReconnects` consecutive failures the last error is thrown. Any other
+   * API error, including `410 change-feed-resync-required` and
+   * `404 change-feed-disabled`, is thrown at once. Stop with `signal` or by
+   * breaking out of the loop.
+   */
+  async *followChanges(
+    opts: FollowChangesOptions = {},
+  ): AsyncGenerator<ChangesPage, void, undefined> {
+    const {
+      pollIntervalSeconds = 1,
+      maxReconnects = 8,
+      reconnectBackoffSeconds = 0.5,
+      maxBackoffSeconds = 30,
+      signal,
+      ...feed
+    } = opts;
+    let next: ChangesOptions = { ...feed };
+    let failures = 0;
+    while (!signal?.aborted) {
+      let page: ChangesPage;
+      try {
+        page = await this.changes(next);
+      } catch (err) {
+        const transient = err instanceof RelataError && TRANSIENT_STATUS.has(err.statusCode);
+        if (!transient || failures >= maxReconnects) throw err;
+        const base = Math.min(maxBackoffSeconds, reconnectBackoffSeconds * 2 ** failures);
+        const hinted = Math.min(maxBackoffSeconds, err.retryAfterSeconds ?? 0);
+        await sleepSeconds(Math.max(base, hinted), signal);
+        failures += 1;
+        continue;
+      }
+      failures = 0;
+      const { start: _start, ...rest } = next;
+      next = { ...rest, cursor: page.nextCursor };
+      if (page.events.length > 0) yield page;
+      if (!page.hasMore) await sleepSeconds(pollIntervalSeconds, signal);
     }
   }
 

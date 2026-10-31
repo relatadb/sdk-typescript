@@ -366,6 +366,7 @@ export type {
   CommitOperation,
   CommitResult,
   ObjectWriteResult,
+  FollowChangesOptions,
 } from "./objects.ts";
 
 export { IngestClient } from "./ingest.ts";
