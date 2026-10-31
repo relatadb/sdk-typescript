@@ -32,3 +32,21 @@ test("evidence relation calls hit their documented routes with exact bodies", as
     ["GET", "/assertions/asr%2Fa/evidence-graph", "?depth=3&limit=10&policy=trust&policy_version=2", null],
   ]);
 });
+
+test("similarity relations and the group threshold reach the wire", async () => {
+  const seen: unknown[] = [];
+  const f: typeof globalThis.fetch = async (input, init) => {
+    const u = new URL(String(input));
+    seen.push([u.search, init?.body ? JSON.parse(String(init.body)) : null]);
+    return Response.json({ ok: true });
+  };
+  const c = AssertionsClient.fromClient(
+    new RelataClient({ baseUrl: "http://example.invalid", bearerToken: "secret", fetch: f }),
+  );
+  await c.relate("a", "similar_to", "b", "same photo", { similarity: { score: 0.93, method: "phash-v1" } });
+  await c.evidenceGraph("a", { minSimilarity: 0.5 });
+  assert.deepEqual(seen, [
+    ["", { from: "a", to: "b", kind: "similar_to", rationale: "same photo", similarity: { score: 0.93, method: "phash-v1" } }],
+    ["?min_similarity=0.5", null],
+  ]);
+});
