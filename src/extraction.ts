@@ -74,8 +74,8 @@ export class ExtractionClient extends TypedClientBase {
     opts: { correction?: Doc; acceptLowConfidence?: boolean } = {},
   ): Promise<Doc> {
     const body: Doc = { decision, reason };
-    if (opts.correction !== undefined) body.correction = opts.correction;
-    if (opts.acceptLowConfidence) body.accept_low_confidence = true;
+    if (opts.correction !== undefined) body["correction"] = opts.correction;
+    if (opts.acceptLowConfidence) body["accept_low_confidence"] = true;
     return this._post<Doc>(`/v1/ontology/suggestions/${seg(suggestionId)}/decision`, body);
   }
 
@@ -102,7 +102,7 @@ export class ExtractionClient extends TypedClientBase {
   /** `POST /v1/ontology/suggestions/apply`: fold accepted schema suggestions into the definition's draft. */
   async apply(definition: string, opts: { suggestionIds?: string[] } = {}): Promise<Doc> {
     const body: Doc = { definition };
-    if (opts.suggestionIds !== undefined) body.suggestion_ids = opts.suggestionIds;
+    if (opts.suggestionIds !== undefined) body["suggestion_ids"] = opts.suggestionIds;
     return this._post<Doc>("/v1/ontology/suggestions/apply", body);
   }
 
@@ -112,7 +112,7 @@ export class ExtractionClient extends TypedClientBase {
    */
   async entitiesExist(candidates: Doc[], opts: { definition?: string } = {}): Promise<Doc> {
     const body: Doc = { candidates };
-    if (opts.definition !== undefined) body.definition = opts.definition;
+    if (opts.definition !== undefined) body["definition"] = opts.definition;
     return this._post<Doc>("/v1/entities/exists", body);
   }
 }

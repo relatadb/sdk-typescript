@@ -388,7 +388,7 @@ export class Memory {
     opts: { reason?: string } = {},
   ): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = { decision, purpose: this.#purpose };
-    if (opts.reason) payload.reason = opts.reason;
+    if (opts.reason) payload["reason"] = opts.reason;
     return unwrapMcp(await this.#post(`/v1/memory/review/${enc(memoryId)}`, payload));
   }
 

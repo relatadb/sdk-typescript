@@ -221,7 +221,7 @@ export class FilesClient extends TypedClientBase {
     const sha256 = opts.sha256 ?? (source instanceof Uint8Array ? await sha256Hex(source) : undefined);
     let session = opts.uploadId !== undefined
       ? await this.uploadStatus(opts.uploadId)
-      : await this.startUpload(key, src.size, { ...opts, sha256 });
+      : await this.startUpload(key, src.size, { ...opts, ...(sha256 !== undefined ? { sha256 } : {}) });
     const step = Math.min(opts.chunkSize ?? DEFAULT_CHUNK, session.max_chunk_bytes ?? DEFAULT_CHUNK);
     const maxAttempts = opts.maxAttempts ?? 5;
     let failures = 0;

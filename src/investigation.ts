@@ -38,10 +38,10 @@ export interface SavedSearchInput {
 
 function searchBody(input: SavedSearchInput, expectedVersion?: number): Doc {
   const body: Doc = { name: input.name, sql: input.sql };
-  if (input.purpose !== undefined) body.purpose = input.purpose;
-  if (input.description !== undefined) body.description = input.description;
-  if (input.params !== undefined) body.params = input.params;
-  if (expectedVersion !== undefined) body.expected_version = expectedVersion;
+  if (input.purpose !== undefined) body["purpose"] = input.purpose;
+  if (input.description !== undefined) body["description"] = input.description;
+  if (input.params !== undefined) body["params"] = input.params;
+  if (expectedVersion !== undefined) body["expected_version"] = expectedVersion;
   return body;
 }
 
@@ -79,12 +79,12 @@ export class InvestigationClient extends TypedClientBase {
     } = {},
   ): Promise<Doc> {
     const body: Doc = {};
-    if (opts.field !== undefined) body.field = opts.field;
-    if (opts.value !== undefined) body.value = opts.value;
-    if (opts.targetField !== undefined) body.target_field = opts.targetField;
-    if (opts.targetTypes !== undefined) body.target_types = opts.targetTypes;
-    if (opts.limit !== undefined) body.limit = opts.limit;
-    if (opts.deadlineMs !== undefined) body.deadline_ms = opts.deadlineMs;
+    if (opts.field !== undefined) body["field"] = opts.field;
+    if (opts.value !== undefined) body["value"] = opts.value;
+    if (opts.targetField !== undefined) body["target_field"] = opts.targetField;
+    if (opts.targetTypes !== undefined) body["target_types"] = opts.targetTypes;
+    if (opts.limit !== undefined) body["limit"] = opts.limit;
+    if (opts.deadlineMs !== undefined) body["deadline_ms"] = opts.deadlineMs;
     return this._post<Doc>(`/v1/alerts/${seg(alertId)}/pivot`, body);
   }
 
@@ -124,7 +124,7 @@ export class InvestigationClient extends TypedClientBase {
   /** `POST /v1/search/saved/{id}/run`: the `POST /v1/query` response for the stored SQL. */
   async runSavedSearch(searchId: string, opts: { params?: unknown[] } = {}): Promise<Doc> {
     const body: Doc = {};
-    if (opts.params !== undefined) body.params = opts.params;
+    if (opts.params !== undefined) body["params"] = opts.params;
     return this._post<Doc>(`/v1/search/saved/${seg(searchId)}/run`, body);
   }
 }

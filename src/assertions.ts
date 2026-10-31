@@ -87,8 +87,8 @@ export class AssertionsClient extends TypedClientBase {
     } = {},
   ): Promise<Doc> {
     const body: Doc = { from: fromId, to: toId, kind, rationale };
-    if (opts.locator !== undefined) body.locator = opts.locator;
-    if (opts.similarity !== undefined) body.similarity = opts.similarity;
+    if (opts.locator !== undefined) body["locator"] = opts.locator;
+    if (opts.similarity !== undefined) body["similarity"] = opts.similarity;
     return this._post<Doc>("/v1/assertions/relations", body);
   }
 
