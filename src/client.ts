@@ -360,7 +360,14 @@ export class RelataClient {
 
     const wire = await this.#post<WireQueryResponse>(
       "/query",
-      { purpose, sql: injectMatcherHint(sql, options?.matcher) },
+      {
+        purpose,
+        sql: injectMatcherHint(sql, options?.matcher),
+        ...(options?.queryVector !== undefined ? { query_vector: options.queryVector } : {}),
+        ...(options?.queryVectorModel !== undefined
+          ? { query_vector_model: options.queryVectorModel }
+          : {}),
+      },
       options?.timeoutMs,
       options?.dialect ? { "x-query-dialect": options.dialect } : undefined,
     );
@@ -685,12 +692,20 @@ export class RelataClient {
     name: string,
     action: string,
     column: string,
-    opts: { newColumn?: string; colType?: string; optional?: boolean } = {},
+    opts: {
+      newColumn?: string;
+      colType?: string;
+      optional?: boolean;
+      /** Compare-and-set against `typeDetail(name).schema_version` (#5724); stale -> 412. */
+      expectedSchemaVersion?: string;
+    } = {},
   ): Promise<Record<string, unknown>> {
     const body: Record<string, unknown> = { action, column };
     if (opts.newColumn !== undefined) body["new_column"] = opts.newColumn;
     if (opts.colType !== undefined) body["col_type"] = opts.colType;
     if (opts.optional !== undefined) body["optional"] = opts.optional;
+    if (opts.expectedSchemaVersion !== undefined)
+      body["expected_schema_version"] = opts.expectedSchemaVersion;
     return this.#patch(`/types/${pathSegment(name)}/schema`, body);
   }
 

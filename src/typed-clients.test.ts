@@ -740,6 +740,36 @@ test("AuditClient: count, entries filters, findByRequestId", async () => {
   assert.ok(calls[1]?.url.includes("limit=1"));
 });
 
+test("AuditClient: findByRequestId ignores an entry for another request", async () => {
+  // A server that ignores the request_id filter answers with the newest entry.
+  const { fetch } = mockFetch([
+    {
+      body: {
+        entries: [{ request_id: "newest", action: "query" }],
+        chain_valid: true,
+      },
+    },
+  ]);
+  const audit = new AuditClient({ baseUrl: "http://x", fetch });
+  assert.equal(await audit.findByRequestId("r1"), null);
+});
+
+test("AuditClient: log hits /audit/log; entries sends since/until", async () => {
+  const { fetch, calls } = mockFetch([
+    { body: { entries: [{ event_id: "e1" }], chain_valid: true } },
+    { body: { entries: [], chain_valid: true } },
+  ]);
+  const audit = new AuditClient({ baseUrl: "http://x", fetch });
+  const page = await audit.log({ limit: 5, table: "Person", tenantId: "t1" });
+  assert.equal((page["entries"] as unknown[]).length, 1);
+  const u = calls[0]!.url;
+  assert.ok(u.includes("/audit/log?"));
+  assert.ok(u.includes("limit=5") && u.includes("table=Person") && u.includes("tenant_id=t1"));
+  await audit.entries({ sinceNs: 10, untilNs: 20 });
+  const e = calls[1]!.url;
+  assert.ok(e.includes("since=10") && e.includes("until=20") && !e.includes("since_ns"));
+});
+
 // ---------------------------------------------------------------------------
 // BackupClient
 // ---------------------------------------------------------------------------

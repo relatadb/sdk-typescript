@@ -1,7 +1,7 @@
 /**
  * Audit + provenance SDK (#78).
  *
- * Wraps `/audit/count`, `/audit/entries`.
+ * Wraps `/audit/count`, `/audit/entries`, `/audit/log`.
  */
 
 import { RelataClient } from "./client.ts";
@@ -54,10 +54,29 @@ export class AuditClient extends TypedClientBase {
       purpose: opts.purpose,
       decision: opts.decision,
       request_id: opts.requestId,
-      since_ns: opts.sinceNs,
-      until_ns: opts.untilNs,
+      since: opts.sinceNs,
+      until: opts.untilNs,
       limit: opts.limit ?? 100,
       cursor: opts.cursor,
+    })}`;
+    return this._get(path);
+  }
+
+  /**
+   * Filtered mutation-style audit projections. Wraps `GET /audit/log`.
+   * `from`/`to` are inclusive timestamp bounds, `table` a substring of the
+   * derived resource; `tenantId` only applies to an unscoped admin caller.
+   * Returns `{"entries": [...], "chain_valid": bool}`.
+   */
+  async log(
+    opts: { limit?: number; from?: string; to?: string; table?: string; tenantId?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const path = `/audit/log${qs({
+      limit: opts.limit ?? 100,
+      from: opts.from,
+      to: opts.to,
+      table: opts.table,
+      tenant_id: opts.tenantId,
     })}`;
     return this._get(path);
   }
@@ -76,9 +95,12 @@ export class AuditClient extends TypedClientBase {
         : undefined;
     if (Array.isArray(entries) && entries.length > 0) {
       const first = entries[0];
-      return typeof first === "object" && first !== null
-        ? (first as Record<string, unknown>)
-        : null;
+      if (typeof first !== "object" || first === null) return null;
+      const row = first as Record<string, unknown>;
+      // Never return a different request's entry (e.g. a server that ignores
+      // the `request_id` filter answers with the newest entry).
+      if ("request_id" in row && row["request_id"] !== requestId) return null;
+      return row;
     }
     return null;
   }
