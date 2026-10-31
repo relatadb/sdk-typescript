@@ -1,7 +1,7 @@
 # @zysec-ai/relata-sdk — TypeScript SDK
 
 TypeScript client for the [Relata DB](https://relatadb.dev) data engine — ontology-driven,
-enterprise-grade workloads. Zero runtime dependencies (native `fetch` only), typed
+governed workloads. Zero runtime dependencies (native `fetch` only), typed
 responses, fluent query builder, a Mem0-style governed memory client, and 12+ typed
 v1.1 clients that mirror the server's REST surface — all with full transport
 hardening (RFC 7807 problem+json, `X-Request-ID`, retry, multi-tenant headers).
@@ -722,7 +722,10 @@ const paths = graph("investigation").from("alice@acme.com").to("bob@acme.com").m
 
 Serialises to the JSON documented in `docs/api/query-ir.md`.
 
-## Connection pool (high availability)
+## Connection pool (client-side failover)
+
+This is client-side endpoint rotation only. It does not make a deployment highly available; the open
+Relata DB 3.0 edition is a single node, so a pool is useful only against separately operated endpoints.
 
 `ClientPool` provides round-robin load balancing across N HTTP endpoints with
 health-aware failover (a failed endpoint is skipped for a cooldown period, then
