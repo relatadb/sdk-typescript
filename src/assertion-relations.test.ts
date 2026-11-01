@@ -50,3 +50,22 @@ test("similarity relations and the group threshold reach the wire", async () => 
     ["?min_similarity=0.5", null],
   ]);
 });
+
+test("confidence and uncertainty reach the wire only when given", async () => {
+  const seen: unknown[] = [];
+  const f: typeof globalThis.fetch = async (_input, init) => {
+    seen.push(init?.body ? JSON.parse(String(init.body)) : null);
+    return Response.json({ ok: true });
+  };
+  const c = AssertionsClient.fromClient(
+    new RelataClient({ baseUrl: "http://example.invalid", bearerToken: "secret", fetch: f }),
+  );
+  await c.relate("a", "supports", "b", "same figure", { confidence: 0.4, uncertainty: "one witness" });
+  await c.assess("a", "inconclusive", "needs a second source", { confidence: 0.6 });
+  await c.assess("a", "inconclusive", "plain");
+  assert.deepEqual(seen, [
+    { from: "a", to: "b", kind: "supports", rationale: "same figure", confidence: 0.4, uncertainty: "one witness" },
+    { judgment: "inconclusive", reason: "needs a second source", confidence: 0.6 },
+    { judgment: "inconclusive", reason: "plain" },
+  ]);
+});

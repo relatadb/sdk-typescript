@@ -84,11 +84,17 @@ export class AssertionsClient extends TypedClientBase {
       locator?: { evidence_id?: string; pointer?: string };
       /** Required for `similar_to`: a score in [0, 1] and the method that produced it. */
       similarity?: { score: number; method: string };
+      /** How strongly the author believes the link holds, in [0, 1]. */
+      confidence?: number;
+      /** What remains unknown, or why confidence is not higher. */
+      uncertainty?: string;
     } = {},
   ): Promise<Doc> {
     const body: Doc = { from: fromId, to: toId, kind, rationale };
     if (opts.locator !== undefined) body["locator"] = opts.locator;
     if (opts.similarity !== undefined) body["similarity"] = opts.similarity;
+    if (opts.confidence !== undefined) body["confidence"] = opts.confidence;
+    if (opts.uncertainty !== undefined) body["uncertainty"] = opts.uncertainty;
     return this._post<Doc>("/v1/assertions/relations", body);
   }
 
@@ -102,8 +108,12 @@ export class AssertionsClient extends TypedClientBase {
     assertionId: string,
     judgment: "corroborated" | "disputed" | "inconclusive",
     reason: string,
+    opts: { confidence?: number; uncertainty?: string } = {},
   ): Promise<Doc> {
-    return this._post<Doc>(`/v1/assertions/${seg(assertionId)}/assessment`, { judgment, reason });
+    const body: Doc = { judgment, reason };
+    if (opts.confidence !== undefined) body["confidence"] = opts.confidence;
+    if (opts.uncertainty !== undefined) body["uncertainty"] = opts.uncertainty;
+    return this._post<Doc>(`/v1/assertions/${seg(assertionId)}/assessment`, body);
   }
 
   /** `GET .../evidence-graph`: bounded authorized neighbourhood plus the corroboration summary. */
