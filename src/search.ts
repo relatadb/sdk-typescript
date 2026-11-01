@@ -63,6 +63,14 @@ export interface SearchQuery {
    * affects which rows match or their order.
    */
   computeAttributes?: Record<string, string>;
+  /**
+   * Caller-supplied query embedding for a `["vector","ann",text]` `rankBy`
+   * (ADR-0309, #5941). Sent as the top-level `query_vector` field; the server
+   * then makes no embedding call.
+   */
+  queryVector?: number[];
+  /** Model tag `queryVector` was produced by; requires `queryVector`. */
+  queryVectorModel?: string;
   /** Optional purpose override. */
   purpose?: string;
 }
@@ -77,6 +85,21 @@ export function buildSearchPayload(q: SearchQuery): Record<string, unknown> {
   if (q.includeAttributes) body["include_attributes"] = q.includeAttributes;
   if (q.consistency) body["consistency"] = q.consistency;
   if (q.computeAttributes) body["compute_attributes"] = q.computeAttributes;
+  if (q.queryVector !== undefined) {
+    if (
+      q.queryVector.length === 0 ||
+      !q.queryVector.every((x) => typeof x === "number" && Number.isFinite(x))
+    ) {
+      throw new Error("queryVector must be a non-empty array of finite numbers");
+    }
+    body["query_vector"] = q.queryVector;
+  }
+  if (q.queryVectorModel) {
+    if (q.queryVector === undefined) {
+      throw new Error("queryVectorModel requires queryVector");
+    }
+    body["query_vector_model"] = q.queryVectorModel;
+  }
   if (q.purpose) body["purpose"] = q.purpose;
   return body;
 }

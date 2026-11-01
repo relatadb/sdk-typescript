@@ -33,3 +33,19 @@ test("buildSearchPayload omits compute_attributes when absent", () => {
   const body = buildSearchPayload({ from: "Document", text: "x" });
   assert.ok(!("compute_attributes" in body));
 });
+
+test("buildSearchPayload carries queryVector as top-level query_vector", () => {
+  const body = buildSearchPayload({
+    from: "Document",
+    rankBy: ["vector", "ann", "fraud"],
+    queryVector: [0.5, 0.25],
+    queryVectorModel: "m1",
+  });
+  assert.deepEqual(body["query_vector"], [0.5, 0.25]);
+  assert.equal(body["query_vector_model"], "m1");
+});
+
+test("buildSearchPayload rejects an empty/model-only query vector", () => {
+  assert.throws(() => buildSearchPayload({ from: "D", queryVector: [] }));
+  assert.throws(() => buildSearchPayload({ from: "D", queryVectorModel: "m1" }));
+});
