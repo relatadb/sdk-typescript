@@ -1345,12 +1345,17 @@ export class RelataClient {
     const wire = await this.#send<WireIngestDocumentResponse>(
       "POST", "/v1/ingest/bulk", body, undefined, undefined, stringifyIngestBody(body),
     );
+    const known = new Set(["task_id", "rows_queued", "rows_rejected", "errors", "queue_depth"]);
+    const extensions = Object.fromEntries(
+      Object.entries(wire).filter(([key]) => !known.has(key)),
+    );
     return {
       taskId: wire.task_id ?? "",
       rowsQueued: wire.rows_queued ?? 0,
       rowsRejected: wire.rows_rejected ?? 0,
       errors: Array.isArray(wire.errors) ? wire.errors : [],
       queueDepth: wire.queue_depth ?? 0,
+      ...(Object.keys(extensions).length > 0 ? { extensions } : {}),
     };
   }
 
@@ -1959,6 +1964,8 @@ interface WireIngestDocumentResponse {
   rows_rejected?: number;
   errors?: string[];
   queue_depth?: number;
+  /** Additive receipt fields from newer servers. */
+  [extra: string]: unknown;
 }
 
 /** @internal Wire shape for `GET /v1/ingest/tasks/:task_id`. */

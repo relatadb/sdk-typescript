@@ -352,6 +352,8 @@ export interface IngestDocumentResponse {
   errors: string[];
   /** Current ingest queue depth after this submission. */
   queueDepth: number;
+  /** Fields added by newer server versions, preserved without interpretation. */
+  extensions?: Record<string, unknown>;
 }
 
 /** Generic task status from `GET /v1/ingest/tasks/:task_id`. Persistent local receipts survive restart; volatile profiles remain process-local. */
