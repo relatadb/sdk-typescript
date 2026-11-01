@@ -27,7 +27,7 @@ test("every call hits its documented route with exact bodies", async () => {
   await c.validate("crm", d);
   await c.compare("crm", { from: 1, to: "draft" });
   await c.compare("crm");
-  await c.publish("crm", { expectedVersion: 1, acceptMigration: true, fromVersion: 1 });
+  await c.publish("crm", { expectedVersion: 1, acceptMigration: true, fromVersion: 1, overrideUnsafe: true });
   await c.publish("crm", { expectedVersion: 0 });
   await c.version("crm", 2);
   await c.status("crm");
@@ -43,7 +43,7 @@ test("every call hits its documented route with exact bodies", async () => {
     ["POST", "/v1/ontology/definitions/crm/validate", "", { definition: d }],
     ["GET", "/v1/ontology/definitions/crm/compare", "?from=1&to=draft", null],
     ["GET", "/v1/ontology/definitions/crm/compare", "", null],
-    ["POST", "/v1/ontology/definitions/crm/publish", "", { expected_version: 1, accept_migration: true, from_version: 1 }],
+    ["POST", "/v1/ontology/definitions/crm/publish", "", { expected_version: 1, accept_migration: true, from_version: 1, override_unsafe: true }],
     ["POST", "/v1/ontology/definitions/crm/publish", "", { expected_version: 0 }],
     ["GET", "/v1/ontology/definitions/crm/versions/2", "", null],
     ["GET", "/v1/ontology/definitions/crm/status", "", null],

@@ -24,6 +24,8 @@ export interface PublishOptions {
   acceptBreaking?: boolean;
   /** Republish an earlier version's content as the next version. */
   fromVersion?: number;
+  /** Publish a change that drops or retypes data; needs a schema-admin or platform-admin token. */
+  overrideUnsafe?: boolean;
 }
 
 /** Ontology definitions client. */
@@ -76,6 +78,7 @@ export class OntologyDefinitionsClient extends TypedClientBase {
     const body: Doc = { expected_version: Math.trunc(opts.expectedVersion) };
     if (opts.acceptMigration) body["accept_migration"] = true;
     if (opts.acceptBreaking) body["accept_breaking"] = true;
+    if (opts.overrideUnsafe) body["override_unsafe"] = true;
     if (opts.fromVersion !== undefined) body["from_version"] = Math.trunc(opts.fromVersion);
     return this._post<Doc>(`${BASE}/${seg(name)}/publish`, body);
   }
