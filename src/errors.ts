@@ -70,6 +70,15 @@ export class RelataError extends Error {
   readonly requestId: string | undefined;
   /** Server retry delay in seconds, when supplied; not permission to replay. */
   readonly retryAfterSeconds: number | undefined;
+  /**
+   * Ingest task id when the error body carries one (an accepted-then-uncertain
+   * 5xx). Poll it instead of replaying the POST.
+   */
+  taskId: string | undefined = undefined;
+  /** Whether the server says the request was accepted before failing (`undefined` = unknown). */
+  accepted: boolean | undefined = undefined;
+  /** Server receipt state on the error body, for example `"uncertain"`. */
+  receiptStatus: string | undefined = undefined;
 
   constructor(
     message: string,
@@ -629,7 +638,22 @@ export function mapHttpError(
     rateLimitReset?: number | undefined;
     currentVersion?: number | null | undefined;
     failedOperation?: number | undefined;
+    taskId?: string | undefined;
+    accepted?: boolean | undefined;
+    receiptStatus?: string | undefined;
   } = {},
+): RelataError {
+  const error = mapHttpErrorByStatus(status, serverMessage, extras);
+  error.taskId = extras.taskId;
+  error.accepted = extras.accepted;
+  error.receiptStatus = extras.receiptStatus;
+  return error;
+}
+
+function mapHttpErrorByStatus(
+  status: number,
+  serverMessage: string,
+  extras: Parameters<typeof mapHttpError>[2] = {},
 ): RelataError {
   const {
     purpose,
@@ -721,6 +745,9 @@ export function httpProblemMetadata(
   retryAfterSeconds: number | undefined;
   currentVersion: number | null | undefined;
   failedOperation: number | undefined;
+  taskId: string | undefined;
+  accepted: boolean | undefined;
+  receiptStatus: string | undefined;
 } {
   const retry = headers?.get("Retry-After");
   let retryAfterSeconds: number | undefined;
@@ -752,5 +779,8 @@ export function httpProblemMetadata(
     currentVersion: typeof body["current_version"] === "number" ? body["current_version"]
       : body["current_version"] === null ? null : undefined,
     failedOperation: typeof body["failed_operation"] === "number" ? body["failed_operation"] : undefined,
+    taskId: typeof body["task_id"] === "string" && body["task_id"] !== "" ? body["task_id"] : undefined,
+    accepted: typeof body["accepted"] === "boolean" ? body["accepted"] : undefined,
+    receiptStatus: typeof body["receipt_status"] === "string" ? body["receipt_status"] : undefined,
   };
 }
