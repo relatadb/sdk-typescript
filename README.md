@@ -673,7 +673,6 @@ for (const row of result.rows) console.log(row);
 npx relata health --url http://localhost:9090
 npx relata status
 npx relata audit
-npx relata nodes
 npx relata query "SELECT * FROM Person LIMIT 5" --purpose analytics
 ```
 
