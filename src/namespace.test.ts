@@ -248,6 +248,7 @@ test("registerEdgeType: POSTs {from_type, to_type, label} to /v1/types/edges (#2
   assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), {
     from_type: "Person",
     to_type: "Document",
+    relation: "authored", // the server stores the edge under `relation`; `label` alone left it empty
     label: "authored",
   });
 });
