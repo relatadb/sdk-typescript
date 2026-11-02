@@ -116,6 +116,34 @@ function normaliseFilters(
 }
 
 /**
+ * Map the `/v1/search` wire body onto {@link QueryResult}. The wire `rows` is the
+ * hit COUNT (a number) and the row objects arrive under `data`, so passing the
+ * body through unchanged left `result.rows` a number rather than an array.
+ */
+export function normaliseSearchResult<T>(wire: Record<string, unknown>): QueryResult<T> {
+  const rows = (Array.isArray(wire["data"])
+    ? wire["data"]
+    : Array.isArray(wire["rows"])
+      ? wire["rows"]
+      : []) as T[];
+  const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
+  const processing = num(wire["processing_time_ms"]) ?? num(wire["elapsed_ms"]);
+  return {
+    rows,
+    queryId: typeof wire["query_id"] === "string" ? wire["query_id"] : "",
+    elapsedMs: num(wire["elapsed_ms"]) ?? 0,
+    ...(processing !== undefined ? { processingTimeMs: processing } : {}),
+    rowCount: rows.length,
+    columns: Array.isArray(wire["columns"]) ? (wire["columns"] as string[]) : [],
+    ...(Object.hasOwn(wire, "next_cursor")
+      ? { nextCursor: (wire["next_cursor"] as string | null | undefined) ?? null }
+      : {}),
+    ...(typeof wire["truncated"] === "boolean" ? { truncated: wire["truncated"] } : {}),
+    ...(Array.isArray(wire["provenance"]) ? { provenance: wire["provenance"] } : {}),
+  };
+}
+
+/**
  * Typed search client. Obtain via `relataClient.search` so calls run under the
  * parent client's auth, tenant, and purpose context.
  */
@@ -131,6 +159,7 @@ export class SearchClient extends TypedClientBase {
 
   /** Run a typed search against `q.from` (an object type). Wraps `POST /v1/search`. */
   async query<T = Record<string, unknown>>(q: SearchQuery): Promise<QueryResult<T>> {
-    return this._post<QueryResult<T>>("/v1/search", buildSearchPayload(q));
+    const wire = await this._post<Record<string, unknown>>("/v1/search", buildSearchPayload(q));
+    return normaliseSearchResult<T>(wire);
   }
 }
