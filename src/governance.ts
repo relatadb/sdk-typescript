@@ -136,16 +136,20 @@ export class GovernanceClient extends TypedClientBase {
   }
 
   /**
-   * Permanently suppress future matches of the rule for a specific entity
-   * (#967). `condition` is an optional informational note.
+   * Suppress future matches of the rule for one entity, for `durationSecs`
+   * (admin-only; the server answers 400 without a positive `duration_secs`
+   * because suppressions expire, #3197). `reason` is recorded with the audit
+   * entry; `condition` is an optional informational note.
    */
   async suppressRule(
     ruleId: string,
     entityId: string,
-    opts: { condition?: string } = {},
+    opts: { condition?: string; durationSecs?: number; reason?: string } = {},
   ): Promise<Record<string, unknown>> {
     const body: Record<string, unknown> = { entity_id: entityId };
     if (opts.condition !== undefined) body["condition"] = opts.condition;
+    if (opts.durationSecs !== undefined) body["duration_secs"] = opts.durationSecs;
+    if (opts.reason !== undefined) body["reason"] = opts.reason;
     return this._post(`/v1/rules/${encodeURIComponent(ruleId)}/suppress`, body);
   }
 
