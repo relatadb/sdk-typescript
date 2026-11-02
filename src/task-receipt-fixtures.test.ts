@@ -10,7 +10,8 @@ interface Case {
   name: string;
   kind: "queue_ack" | "task_status";
   wire: { status: number; body: unknown };
-  expect: Record<string, any>;
+  // Free-form per-case expectation object; fields vary by `kind`.
+  expect: any;
 }
 
 const fixtures = JSON.parse(
