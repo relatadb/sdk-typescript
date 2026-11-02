@@ -7,6 +7,7 @@
  */
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -108,7 +109,7 @@ describe("journeys", { skip }, () => {
 
   test("J1b SIEM: DNS tunnel detection over a real DnsLog table", async () => {
     const rowsIn = [
-      ...Array.from({ length: 12 }, (_, i) => ({ _type: "DnsLog", _pk: `d${u}-${i}`, query_name: `${Buffer.from(`${u}${i}payloadpayloadpayload`).toString("hex")}.evil-c2.example`, client: "10.0.0.5" })),
+      ...Array.from({ length: 12 }, (_, i) => ({ _type: "DnsLog", _pk: `d${u}-${i}`, query_name: `${randomBytes(15).toString("hex")}.evil-c2.example` /* 30-char high-entropy label, under the 63-byte DNS label limit */, client: "10.0.0.5" })),
       ...Array.from({ length: 6 }, (_, i) => ({ _type: "DnsLog", _pk: `n${u}-${i}`, query_name: "www.example.com", client: "10.0.0.6" })),
     ];
     await c.ingest(rowsIn);

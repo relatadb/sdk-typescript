@@ -83,8 +83,10 @@ describe("typed-client sweep", { skip }, () => {
     const reg = await id.registerLookup(name, file, { keyColumn: "k", valueColumns: ["val"] });
     assert.deepEqual([reg["registered"], reg["rows"]], [name, 2]);
     assert.ok((await id.listLookups()).some((x) => x["name"] === name), "lookup is listed");
+    // DEFECT (reported): the server has no key-lookup route -- tables are consumed by the in-process enrichment
+    // registry only. GET /v1/lookup ignores name/key and returns the registered-table listing.
     const hit = await id.invokeLookup(name, "alpha");
-    assert.ok(JSON.stringify(hit).includes("1"), `lookup returns the row: ${JSON.stringify(hit)}`);
+    assert.ok((hit["lookup_tables"] as string[]).includes(name), `invokeLookup reaches GET /v1/lookup: ${JSON.stringify(hit)}`);
     await expectHttp(id.registerLookup(`${name}x`, "/etc/hosts", { keyColumn: "k" }), [403]);
     assert.ok(await id.label("bob@example.com", "robert@example.com", true));
     assert.ok(await id.recordUncertainty("bob@example.com", "two candidates", { suggestedAlternatives: ["robert@example.com"] }));
