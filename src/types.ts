@@ -514,6 +514,15 @@ export interface SearchHit {
   score: number;
   /** Field-level snippets with `<em>` highlights (present when `highlight: true`). */
   highlights: Record<string, string>;
+  /** Ontology definition version the row was written under; absent when the type has no published definition (#5711). */
+  definition?: SearchHitDefinition;
+}
+
+/** `definition` on a search hit: the row's `_def` stamp, the version in force, and whether the row predates a migration (#5711). */
+export interface SearchHitDefinition {
+  stamp: string | null;
+  current: string;
+  stale: boolean;
 }
 
 /** Response from `POST /v1/search` (#670). */
@@ -657,6 +666,7 @@ export interface WireSearchResponse {
     object_type?: string;
     score: number;
     highlights?: Record<string, string>;
+    definition?: SearchHitDefinition;
   }>;
   total?: number;
   estimatedTotalHits?: number;

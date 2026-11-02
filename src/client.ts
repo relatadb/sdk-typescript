@@ -491,6 +491,7 @@ export class RelataClient {
         fields: h.fields ?? h.data ?? {},
         score: h.score,
         highlights: h.highlights ?? {},
+        ...(h.definition ? { definition: h.definition } : {}),
       })),
       total: wire.total ?? wire.estimatedTotalHits ?? 0,
       estimatedTotalHits: wire.estimatedTotalHits ?? wire.total ?? 0,
