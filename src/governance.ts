@@ -384,7 +384,8 @@ export class GovernanceClient extends TypedClientBase {
     opts: { scope?: string } = {},
   ): Promise<Record<string, unknown>> {
     const path = `/v1/gdpr/dsar${qs({
-      subject_identity: subjectIdentity,
+      // The server's `GET /v1/gdpr/dsar` reads the subject from `subject`.
+      subject: subjectIdentity,
       reason,
       scope: opts.scope,
     })}`;

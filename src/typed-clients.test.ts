@@ -214,7 +214,7 @@ test("GovernanceClient: listRules, createRule, placeLegalHold, submitDsar", asyn
   const dsar = await gov.submitDsar("alice@x.com", "gdpr-art-15", { scope: "email" });
   assert.equal(dsar["dsar_id"], "d1");
   assert.ok(calls[3]?.url.includes("/v1/gdpr/dsar?"));
-  assert.ok(calls[3]?.url.includes("subject_identity=alice%40x.com"));
+  assert.ok(calls[3]?.url.includes("subject=alice%40x.com"));
   assert.ok(calls[3]?.url.includes("reason=gdpr-art-15"));
   assert.ok(calls[3]?.url.includes("scope=email"));
 });
