@@ -207,6 +207,12 @@ export class GovernanceClient extends TypedClientBase {
    */
   async listRetentionPolicies(): Promise<Record<string, unknown>[]> {
     const data = await this._get<Record<string, unknown>>("/v1/retention/policies");
+    // Live shape: `{worm_types: ["TypeA", ...], total}`; older shape `{policies: [...]}`.
+    if (typeof data === "object" && data !== null && Array.isArray(data["worm_types"])) {
+      return (data["worm_types"] as unknown[]).map((t) =>
+        typeof t === "string" ? { type_name: t } : (t as Record<string, unknown>),
+      );
+    }
     const policies =
       typeof data === "object" && data !== null && Array.isArray(data["policies"])
         ? data["policies"]
@@ -277,6 +283,12 @@ export class GovernanceClient extends TypedClientBase {
    */
   async listWormPolicies(): Promise<Record<string, unknown>[]> {
     const data = await this._get<Record<string, unknown>>("/v1/retention/worm");
+    // Live shape: `{worm_types: ["TypeA", ...], total}`; older shape `{policies: [...]}`.
+    if (typeof data === "object" && data !== null && Array.isArray(data["worm_types"])) {
+      return (data["worm_types"] as unknown[]).map((t) =>
+        typeof t === "string" ? { type_name: t } : (t as Record<string, unknown>),
+      );
+    }
     const policies =
       typeof data === "object" && data !== null && Array.isArray(data["policies"])
         ? data["policies"]
