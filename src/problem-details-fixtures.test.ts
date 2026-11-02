@@ -18,6 +18,7 @@ interface Case {
     retryable: boolean;
     request_id: string | null;
     retry_after_seconds: number | null;
+    message_contains?: string[];
   };
 }
 
@@ -73,5 +74,8 @@ for (const c of fixtures.cases) {
     assert.equal(err.retryable, c.expect.retryable);
     assert.equal(err.requestId ?? null, c.expect.request_id);
     assert.equal(err.retryAfterSeconds ?? null, c.expect.retry_after_seconds);
+    for (const needle of c.expect.message_contains ?? []) {
+      assert.ok(err.message.includes(needle), `${c.name}: ${needle} missing from ${err.message}`);
+    }
   });
 }
