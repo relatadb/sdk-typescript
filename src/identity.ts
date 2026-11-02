@@ -47,13 +47,16 @@ export class IdentityClient extends TypedClientBase {
   async recordUncertainty(
     identity: string,
     reason: string,
-    opts: { suggestedAlternatives?: string[] } = {},
+    opts: { suggestedAlternatives?: string[]; k?: number; candidates?: string[] } = {},
   ): Promise<Record<string, unknown>> {
+    // The server ranks `candidates` (`a|b` pairs, comma separated) and returns
+    // the top `k` most uncertain; `identity`/`reason` are sent for audit only.
     const path = `/v1/identity/uncertainty${qs({
       identity,
       reason,
-      // `suggested_alternatives` is an array — encode as comma-separated.
       suggested_alternatives: opts.suggestedAlternatives?.join(","),
+      candidates: opts.candidates?.join(","),
+      k: opts.k,
     })}`;
     return this._get(path);
   }
