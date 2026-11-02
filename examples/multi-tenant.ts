@@ -1,8 +1,8 @@
 /**
  * multi-tenant.ts — write as tenant A, verify tenant B cannot read the data.
  *
- * The server must be running with `RELATA_TENANCY_MODE=multi` and two
- * admin-issued bearer tokens for two different tenants.
+ * The server must be running with two admin-issued, tenant-scoped bearer
+ * tokens for two different tenants.
  *
  * Run:
  *   RELATA_TOKEN_A=<token-a> RELATA_TOKEN_B=<token-b> \

@@ -1223,7 +1223,7 @@ export class RelataClient {
   /**
    * Fetch the server deployment status.
    *
-   * Returns the deployment profile, cluster role, and per-principal query quota.
+   * Returns the deployment profile, node role, and per-principal query quota.
    *
    * @throws {AuthError} Server requires auth and token is invalid.
    * @throws {NetworkError} Server unreachable.
@@ -1448,8 +1448,7 @@ export class RelataClient {
   /**
    * Append a schema-governed event with an explicit idempotency key.
    * The server returns the original receipt on an exact retry and rejects a
-   * key reused with a different payload. Requires local persistent WAL and
-   * currently rejects cluster deployments.
+   * key reused with a different payload. Requires local persistent WAL.
    */
   async appendEvent(request: EventAppendRequest): Promise<EventAppendReceipt> {
     const wire = await this.#post<WireEventAppendReceipt>("/v1/ingest/events", { ...request });

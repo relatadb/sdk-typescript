@@ -73,7 +73,7 @@ export interface RelataClientOptions {
    * Base URL of the loopbound admin control-plane listener
    * (`RELATA_ADMIN_BIND`, default `127.0.0.1:9091`). Per ADR-0261,
    * `/admin/*` routes are mounted **only** there on a
-   * hardened server/cluster deployment — set this so
+   * hardened network-facing deployment — set this so
    * {@link BackupClient}'s admin methods
    * reach them (relatadb/RelataDB#2321). Leave unset (the default) when the
    * admin listener isn't split from the data plane (e.g. local/free-profile
@@ -183,7 +183,7 @@ export interface RelataClientOptions {
 export interface HealthResponse {
   /** Always `"ok"` when the server is healthy. */
   status: string;
-  /** Deployment profile: `"free"` | `"server"` | `"cluster"`. */
+  /** Deployment profile (`"free"` on the open edition). */
   profile: string;
   /** Node identifier set via `NODE_ID` env var. */
   nodeId: string;
@@ -193,9 +193,9 @@ export interface HealthResponse {
  * Response from `GET /v1/system/status`.
  */
 export interface StatusResponse {
-  /** Deployment profile: `"free"` | `"server"` | `"cluster"`. */
+  /** Deployment profile (`"free"` on the open edition). */
   profile: string;
-  /** Cluster role: `"coordinator"` | `"reader"` | `"writer"` | `"indexer"`. */
+  /** Node role (`"coordinator"` on the open edition). */
   role: string;
   /** Per-principal hard cap on query cost units (`RELATA_QUERY_QUOTA`). */
   queryQuota: number;
@@ -375,7 +375,7 @@ export interface IngestDocumentTaskStatus {
   retryable?: boolean;
   /** Fields added by newer server versions, preserved without interpretation. */
   extensions?: Record<string, unknown>;
-  /** Optional cluster write watermark after task completion. */
+  /** Optional write watermark after task completion. */
   writeToken?: { wallNs: number; counter: number };
 }
 
@@ -431,7 +431,7 @@ export interface VersionInfo {
   version: string;
   /** Git commit hash the binary was built from. */
   commit: string | undefined;
-  /** Deployment profile — `free` / `server` / `cluster`. */
+  /** Deployment profile (`free` on the open edition). */
   profile: string | undefined;
   /** Ontology / row-model schema version, useful for migration gating. */
   schemaVersion: string | undefined;
