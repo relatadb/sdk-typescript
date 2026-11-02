@@ -27,21 +27,17 @@ export class IdentityClient extends TypedClientBase {
   // -------------------------------------------------------------------------
 
   /**
-   * Assign a canonical label to an identity.
-   * Wraps `POST /v1/identity/label`.
+   * Record a human label on a candidate identity pair: `isMatch` says whether
+   * `left` and `right` refer to the same entity. The server takes one learning
+   * step on the caller's tenant resolver weights and persists the history.
+   * Wraps `POST /v1/identity/label` with `{left, right, is_match}`.
    */
   async label(
-    identity: string,
-    label: string,
-    opts: { confidence?: number; sourceId?: string } = {},
+    left: string,
+    right: string,
+    isMatch = true,
   ): Promise<Record<string, unknown>> {
-    const payload: Record<string, unknown> = {
-      identity,
-      label,
-      confidence: opts.confidence ?? 1.0,
-    };
-    if (opts.sourceId !== undefined) payload["source_id"] = opts.sourceId;
-    return this._post("/v1/identity/label", payload);
+    return this._post("/v1/identity/label", { left, right, is_match: isMatch });
   }
 
   /**

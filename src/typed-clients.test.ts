@@ -779,11 +779,11 @@ test("IdentityClient: label, registerLookup, eraseSubject", async () => {
   const { fetch, calls } = mockFetch(queue);
   const id = new IdentityClient({ baseUrl: "http://x", fetch });
 
-  await id.label("alice@x.com", "primary-email");
+  await id.label("alice@x.com", "alice@y.com", true);
   assert.deepEqual(JSON.parse(calls[0]?.body ?? "{}"), {
-    identity: "alice@x.com",
-    label: "primary-email",
-    confidence: 1.0,
+    left: "alice@x.com",
+    right: "alice@y.com",
+    is_match: true,
   });
 
   // The server accepts only a text/plain REGISTER LOOKUP statement naming a
