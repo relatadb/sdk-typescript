@@ -67,39 +67,46 @@ export class IdentityClient extends TypedClientBase {
   // -------------------------------------------------------------------------
 
   /**
-   * Register a lookup table (CSV). Matches Splunk's `lookup` semantics.
-   * Wraps `POST /v1/lookup/register`.
+   * Register a lookup table from a CSV file that already exists ON THE SERVER,
+   * under `<data dir>/lookups` (files elsewhere, or over 16 MiB, are refused).
+   * Wraps `POST /v1/lookup/register` with a `text/plain`
+   * `REGISTER LOOKUP <name> FROM '<path>' KEY (<col>) FIELDS (<cols>)`
+   * statement -- the only body the server accepts; it cannot receive CSV text.
+   * Returns `{registered, rows}`.
    */
   async registerLookup(
     name: string,
-    csvData: string,
+    serverPath: string,
     opts: {
       keyColumn: string;
       valueColumns?: string[];
     },
   ): Promise<Record<string, unknown>> {
-    const payload: Record<string, unknown> = {
-      name,
-      csv_data: csvData,
-      key_column: opts.keyColumn,
-    };
-    if (opts.valueColumns !== undefined) payload["value_columns"] = opts.valueColumns;
-    return this._post("/v1/lookup/register", payload);
+    const ident = /^[A-Za-z_][A-Za-z0-9_]*$/;
+    const cols = [opts.keyColumn, ...(opts.valueColumns ?? [])];
+    if (!ident.test(name) || !cols.every((c) => ident.test(c))) {
+      throw new TypeError("registerLookup: name and column names must be identifiers ([A-Za-z_][A-Za-z0-9_]*)");
+    }
+    if (serverPath === "" || /['\r\n]/.test(serverPath)) {
+      throw new TypeError("registerLookup: serverPath must be a non-empty path without quotes or newlines");
+    }
+    const fields = opts.valueColumns !== undefined && opts.valueColumns.length > 0
+      ? ` FIELDS (${opts.valueColumns.join(", ")})`
+      : "";
+    const statement = `REGISTER LOOKUP ${name} FROM '${serverPath}' KEY (${opts.keyColumn})${fields}`;
+    return this._sendRaw("POST", "/v1/lookup/register", statement, "text/plain");
   }
 
   /**
-   * List registered lookup tables.
-   * Wraps `GET /v1/lookup`.
+   * List registered lookup tables. Wraps `GET /v1/lookup`, whose body is
+   * `{"lookup_tables": ["name", ...]}`; each name is returned as `{ name }`.
    */
   async listLookups(): Promise<Record<string, unknown>[]> {
     const data = await this._get<Record<string, unknown>>("/v1/lookup");
-    const lookups =
-      typeof data === "object" && data !== null && Array.isArray(data["lookups"])
-        ? data["lookups"]
-        : Array.isArray(data)
-          ? data
-          : [];
-    return lookups as Record<string, unknown>[];
+    const names = typeof data === "object" && data !== null && Array.isArray(data["lookup_tables"])
+      ? (data["lookup_tables"] as unknown[])
+      : [];
+    return names.map((n) => ({ name: n }));
   }
 
   /**

@@ -786,12 +786,16 @@ test("IdentityClient: label, registerLookup, eraseSubject", async () => {
     confidence: 1.0,
   });
 
-  await id.registerLookup("lk1", "a,b,c", { keyColumn: "k" });
-  assert.deepEqual(JSON.parse(calls[1]?.body ?? "{}"), {
-    name: "lk1",
-    csv_data: "a,b,c",
-    key_column: "k",
-  });
+  // The server accepts only a text/plain REGISTER LOOKUP statement naming a
+  // server-local CSV under <data dir>/lookups (JSON csv_data is rejected).
+  await id.registerLookup("lk1", "/data/lookups/lk1.csv", { keyColumn: "k", valueColumns: ["a", "b"] });
+  assert.equal(
+    calls[1]?.body,
+    "REGISTER LOOKUP lk1 FROM '/data/lookups/lk1.csv' KEY (k) FIELDS (a, b)",
+  );
+  assert.equal(calls[1]?.headers["content-type"], "text/plain");
+  await assert.rejects(id.registerLookup("bad name", "/x.csv", { keyColumn: "k" }), /identifiers/);
+  await assert.rejects(id.registerLookup("lk", "/x'; DROP", { keyColumn: "k" }), /quotes/);
 
   const receipt = await id.eraseSubject("alice@x.com", "gdpr-art-17", {
     purpose: "compliance",
@@ -1162,4 +1166,10 @@ test("streaming HTTP error bodies obey the existing response cap", async () => {
       for await (const _ of iterator) assert.fail("HTTP failure cannot yield data");
     }, ResponseTooLargeError);
   }
+});
+
+test("IdentityClient.listLookups reads the server's lookup_tables names", async () => {
+  const { fetch } = mockFetch({ body: { lookup_tables: ["cmdb", "geo_ip"] } });
+  const id = new IdentityClient({ baseUrl: "http://x", fetch });
+  assert.deepEqual(await id.listLookups(), [{ name: "cmdb" }, { name: "geo_ip" }]);
 });
