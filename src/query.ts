@@ -313,11 +313,6 @@ export class QueryBuilder {
       parts.push(`AS OF '${escapeSqlString(this.#asOfTimestamp)}'`);
     }
 
-    // WITH PROVENANCE
-    if (this.#provenance) {
-      parts.push("WITH PROVENANCE");
-    }
-
     // WHERE
     if (this.#conditions.length > 0) {
       parts.push(`WHERE ${this.#conditions.join(" AND ")}`);
@@ -334,6 +329,12 @@ export class QueryBuilder {
     }
     if (this.#offsetValue !== undefined) {
       parts.push(`OFFSET ${this.#offsetValue}`);
+    }
+
+    // WITH PROVENANCE is a trailing clause: the server rejects it before
+    // WHERE / ORDER BY / LIMIT ("unexpected token ... after query end").
+    if (this.#provenance) {
+      parts.push("WITH PROVENANCE");
     }
 
     return parts.join(" ");
