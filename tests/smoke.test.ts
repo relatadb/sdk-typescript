@@ -21,12 +21,12 @@ const BASE = process.env.RELATA_HOST || "http://localhost:9090";
 const TOKEN = process.env.RELATA_TOKEN || "perftoken";
 
 test("RelataClient smoke: constructs without error", () => {
-  const client = new RelataClient(BASE, { bearerToken: TOKEN });
+  const client = new RelataClient({ baseUrl: BASE, bearerToken: TOKEN });
   assert.ok(client);
 });
 
 test("RelataClient smoke: health check returns 200", async (t) => {
-  const client = new RelataClient(BASE, { bearerToken: TOKEN });
+  const client = new RelataClient({ baseUrl: BASE, bearerToken: TOKEN });
   try {
     const result = await client.query("SELECT 1", { purpose: "analytics" });
     assert.ok(result);
@@ -36,7 +36,7 @@ test("RelataClient smoke: health check returns 200", async (t) => {
 });
 
 test("RelataClient smoke: ingest + query round-trip", async (t) => {
-  const client = new RelataClient(BASE, { bearerToken: TOKEN });
+  const client = new RelataClient({ baseUrl: BASE, bearerToken: TOKEN });
   try {
     await client.ingest("TSSmoke", [{ id: "ts-1", name: "from-typescript" }]);
     // Allow drain
