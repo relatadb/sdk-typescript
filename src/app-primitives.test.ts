@@ -45,3 +45,9 @@ test("listJobs builds the query string", async () => {
   assert.equal(calls[0]!.path, "/v1/queues/q/jobs");
   assert.equal(calls[0]!.search, "?state=dead&limit=5");
 });
+
+test("claim defaults leaseMs because the server requires it", async () => {
+  const calls: Call[] = [];
+  await make(calls, { jobs: [] }).claim("q", "w1");
+  assert.deepEqual(calls[0]!.body, { workerId: "w1", leaseMs: 30000 });
+});

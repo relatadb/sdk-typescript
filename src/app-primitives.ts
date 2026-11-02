@@ -67,7 +67,8 @@ export class AppPrimitivesClient extends TypedClientBase {
   ): Promise<Array<Record<string, unknown>>> {
     const resp = await this._post<{ jobs?: Array<Record<string, unknown>> }>(
       `/v1/queues/${encodeURIComponent(queue)}/claim`,
-      defined({ workerId, ...opts }),
+      // The server rejects a claim without `leaseMs`; default to 30s.
+      defined({ workerId, ...opts, leaseMs: opts.leaseMs ?? 30000 }),
     );
     return resp.jobs ?? [];
   }
