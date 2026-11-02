@@ -361,6 +361,7 @@ export class RelataClient {
       ...(Object.hasOwn(wire, "next_cursor") ? { nextCursor: wire.next_cursor ?? null } : {}),
       ...(typeof wire.graph_version === "string" ? { graphVersion: wire.graph_version } : {}),
       ...(typeof wire.truncated === "boolean" ? { truncated: wire.truncated } : {}),
+      ...(Array.isArray(wire.provenance) ? { provenance: wire.provenance } : {}),
       ...(typeof wire.partial === "boolean" ? { partial: wire.partial } : {}),
     };
   }
@@ -420,6 +421,7 @@ export class RelataClient {
       ...(Object.hasOwn(wire, "next_cursor") ? { nextCursor: wire.next_cursor ?? null } : {}),
       ...(typeof wire.graph_version === "string" ? { graphVersion: wire.graph_version } : {}),
       ...(typeof wire.truncated === "boolean" ? { truncated: wire.truncated } : {}),
+      ...(Array.isArray(wire.provenance) ? { provenance: wire.provenance } : {}),
       ...(typeof wire.partial === "boolean" ? { partial: wire.partial } : {}),
     };
   }

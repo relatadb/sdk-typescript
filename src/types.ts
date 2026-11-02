@@ -48,6 +48,8 @@ export interface QueryResult<T = Record<string, unknown>> {
   graphVersion?: string;
   /** Whether the server truncated the returned rows. */
   truncated?: boolean;
+  /** `WITH PROVENANCE` only: one PROV-O record (or null) per row, aligned with `rows`. */
+  provenance?: unknown[];
   /** Whether a fan-out query returned an HTTP 206 partial result. */
   partial?: boolean;
 }
@@ -493,6 +495,7 @@ export interface WireQueryResponse {
   /** Server-side processing time in ms (#1252). Falls back to elapsed_ms. */
   processing_time_ms?: number;
   next_cursor?: string | null;
+  provenance?: unknown[];
   graph_version?: string;
   truncated?: boolean;
   partial?: boolean;
