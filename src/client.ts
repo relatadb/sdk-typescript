@@ -1467,9 +1467,38 @@ export class RelataClient {
   // Public API — ingest + memory verbs (#751)
   // -------------------------------------------------------------------------
 
-  /** Ingest an array of objects into Relata (`POST /v1/ingest`). */
-  async ingest(objects: object[]): Promise<IngestResponse> {
-    return this.#post<IngestResponse>("/v1/ingest", { objects });
+  /**
+   * Ingest an array of objects into Relata (`POST /v1/ingest?object_type=<T>`).
+   *
+   * The server requires the target type as the `object_type` query parameter.
+   * Pass `opts.objectType`, or omit it when every object carries the same
+   * non-empty `_type` (which is then used). Mixed or missing types throw a
+   * client-side error naming the problem instead of a bare server 400; use
+   * `ingestDocument` for mixed-type batches. The write is queued: the receipt
+   * carries `task_id`, `rows_queued` and `rows_rejected`, not a stored-row count.
+   */
+  async ingest(
+    objects: object[],
+    opts: { objectType?: string; purpose?: string } = {},
+  ): Promise<IngestResponse> {
+    let objectType = opts.objectType;
+    if (objectType === undefined) {
+      const types = new Set(
+        objects.map((o) => (o as Record<string, unknown>)["_type"]),
+      );
+      const only = types.size === 1 ? [...types][0] : undefined;
+      if (typeof only !== "string" || only === "") {
+        throw new Error(
+          "ingest: pass opts.objectType, or give every object the same non-empty _type " +
+            "(use ingestDocument for mixed-type batches)",
+        );
+      }
+      objectType = only;
+    }
+    const params = new URLSearchParams({ object_type: objectType });
+    const purpose = opts.purpose ?? this.#defaultPurpose;
+    if (purpose !== undefined) params.set("purpose", purpose);
+    return this.#post<IngestResponse>(`/v1/ingest?${params}`, { objects });
   }
 
   /**

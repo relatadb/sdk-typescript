@@ -613,7 +613,14 @@ export interface SearchOptions {
 
 /** Response from `POST /v1/ingest`. */
 export interface IngestResponse {
-  rows_written: number;
+  /** Queue receipt: rows accepted for the background writer. */
+  rows_queued: number;
+  rows_rejected: number;
+  /** Poll `GET /v1/ingest/tasks/{task_id}` for the confirmed outcome. */
+  task_id: string;
+  durability?: string;
+  errors?: unknown[];
+  [extra: string]: unknown;
 }
 
 // ---------------------------------------------------------------------------
