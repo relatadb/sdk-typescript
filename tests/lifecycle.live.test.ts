@@ -22,8 +22,8 @@ function statusOf(err: unknown): number {
 }
 
 test("lifecycle live run", { skip: !DATA || !ADMIN }, async () => {
-  const data = new RelataClient(BASE, { bearerToken: DATA });
-  const admin = new RelataClient(BASE, { bearerToken: ADMIN });
+  const data = new RelataClient({ baseUrl: BASE, bearerToken: DATA });
+  const admin = new RelataClient({ baseUrl: BASE, bearerToken: ADMIN });
   const name = `TsLife${Date.now()}`;
 
   await admin.registerType(name, { description: "ts lifecycle run" });
@@ -63,5 +63,11 @@ test("lifecycle live run", { skip: !DATA || !ADMIN }, async () => {
   assert.equal(life["schema_version"], v1);
 
   await admin.deregisterType(name);
-  await assert.rejects(data.typeLifecycle(name), (e) => statusOf(e) === 404);
+  // The journal outlives the dataset: exists=false with the drop journaled.
+  const after = await data.typeLifecycle(name);
+  assert.equal(after["exists"], false);
+  const first = (after["operations"] as Array<Record<string, unknown>>)[0]!;
+  assert.deepEqual([first["operation"], first["outcome"]], ["deregister", "applied"]);
+  await assert.rejects(data.typeDetail(name), (e) => statusOf(e) === 404);
+  await assert.rejects(data.typeLifecycle(`${name}NeverExisted`), (e) => statusOf(e) === 404);
 });
