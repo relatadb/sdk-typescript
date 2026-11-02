@@ -183,7 +183,7 @@ export interface RelataClientOptions {
 export interface HealthResponse {
   /** Always `"ok"` when the server is healthy. */
   status: string;
-  /** Deployment profile: `"free"` | `"server"` | `"cluster"`. */
+  /** Deployment profile. Always `"free"`; `server` and `cluster` are retired (#5809). */
   profile: string;
   /** Node identifier set via `NODE_ID` env var. */
   nodeId: string;
@@ -193,7 +193,7 @@ export interface HealthResponse {
  * Response from `GET /v1/system/status`.
  */
 export interface StatusResponse {
-  /** Deployment profile: `"free"` | `"server"` | `"cluster"`. */
+  /** Deployment profile. Always `"free"`; `server` and `cluster` are retired (#5809). */
   profile: string;
   /** Cluster role: `"coordinator"` | `"reader"` | `"writer"` | `"indexer"`. */
   role: string;
@@ -431,7 +431,7 @@ export interface VersionInfo {
   version: string;
   /** Git commit hash the binary was built from. */
   commit: string | undefined;
-  /** Deployment profile — `free` / `server` / `cluster`. */
+  /** Deployment profile. Always `free`; `server` and `cluster` are retired (#5809). */
   profile: string | undefined;
   /** Ontology / row-model schema version, useful for migration gating. */
   schemaVersion: string | undefined;
