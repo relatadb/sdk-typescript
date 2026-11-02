@@ -751,7 +751,9 @@ export class RelataClient {
     toType: string,
     label: string,
   ): Promise<Record<string, unknown>> {
-    return this.#post("/v1/types/edges", { from_type: fromType, to_type: toType, label });
+    // The server stores the edge label under `relation` (an unknown `label` key is
+    // dropped, so the edge is listed with relation ""); `label` is kept for older servers.
+    return this.#post("/v1/types/edges", { from_type: fromType, to_type: toType, relation: label, label });
   }
 
   /** SHACL schema migration — type specs, link types, property constraints. */
