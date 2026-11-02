@@ -512,10 +512,21 @@ export interface SearchHit {
   fields: Record<string, unknown>;
   /** BM25 relevance score. */
   score: number;
-  /** Field-level snippets with `<em>` highlights (present when `highlight: true`). */
+  /** Legacy field-level snippets with `<em>` highlights (dict-shaped servers only; `{}` otherwise). */
   highlights: Record<string, string>;
+  /** Matched `{start, end, term}` spans (present when `highlight: true`; `[]` otherwise). */
+  highlightSpans: SearchHighlightSpan[];
+  /** Highlighted snippet with `<mark>` tags (present when `highlight: true`). */
+  snippet?: string;
   /** Ontology definition version the row was written under; absent when the type has no published definition (#5711). */
   definition?: SearchHitDefinition;
+}
+
+/** One matched span of a search hit (`highlights` array member on the wire). */
+export interface SearchHighlightSpan {
+  start: number;
+  end: number;
+  term: string;
 }
 
 /** `definition` on a search hit: the row's `_def` stamp, the version in force, and whether the row predates a migration (#5711). */
@@ -665,7 +676,8 @@ export interface WireSearchResponse {
     /** @deprecated the server does not currently send this. */
     object_type?: string;
     score: number;
-    highlights?: Record<string, string>;
+    highlights?: Record<string, string> | SearchHighlightSpan[];
+    snippet?: string;
     definition?: SearchHitDefinition;
   }>;
   total?: number;

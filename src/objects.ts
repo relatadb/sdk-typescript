@@ -303,7 +303,8 @@ export class ObjectClient extends TypedClientBase {
     objectId: string,
     opts: { expectedVersion?: number } = {},
   ): Promise<Record<string, unknown>> {
-    const path = objectPath(objectType, objectId);
+    // Python and Go send the client's purpose on the conditional-delete door; so does this (#5666).
+    const path = `${objectPath(objectType, objectId)}${qs({ purpose: this.#purpose })}`;
     return this._delete<Record<string, unknown>>(
       path,
       opts.expectedVersion === undefined ? undefined : preconditionHeaders(opts.expectedVersion),
