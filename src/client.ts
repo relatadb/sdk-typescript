@@ -1474,7 +1474,9 @@ export class RelataClient {
    * Pass `opts.objectType`, or omit it when every object carries the same
    * non-empty `_type` (which is then used). Mixed or missing types throw a
    * client-side error naming the problem instead of a bare server 400; use
-   * `ingestDocument` for mixed-type batches. The write is queued: the receipt
+   * `ingestDocument` for mixed-type batches. The body is a bare JSON array: the
+   * server stores a `{"objects": [...]}` envelope as ONE junk row with a single
+   * `objects` text column and answers 200. The write is queued: the receipt
    * carries `task_id`, `rows_queued` and `rows_rejected`, not a stored-row count.
    */
   async ingest(
@@ -1498,7 +1500,9 @@ export class RelataClient {
     const params = new URLSearchParams({ object_type: objectType });
     const purpose = opts.purpose ?? this.#defaultPurpose;
     if (purpose !== undefined) params.set("purpose", purpose);
-    return this.#post<IngestResponse>(`/v1/ingest?${params}`, { objects });
+    return this.#send<IngestResponse>(
+      "POST", `/v1/ingest?${params}`, { objects }, undefined, undefined, JSON.stringify(objects),
+    );
   }
 
   /**
@@ -1547,7 +1551,9 @@ export class RelataClient {
   /** Send a batch of objects to the ingest endpoint. */
   async #ingestBatch(objectType: string, purpose: string, batch: object[]): Promise<void> {
     const params = new URLSearchParams({ object_type: objectType, purpose });
-    await this.#post(`/v1/ingest?${params}`, { objects: batch });
+    await this.#send(
+      "POST", `/v1/ingest?${params}`, { objects: batch }, undefined, undefined, JSON.stringify(batch),
+    );
   }
 
   /** Store a memory item (`POST /v1/memory/remember`). */
