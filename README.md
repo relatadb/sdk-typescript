@@ -561,7 +561,7 @@ console.log(`Received ${totalBytes} Arrow IPC bytes`);
 `IngestClient.mediaStatus()` and `McpClient.ingestMedia()`; poll OpenETL work
 items with `MediaWorkClient.get()`.
 
-### Governed Files client — v3.0 candidate, SDK 2.7.1
+### Governed Files client — v3.0 candidate, SDK 3.0.0
 
 For the v3.0 candidate (engine source `57e11676c`), version-aligned SDK source
 `8924d6ce8` (TypeScript test-only fixture correction `5212045`) builds cleanly
