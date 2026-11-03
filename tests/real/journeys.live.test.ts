@@ -52,7 +52,7 @@ describe("journeys", { skip }, () => {
     const a2 = await c.submitAlert(alertReq);
     assert.equal(a1.alertId, a2.alertId, "idempotent retry returns the same incident");
     const gov = sdk.GovernanceClient.fromClient(c);
-    const listed = await until(async () => { const l = await gov.listAlerts({ limit: 100 }); return JSON.stringify(l).includes(a1.alertId) ? l : null; }, 15000);
+    const listed = await until(async () => { const l = await gov.listAlerts({ limit: 100, newestFirst: true }); return JSON.stringify(l).includes(a1.alertId) ? l : null; }, 15000);
     assert.ok(listed, "the incident is listable");
     // triage: analyst assigns it
     const upd = await gov.updateAlert(a1.alertId, { status: "acknowledged", assignee: "analyst-1", note: "looks like staging" });

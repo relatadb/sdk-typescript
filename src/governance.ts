@@ -39,6 +39,27 @@ export interface GovernanceClientCtor extends TypedClientCtor {
   purpose?: string;
 }
 
+/** Options for {@link GovernanceClient.listAlerts} / {@link GovernanceClient.listAlertsPage}. */
+export interface ListAlertsOptions {
+  severity?: string;
+  sinceNs?: number;
+  /** Page size (server maximum 1000). Defaults to 100. */
+  limit?: number;
+  /** Continue from a previous page's `nextCursor`. */
+  cursor?: string;
+  /** List the newest alerts first (server default is oldest-first). */
+  newestFirst?: boolean;
+}
+
+/** One page of alerts. */
+export interface AlertsPage {
+  items: Record<string, unknown>[];
+  /** All matching alerts before pagination. */
+  total: number;
+  /** Undefined on the last page. */
+  nextCursor?: string | undefined;
+}
+
 /**
  * Governance surface — rules / retention / alerts / DSAR.
  * Construct via `GovernanceClient.fromClient(relata)` to inherit the parent
@@ -318,29 +339,31 @@ export class GovernanceClient extends TypedClientBase {
   // -------------------------------------------------------------------------
 
   /**
-   * List alerts, optionally filtered by severity / since-cursor.
-   * Wraps `GET /v1/alerts`.
+   * List one page of alerts, optionally filtered by severity / since-cursor.
+   * Wraps `GET /v1/alerts`. The server returns oldest-first by default and caps
+   * a page at `limit` (max 1000): pass `newestFirst: true` for the newest
+   * alerts, or `cursor` (a page's `nextCursor`) to continue. Use
+   * {@link listAlertsPage} to receive `nextCursor` and `total`.
    */
-  async listAlerts(
-    opts: {
-      severity?: string;
-      sinceNs?: number;
-      limit?: number;
-    } = {},
-  ): Promise<Record<string, unknown>[]> {
+  async listAlerts(opts: ListAlertsOptions = {}): Promise<Record<string, unknown>[]> {
+    return (await this.listAlertsPage(opts)).items;
+  }
+
+  /** One page of alerts as `{ items, total, nextCursor }` (`nextCursor` is undefined on the last page). */
+  async listAlertsPage(opts: ListAlertsOptions = {}): Promise<AlertsPage> {
     const path = `/v1/alerts${qs({
       severity: opts.severity,
       since_ns: opts.sinceNs,
       limit: opts.limit ?? 100,
+      cursor: opts.cursor,
+      order: opts.newestFirst ? "desc" : undefined,
     })}`;
     const data = await this._get<Record<string, unknown>>(path);
-    const alerts =
-      typeof data === "object" && data !== null && Array.isArray(data["alerts"])
-        ? data["alerts"]
-        : Array.isArray(data)
-          ? data
-          : [];
-    return alerts as Record<string, unknown>[];
+    const obj: Record<string, unknown> = typeof data === "object" && data !== null && !Array.isArray(data) ? data : {};
+    const raw = Array.isArray(obj["items"]) ? obj["items"] : Array.isArray(obj["alerts"]) ? obj["alerts"] : Array.isArray(data) ? data : [];
+    const items = raw as Record<string, unknown>[];
+    const nextCursor = typeof obj["nextCursor"] === "string" && obj["nextCursor"] !== "" ? obj["nextCursor"] : undefined;
+    return { items, total: typeof obj["total"] === "number" ? obj["total"] : items.length, nextCursor };
   }
 
   /**

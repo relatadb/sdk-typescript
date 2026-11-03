@@ -152,6 +152,7 @@ export type { MemoryOptions } from "./memory.ts";
 // ---------------------------------------------------------------------------
 
 export { GovernanceClient } from "./governance.ts";
+export type { AlertsPage, ListAlertsOptions } from "./governance.ts";
 
 export { McpClient } from "./mcp.ts";
 export { unwrapMcp } from "./mcp.ts";
