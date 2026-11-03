@@ -271,8 +271,9 @@ export class TypedClientBase {
   protected async _delete<T = Record<string, unknown>>(
     path: string,
     extraHeaders?: Record<string, string>,
+    body?: Record<string, unknown>,
   ): Promise<T> {
-    return this.#send<T>("DELETE", path, undefined, extraHeaders);
+    return this.#send<T>("DELETE", path, body, extraHeaders);
   }
 
   /** @internal Binary Files responses use the same capped, authenticated dispatcher. */

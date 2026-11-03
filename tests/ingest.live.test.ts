@@ -13,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { RelataClient, IngestClient, IngestControlClient } from "../src/index.ts";
+import { RelataClient, IngestClient, IngestControlClient, ObjectClient } from "../src/index.ts";
 
 const BASE = process.env.RELATA_HOST || "http://localhost:9090";
 const DATA = process.env.RELATA_TOKEN;
@@ -28,6 +28,7 @@ test("ingestion contract live run", { skip: !DATA }, async () => {
   const client = new RelataClient({ baseUrl: BASE, bearerToken: DATA, defaultPurpose: "investigation" });
   const ingest = IngestClient.fromClient(client);
   const control = IngestControlClient.fromClient(client);
+  const objects = ObjectClient.fromClient(client);
   const run = String(Date.now());
   const rows = async (sql: string): Promise<Array<Record<string, unknown>>> =>
     (await client.query(sql, { purpose: "investigation" })).rows as Array<Record<string, unknown>>;
@@ -122,6 +123,43 @@ test("ingestion contract live run", { skip: !DATA }, async () => {
   assert.equal(items.length, 1);
   assert.equal(items[0]["source_offset"], "seg:1");
   assert.equal(items[0]["reason"], "above_max:temp");
+
+  // 7b. schema evolution: additive version accepted, breaking version refused,
+  // a later batch with a new field is accepted (schemaless type)
+  const evolved = await control.putContract(dataset, {
+    version: 2,
+    object_type: cty,
+    fields: [
+      { name: "id", type: "string", required: true },
+      { name: "temp", type: "number", min: -50, max: 150, required: true },
+      { name: "unit", type: "string" },
+    ],
+  });
+  assert.equal(evolved["status"], "created", "an additive optional field is backward compatible");
+  await assert.rejects(
+    control.putContract(dataset, {
+      version: 3,
+      object_type: cty,
+      fields: [
+        { name: "id", type: "string", required: true },
+        { name: "temp", type: "string", required: true },
+      ],
+    }),
+    (e) => statusOf(e) === 409,
+  );
+  const evo = await ingest.bulk(ty, [{ _pk: "evo", qty: 1, added_later: "new-field" }], { onConflict: "upsert", durability: "sync" });
+  const gotEvo = await rows(`SELECT _pk, added_later FROM ${ty} WHERE _pk = 'evo'`);
+  assert.equal(evo["inserted"], 1);
+  assert.equal(gotEvo[0]?.["added_later"], "new-field");
+
+  // 7c. delete by predicate (parity with Python delete_where / Go DeleteWhere)
+  await assert.rejects(objects.deleteWhere(ty, "  "), TypeError);
+  const gone = await objects.deleteWhere(ty, "qty >= 30");
+  const left = (await rows(`SELECT _pk FROM ${ty}`)).map((r) => String(r["_pk"])).sort();
+  assert.equal(gone["deleted"], 1);
+  assert.deepEqual(left, ["a", "evo"]);
+  await objects.delete(ty, "a");
+  assert.deepEqual((await rows(`SELECT _pk FROM ${ty}`)).map((r) => String(r["_pk"])), ["evo"]);
 
   // 8. prepared documents, two independent providers, read back in order
   const fixture = JSON.parse(readFileSync(new URL("document-ingest-preservation.json", FIXTURES), "utf8"));

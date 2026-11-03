@@ -312,6 +312,27 @@ export class ObjectClient extends TypedClientBase {
   }
 
   /**
+   * Tombstone every live row of `objectType` matching `where`.
+   * Wraps `DELETE /v1/objects/{type}` with `{ "where": ... }`.
+   *
+   * `where` is a SQL WHERE expression such as `"status = 'stale'"`, not a
+   * statement. A blank `where` is refused before any request is sent, so this
+   * method cannot delete every row of a type by accident.
+   *
+   * @returns The server receipt, e.g. `{ deleted: 3, type: "Doc" }`.
+   */
+  async deleteWhere(objectType: string, where: string): Promise<Record<string, unknown>> {
+    if (typeof where !== "string" || where.trim() === "") {
+      throw new TypeError("where must be a non-empty SQL WHERE expression");
+    }
+    return this._delete<Record<string, unknown>>(
+      `/v1/objects/${encodeURIComponent(objectType)}`,
+      undefined,
+      { where },
+    );
+  }
+
+  /**
    * Atomically apply 1..64 create/update/delete operations
    * (`POST /v1/commit`, #5767). All of them become durable and visible, or none
    * do; every `expectedVersion` is checked before anything is written. A
