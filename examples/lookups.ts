@@ -6,12 +6,13 @@
  * into a human-readable label without denormalising it into every row.
  *
  * Flow:
- *   1. `registerLookup`  — upload name + CSV (keyColumn + valueColumns)
+ *   1. `registerLookup`  — register a CSV that already exists ON THE SERVER under
+ *                         `<data dir>/lookups` (keyColumn + valueColumns)
  *   2. `listLookups`     — confirm it landed
- *   3. `invokeLookup`    — read back one value by key
+ *   3. `invokeLookup`    — read back one row by key (`GET /v1/lookup/{name}/{key}`)
  *
  * Run:
- *   RELATA_TOKEN=secret node --experimental-strip-types examples/lookups.ts
+ *   RELATA_LOOKUP_PATH=/var/lib/relata/lookups/country_alpha3.csv RELATA_TOKEN=secret node --experimental-strip-types examples/lookups.ts
  */
 
 import { createClient, IdentityClient } from "../src/index.ts";
@@ -21,18 +22,14 @@ const { url, token } = loadEnv();
 const relata = createClient(url, { bearerToken: token, defaultPurpose: "analytics" });
 const identity = IdentityClient.fromClient(relata);
 
-const COUNTRY_CSV = `alpha2,alpha3,name
-PK,PAK,Pakistan
-IN,IND,India
-AE,ARE,United Arab Emirates
-SA,SAU,Saudi Arabia
-`;
+// The CSV must already exist on the server, under <data dir>/lookups.
+const LOOKUP_PATH = process.env["RELATA_LOOKUP_PATH"] ?? "/var/lib/relata/lookups/country_alpha3.csv";
 
-interface LookupMeta { name?: string; size?: number; entries?: number }
+interface LookupMeta { name?: string }
 
 async function main(): Promise<void> {
   banner("1. registerLookup: country_alpha3");
-  const registered = await identity.registerLookup("country_alpha3", COUNTRY_CSV, {
+  const registered = await identity.registerLookup("country_alpha3", LOOKUP_PATH, {
     keyColumn: "alpha2",
     valueColumns: ["alpha3", "name"],
   });
@@ -42,7 +39,7 @@ async function main(): Promise<void> {
   const lookups = (await identity.listLookups()) as LookupMeta[];
   out(`${lookups.length} lookup(s) registered:`);
   for (const l of lookups.slice(0, 10)) {
-    out(`  - ${l.name} (size=${l.size ?? l.entries ?? "?"})`);
+    out(`  - ${l.name}`);
   }
 
   step("3. invokeLookup: country_alpha3['PK']");

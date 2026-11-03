@@ -59,6 +59,26 @@ describe("typed-client sweep", { skip }, () => {
     await gp.removeRuleException(id, eid);
     await g.disableRule(id);
     await g.listAlerts({ limit: 5 });
+    // cursor pagination + newest-first over alerts submitted for this run
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const r = await c.submitAlert({ idempotency_key: `pg-${u}-${i}`, purpose: "investigation", alert_type: "paging", severity: "low", matched_type: T, matched_key: "id", matched_row_id: "t1", context: { i } });
+      ids.push(r.alertId);
+      await sleep(10);
+    }
+    for (const newestFirst of [false, true]) {
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      for (let pages = 0; pages < 500; pages++) {
+        const page = await g.listAlertsPage({ limit: 2, cursor, newestFirst });
+        assert.ok(page.items.length <= 2);
+        seen.push(...page.items.map((a) => String(a["alert_id"])).filter((x) => ids.includes(x)));
+        cursor = page.nextCursor;
+        if (cursor === undefined) break;
+      }
+      assert.deepEqual(seen, newestFirst ? [...ids].reverse() : ids, `newestFirst=${newestFirst}`);
+    }
+    assert.equal((await g.listAlerts({ limit: 1, newestFirst: true }))[0]!["alert_id"], ids[ids.length - 1]);
     await expectHttp(g.updateAlert("no-such-alert", { status: "closed" }), [400, 404]);
     const dsar = await g.submitDsar("t1", "subject access", { scope: "all" });
     assert.ok(dsar);
@@ -83,10 +103,11 @@ describe("typed-client sweep", { skip }, () => {
     const reg = await id.registerLookup(name, file, { keyColumn: "k", valueColumns: ["val"] });
     assert.deepEqual([reg["registered"], reg["rows"]], [name, 2]);
     assert.ok((await id.listLookups()).some((x) => x["name"] === name), "lookup is listed");
-    // DEFECT (reported): the server has no key-lookup route -- tables are consumed by the in-process enrichment
-    // registry only. GET /v1/lookup ignores name/key and returns the registered-table listing.
+    // GET /v1/lookup/{name}/{key} returns the enrichment row of a registered table.
     const hit = await id.invokeLookup(name, "alpha");
-    assert.ok((hit["lookup_tables"] as string[]).includes(name), `invokeLookup reaches GET /v1/lookup: ${JSON.stringify(hit)}`);
+    assert.deepEqual(hit["row"], { val: "1" }, `invokeLookup row: ${JSON.stringify(hit)}`);
+    await expectHttp(id.invokeLookup(name, "no-such-key"), 404);
+    await expectHttp(id.invokeLookup(`${name}_missing`, "alpha"), 404);
     await expectHttp(id.registerLookup(`${name}x`, "/etc/hosts", { keyColumn: "k" }), [403]);
     assert.ok(await id.label("bob@example.com", "robert@example.com", true));
     assert.ok(await id.recordUncertainty("bob@example.com", "two candidates", { suggestedAlternatives: ["robert@example.com"] }));

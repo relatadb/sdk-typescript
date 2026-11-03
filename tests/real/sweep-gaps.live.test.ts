@@ -54,11 +54,16 @@ describe("gap sweep", { skip }, () => {
     assert.match(bare.toSQL(), /PATHS_BETWEEN/i);
     const r = await until(async () => { const x = await bare.execute(); return x.rows.length ? x : null; }, 20000);
     assert.ok(r.rows.some((h) => h["node_id"] === "B"), `A->B->C path found: ${JSON.stringify(r.rows).slice(0, 200)}`);
-    // SERVER LIMITATION (reported, not an SDK bug): PATHS_BETWEEN accepts no LIMIT / AS OF / WITH PROVENANCE
-    // clause, so the builder modifiers that emit them are refused with a 400 parse problem.
-    for (const mod of [(b: ReturnType<typeof bare.limit>) => b.limit(5), (b: typeof bare) => b.withProvenance(), (b: typeof bare) => b.asOf("2030-01-01T00:00:00Z")]) {
-      await expectHttp(mod(c.select(T).pathsBetween("A", "C", { maxHops: 3 }).purpose("investigation")).execute(), 400);
-    }
+    // PATHS_BETWEEN accepts the same trailing LIMIT / WITH PROVENANCE / AS OF modifiers as SELECT.
+    const mk = () => c.select(T).pathsBetween("A", "C", { maxHops: 3 }).purpose("investigation");
+    const limited = await mk().limit(2).execute();
+    assert.equal(limited.rows.length, 2, "LIMIT bounds the hop rows");
+    const prov = await mk().withProvenance().execute();
+    assert.equal(prov.rows.length, r.rows.length, "WITH PROVENANCE keeps the hop rows");
+    const past = await mk().asOf("1990-01-01T00:00:00Z").execute();
+    assert.equal(past.rows.length, 0, "no path existed before the links were created");
+    const now = await mk().asOf("2099-01-01T00:00:00Z").execute();
+    assert.ok(now.rows.length >= 3, "the path exists AS OF a future instant");
   });
 
   test("IR builders are local documents with no server counterpart (build output asserted)", () => {

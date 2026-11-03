@@ -1173,3 +1173,25 @@ test("IdentityClient.listLookups reads the server's lookup_tables names", async 
   const id = new IdentityClient({ baseUrl: "http://x", fetch });
   assert.deepEqual(await id.listLookups(), [{ name: "cmdb" }, { name: "geo_ip" }]);
 });
+
+test("IdentityClient.invokeLookup wraps GET /v1/lookup/{name}/{key} with encoded segments", async () => {
+  const { fetch, calls } = mockFetch({ body: { name: "cmdb", key: "a/b", row: { owner: "x" } } });
+  const id = new IdentityClient({ baseUrl: "http://x", fetch });
+  const out = await id.invokeLookup("cmdb", "a/b");
+  assert.equal(calls[0]!.url, "http://x/v1/lookup/cmdb/a%2Fb");
+  assert.deepEqual(out["row"], { owner: "x" });
+});
+
+test("GovernanceClient.listAlertsPage sends cursor + order=desc and surfaces nextCursor/total", async () => {
+  const { fetch, calls } = mockFetch({ body: { items: [{ alert_id: "a2" }], alerts: [{ alert_id: "a2" }], total: 7, nextCursor: "abcd" } });
+  const gov = new GovernanceClient({ baseUrl: "http://x", fetch });
+  const page = await gov.listAlertsPage({ limit: 1, cursor: "c0", newestFirst: true, sinceNs: 5 });
+  const url = new URL(calls[0]!.url);
+  assert.equal(url.searchParams.get("cursor"), "c0");
+  assert.equal(url.searchParams.get("order"), "desc");
+  assert.equal(url.searchParams.get("since_ns"), "5");
+  assert.equal(url.searchParams.get("limit"), "1");
+  assert.deepEqual(page, { items: [{ alert_id: "a2" }], total: 7, nextCursor: "abcd" });
+  const { fetch: f2 } = mockFetch({ body: { items: [], total: 0 } });
+  assert.equal((await new GovernanceClient({ baseUrl: "http://x", fetch: f2 }).listAlertsPage()).nextCursor, undefined);
+});

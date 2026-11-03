@@ -7,7 +7,7 @@
  * it as a SQL statement, not a dedicated HTTP route.
  */
 
-import { RelataClient } from "./client.ts";
+import { RelataClient, pathSegment } from "./client.ts";
 import { escapeSqlString } from "./_sql.ts";
 import { type TypedClientCtor, TypedClientBase, qs } from "./_typed-http.ts";
 
@@ -109,17 +109,15 @@ export class IdentityClient extends TypedClientBase {
   }
 
   /**
-   * Wraps `GET /v1/lookup?name=...&key=...`. NOTE: the server has no key-lookup
-   * route (lookup tables are consumed by ingest-time enrichment only), so the
-   * response is the registered-table listing `{lookup_tables: [...]}` and
-   * `name`/`key` are ignored.
+   * Fetch the enrichment row for `key` in lookup table `name`. Wraps
+   * `GET /v1/lookup/{name}/{key}`; resolves `{ name, key, row }` and rejects
+   * with a not-found error when the table or key is absent.
    */
   async invokeLookup(
     name: string,
     key: string,
   ): Promise<Record<string, unknown>> {
-    const path = `/v1/lookup${qs({ name, key })}`;
-    return this._get(path);
+    return this._get(`/v1/lookup/${pathSegment(name)}/${pathSegment(key)}`);
   }
 
   // -------------------------------------------------------------------------
