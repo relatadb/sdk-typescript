@@ -109,8 +109,10 @@ export class IdentityClient extends TypedClientBase {
   }
 
   /**
-   * Invoke a registered lookup. Wraps `GET /v1/lookup?name=...&key=...`.
-   * Returns the row(s) matching `key`.
+   * Wraps `GET /v1/lookup?name=...&key=...`. NOTE: the server has no key-lookup
+   * route (lookup tables are consumed by ingest-time enrichment only), so the
+   * response is the registered-table listing `{lookup_tables: [...]}` and
+   * `name`/`key` are ignored.
    */
   async invokeLookup(
     name: string,
