@@ -327,3 +327,15 @@ test("ObjectClient.followChanges: gives up after maxReconnects and does not retr
   });
   assert.equal(gone.n, 1, "a 410 resync is the caller's decision");
 });
+
+test("ObjectClient.deleteWhere: DELETE /v1/objects/{type} with a where body; blank is refused", async () => {
+  const { client, calls } = capturingClient(200, { deleted: 3, type: "Doc" });
+  const out = await client.deleteWhere("Doc", "status = 'stale'");
+  assert.equal(out["deleted"], 3);
+  assert.equal(calls[0]!.init.method, "DELETE");
+  assert.ok(calls[0]!.url.endsWith("/v1/objects/Doc"), calls[0]!.url);
+  assert.deepEqual(JSON.parse(calls[0]!.init.body as string), { where: "status = 'stale'" });
+  const blank = capturingClient(200, {});
+  await assert.rejects(() => blank.client.deleteWhere("Doc", "  "), TypeError);
+  assert.equal(blank.calls.length, 0);
+});
