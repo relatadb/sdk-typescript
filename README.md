@@ -25,7 +25,8 @@ The v3 SDK accepts prepared detection rules through `GovernanceClient.createRule
 or MCP `createRule`. Raw Sigma YAML parsing/import is no longer an SDK or MCP
 server method. Convert YAML in OpenETL (the former `relata-connectors import-sigma`
 was removed), or convert externally and submit the prepared
-`name`, `condition_sql`, and `target_type` JSON fields through `/v1/rules`.
+`name`, `condition_sql`, and `target_type` JSON fields through `/v1/rules`
+(`POST /v1/rules/sigma` answers `410 sigma-import-removed`; see the [Sigma target contract](../../docs/src/openetl-handoff/sigma-target-contract.md)).
 
 TypeScript is **async-native**, so every SDK method returns a `Promise`. There are no
 separate `Async*` classes — that is the idiomatic parity with the Python SDK's sync/async
