@@ -108,7 +108,7 @@ for (const c of fixtures.cases) {
         const kind = KINDS[c.expect.error ?? ""];
         assert.ok(kind !== undefined && error instanceof kind, `expected ${c.expect.error}, got ${String(error)}`);
         if (c.expect.error !== "connection") {
-          const typed = error as { statusCode: number; retryAfterSeconds: number | undefined };
+          const typed = error as unknown as { statusCode: number; retryAfterSeconds: number | undefined };
           assert.equal(typed.statusCode, c.expect.status);
           const want = c.expect.retry_after_seconds;
           assert.equal(typed.retryAfterSeconds, want === null ? undefined : want);
