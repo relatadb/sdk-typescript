@@ -44,6 +44,17 @@ workspace `Cargo.toml`'s `[workspace.package].version`, mirrored into
 
 ### Added
 
+- Version pairing (#6039): SDK 3.0.x targets a 3.0.x server's `/v1` routes;
+  2.x SDKs get 404 against 3.0. See the
+  [version pairing table](../README-v3-migration.md#server-and-sdk-version-pairing).
+  The 3.0 application-builder routes are reachable through
+  `ObjectClient.upsert(type, id, fields, {expectedVersion | ifAbsent})`
+  (`PUT /v1/objects/{type}/{id}` with `If-Match` / `If-None-Match: *`),
+  `ObjectClient.delete(type, id, {expectedVersion})`, `ObjectClient.commit`
+  (`POST /v1/commit`), `ObjectClient.changes` / `changePages` /
+  `followChanges` (`GET /v1/changes`) and `AppPrimitivesClient`
+  (sequences and the durable job queue).
+
 - `MediaWorkClient.requeue`, `FilesClient.head` / `list` / `mediaContent`,
   `Memory.rememberProcedure` / `recallProcedure`,
   `StreamingClient.recallStream`, `GovernanceClient.erase` /
@@ -55,6 +66,16 @@ workspace `Cargo.toml`'s `[workspace.package].version`, mirrored into
 
 ### Fixed
 
+- `GovernanceClient.listWormPolicies()` now returns the server's `policies`
+  list (`{object_type, worm, retention: "indefinite", retention_secs: null}`
+  per type, #6045). A server that sends only `worm_types` yields
+  `{object_type, worm: true}` entries (was `{type_name}`).
+- `GovernanceClient.setWormPolicy(objectType, retentionSecs?)`: the
+  retention is now optional and the docs no longer claim rows unlock after
+  `retentionSecs`. WORM is indefinite; a finite value on a type already under
+  WORM is a 409 `worm-retention-cannot-shorten` (`ConflictError`).
+- `AppPrimitivesClient.renew()` defaults `leaseMs` to 30 s like `claim()`; the
+  server rejects a renew without it.
 - `Memory.associate()` sent `source_id`/`target_id` and `Memory.summarise()`
   sent `source_ids`/`summary_content`; the server reads `from_id`/`to_id` and
   `ids`/`contents`, so both calls were rejected or silently ignored.

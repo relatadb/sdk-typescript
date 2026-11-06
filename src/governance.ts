@@ -299,38 +299,45 @@ export class GovernanceClient extends TypedClientBase {
   }
 
   /**
-   * List WORM (write-once-read-many) retention policies.
-   * Wraps `GET /v1/retention/worm`.
+   * List the object types under WORM (write-once-read-many), one entry per
+   * type sorted by `object_type`:
+   * `{object_type, worm: true, retention: "indefinite", retention_secs: null}`.
+   * Wraps `GET /v1/retention/worm` and reads its `policies` array (#6045).
+   * A server that only sends `worm_types` (type names) is still read; each
+   * name becomes `{object_type, worm: true}`.
    */
   async listWormPolicies(): Promise<Record<string, unknown>[]> {
-    const data = await this._get<Record<string, unknown>>("/v1/retention/worm");
-    // Live shape: `{worm_types: ["TypeA", ...], total}`; older shape `{policies: [...]}`.
-    if (typeof data === "object" && data !== null && Array.isArray(data["worm_types"])) {
-      return (data["worm_types"] as unknown[]).map((t) =>
-        typeof t === "string" ? { type_name: t } : (t as Record<string, unknown>),
-      );
+    const data = await this._get<unknown>("/v1/retention/worm");
+    if (Array.isArray(data)) return data as Record<string, unknown>[];
+    if (typeof data !== "object" || data === null) return [];
+    const body = data as Record<string, unknown>;
+    if (Array.isArray(body["policies"])) return body["policies"] as Record<string, unknown>[];
+    if (Array.isArray(body["worm_types"])) {
+      return (body["worm_types"] as unknown[])
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => ({ object_type: t, worm: true }));
     }
-    const policies =
-      typeof data === "object" && data !== null && Array.isArray(data["policies"])
-        ? data["policies"]
-        : Array.isArray(data)
-          ? data
-          : [];
-    return policies as Record<string, unknown>[];
+    return [];
   }
 
   /**
-   * Set WORM retention for `objectType`. Rows cannot be mutated or purged
-   * until `retentionSecs` elapses from their `system_from`.
-   * Wraps `POST /v1/retention/worm/:objectType`.
+   * Put `objectType` under WORM. The lock is indefinite: rows of the type
+   * cannot be mutated or purged, and the server stores no finite retention
+   * (`retention_secs` in the reply is always `null`).
+   * Wraps `POST /v1/retention/worm/:objectType` (#6045).
+   *
+   * `retentionSecs` is optional and only recorded as a request: a fresh type
+   * echoes it as `requested_retention_secs`. A finite value on a type already
+   * under WORM is refused with 409 `worm-retention-cannot-shorten`
+   * ({@link ConflictError}); omit it (or pass `null`) to re-assert the lock.
    */
   async setWormPolicy(
     objectType: string,
-    retentionSecs: number,
+    retentionSecs?: number | null,
   ): Promise<Record<string, unknown>> {
     return this._post(
       `/v1/retention/worm/${encodeURIComponent(objectType)}`,
-      { retention_secs: retentionSecs },
+      retentionSecs === undefined ? {} : { retention_secs: retentionSecs },
     );
   }
 
