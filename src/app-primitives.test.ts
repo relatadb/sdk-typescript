@@ -51,3 +51,9 @@ test("claim defaults leaseMs because the server requires it", async () => {
   await make(calls, { jobs: [] }).claim("q", "w1");
   assert.deepEqual(calls[0]!.body, { workerId: "w1", leaseMs: 30000 });
 });
+
+test("renew defaults leaseMs because the server requires it", async () => {
+  const calls: Call[] = [];
+  await make(calls, {}).renew("j1", 3);
+  assert.deepEqual(calls[0]!.body, { fencingToken: 3, leaseMs: 30000 });
+});

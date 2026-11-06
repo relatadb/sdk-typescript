@@ -79,7 +79,11 @@ export class AppPrimitivesClient extends TypedClientBase {
     fencingToken: number,
     opts: { leaseMs?: number } = {},
   ): Promise<Record<string, unknown>> {
-    return this._post(`/v1/jobs/${encodeURIComponent(jobId)}/renew`, defined({ fencingToken, ...opts }));
+    // The server rejects a renew without `leaseMs`; default to 30s like claim.
+    return this._post(
+      `/v1/jobs/${encodeURIComponent(jobId)}/renew`,
+      defined({ fencingToken, ...opts, leaseMs: opts.leaseMs ?? 30000 }),
+    );
   }
 
   /** Mark a held job done. Wraps `POST /v1/jobs/:id/complete`. */
