@@ -1,9 +1,22 @@
 name: Publish to npm
 
+# Two release channels (sdks/README-v3-migration.md, "Release channels"):
+#   main -> 2.x line. Push or dispatch: bump the patch and publish under the
+#           npm dist-tag `latest` (unchanged behaviour).
+#   v3   -> 3.x line. Dispatch ONLY, with an explicit 3.x `version` input
+#           (e.g. 3.0.0-rc.1). Published under the dist-tag `v3`, never
+#           `latest`, so 2.x users are not moved to 3.0 by `npm install`.
+# A push to `v3` (the mirror) publishes nothing: only `main` is a push trigger.
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "v3 branch only: exact 3.x version to publish, e.g. 3.0.0-rc.1"
+        required: false
+        default: ""
 
 concurrency:
   group: publish-npm
@@ -26,8 +39,33 @@ jobs:
           registry-url: "https://registry.npmjs.org/"
           scope: "@zysec-ai"
 
-      - name: Bump patch version
+      - name: Select release channel
+        id: channel
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          case "$GITHUB_REF_NAME" in
+            main)
+              echo "channel=main" >> "$GITHUB_OUTPUT"
+              echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
+              ;;
+            v3)
+              if ! printf '%s' "$INPUT_VERSION" | grep -Eq '^3\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+                echo "::error::The v3 channel needs a 3.x 'version' input, e.g. 3.0.0-rc.1 (got '${INPUT_VERSION}')."
+                exit 1
+              fi
+              echo "channel=v3" >> "$GITHUB_OUTPUT"
+              echo "dist_tag=v3" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Publishing runs only from main (2.x) or v3 (3.x), not '${GITHUB_REF_NAME}'."
+              exit 1
+              ;;
+          esac
+
+      - name: Bump patch version (main)
         id: bump
+        if: steps.channel.outputs.channel == 'main'
         run: |
           CURRENT=$(node -p "require('./package.json').version")
           PREFIX="${CURRENT%.*}"
@@ -55,12 +93,35 @@ jobs:
           git push
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
+      - name: Set requested version (v3)
+        id: v3ver
+        if: steps.channel.outputs.channel == 'v3'
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://registry.npmjs.org/@zysec-ai%2frelata-sdk/${INPUT_VERSION}")
+          if [ "$CODE" = "200" ]; then
+            echo "Version ${INPUT_VERSION} already on npm — skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Not committed back: the mirror force-pushes this branch from the
+          # monorepo, whose canonical version stays in lockstep with Cargo.toml.
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json','utf8'));
+            p.version = process.env.INPUT_VERSION;
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
       - name: Install, test, build
-        if: steps.bump.outputs.skip != 'true'
+        if: steps.bump.outputs.skip != 'true' && steps.v3ver.outputs.skip != 'true'
         run: npm ci && npm test && npm run build
 
       - name: Publish
-        if: steps.bump.outputs.skip != 'true'
+        if: steps.bump.outputs.skip != 'true' && steps.v3ver.outputs.skip != 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+          DIST_TAG: ${{ steps.channel.outputs.dist_tag }}
+        run: npm publish --access public --tag "$DIST_TAG"
