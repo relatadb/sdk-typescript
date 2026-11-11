@@ -4,8 +4,10 @@ name: Publish to npm
 #   main -> 2.x line. Push or dispatch: bump the patch and publish under the
 #           npm dist-tag `latest` (unchanged behaviour).
 #   v3   -> 3.x line. Dispatch ONLY, with an explicit 3.x `version` input
-#           (e.g. 3.0.0-rc.1). Published under the dist-tag `v3`, never
-#           `latest`, so 2.x users are not moved to 3.0 by `npm install`.
+#           (e.g. 3.0.0-rc.1). Published under the dist-tag `v3-latest`,
+#           never `latest`, so 2.x users are not moved to 3.0 by `npm install`.
+#           (Not `v3`: npm refuses any dist-tag that is a valid semver range,
+#           "Tag name must not be a valid SemVer range: v3", #6039.)
 # A push to `v3` (the mirror) publishes nothing: only `main` is a push trigger.
 
 on:
@@ -55,7 +57,7 @@ jobs:
                 exit 1
               fi
               echo "channel=v3" >> "$GITHUB_OUTPUT"
-              echo "dist_tag=v3" >> "$GITHUB_OUTPUT"
+              echo "dist_tag=v3-latest" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "::error::Publishing runs only from main (2.x) or v3 (3.x), not '${GITHUB_REF_NAME}'."
