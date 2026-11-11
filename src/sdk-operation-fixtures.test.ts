@@ -32,7 +32,7 @@ interface Case {
 
 const SDK = "typescript";
 const fixtures = JSON.parse(
-  readFileSync(new URL("../../shared/sdk-operation-fixtures.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../tests/fixtures/sdk-operation-fixtures.json", import.meta.url), "utf8"),
 ) as { contract: string; sdks: string[]; cases: Case[] };
 
 test("fixture file is the documented contract", () => {

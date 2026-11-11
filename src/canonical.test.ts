@@ -1,7 +1,7 @@
 /**
  * Tests for the canonical validation module (#2248 Tier-1).
  *
- * Consumes a vendored copy of the SHARED test-vectors file (`./canonical-vectors.json`,
+ * Consumes a vendored copy of the SHARED test-vectors file (`tests/fixtures/canonical-vectors.json`,
  * mirrored from `sdks/shared/canonical-vectors.json`) so all three supported SDKs
  * (Rust/Python/TypeScript/Go) exercise identical valid + reject cases. Vendored
  * rather than read from `sdks/shared` directly because this package is mirrored
@@ -31,7 +31,7 @@ import {
 } from "./canonical.ts";
 
 const vectorsPath = fileURLToPath(
-  new URL("./canonical-vectors.json", import.meta.url),
+  new URL("../tests/fixtures/canonical-vectors.json", import.meta.url),
 );
 interface Case { input: string; expected: string; }
 interface Kind { valid: Case[]; reject: string[]; }

@@ -15,7 +15,7 @@ interface Case {
 }
 
 const fixtures = JSON.parse(
-  readFileSync(new URL("../../shared/task-receipt-fixtures.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../tests/fixtures/task-receipt-fixtures.json", import.meta.url), "utf8"),
 ) as { contract: string; cases: Case[] };
 
 test("fixture file is the documented contract", () => {

@@ -23,7 +23,7 @@ interface Case {
 }
 
 const fixtures = JSON.parse(
-  readFileSync(new URL("../../shared/problem-details-fixtures.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../tests/fixtures/problem-details-fixtures.json", import.meta.url), "utf8"),
 ) as { contract: string; cases: Case[] };
 
 // Exact class per fixture kind. Unmapped statuses (405/413/415 ...) are the base class.

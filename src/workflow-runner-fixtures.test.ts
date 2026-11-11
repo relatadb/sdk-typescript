@@ -49,7 +49,7 @@ interface Fixtures {
 }
 
 const fixtures = JSON.parse(
-  readFileSync(new URL("../../shared/workflow-runner-fixtures.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../tests/fixtures/workflow-runner-fixtures.json", import.meta.url), "utf8"),
 ) as Fixtures;
 
 const KINDS: Record<string, new (...args: never[]) => Error> = {
