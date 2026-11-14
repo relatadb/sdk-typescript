@@ -27,11 +27,13 @@ import {
   TimeoutError,
 } from "./errors.ts";
 import {
+  DEFAULT_PAUSE_RETRY_BUDGET_MS,
   DEFAULT_RETRY_BACKOFF_MS,
   isBulkIngest,
   isIdempotentMethod,
   isRetryableStatus,
   withBulkIngestIdempotencyKey,
+  maintenancePauseDelayMs,
 } from "./_retry.ts";
 import { readCappedResponseBody } from "./_body.ts";
 // `import type` only — erased at runtime (`--experimental-strip-types`), so
@@ -87,6 +89,11 @@ export interface TypedClientCtor {
   maxRetries?: number;
   /** Base exponential backoff (ms) for the retry loop. Default 500. */
   retryBackoffMs?: number;
+  /**
+   * Total wait (ms) per call for node maintenance-pause resends (#6302).
+   * Default 30000; `0` disables. Parity with `RelataClient`.
+   */
+  pauseRetryBudgetMs?: number;
   extraHeaders?: Record<string, string>;
   fetch?: typeof globalThis.fetch;
   /**
@@ -169,6 +176,7 @@ export class TypedClientBase {
   readonly #timeoutMs: number;
   readonly #maxRetries: number;
   readonly #retryBackoffMs: number;
+  readonly #pauseRetryBudgetMs: number;
   readonly #extraHeaders: Record<string, string>;
   readonly #fetch: typeof globalThis.fetch;
   readonly #maxResponseBytes: number;
@@ -183,6 +191,7 @@ export class TypedClientBase {
     this.#timeoutMs = opts.timeoutMs ?? 30000;
     this.#maxRetries = opts.maxRetries ?? 0;
     this.#retryBackoffMs = opts.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
+    this.#pauseRetryBudgetMs = opts.pauseRetryBudgetMs ?? DEFAULT_PAUSE_RETRY_BUDGET_MS;
     this.#extraHeaders = opts.extraHeaders ?? {};
     this.#fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
     this.#maxResponseBytes =
@@ -206,6 +215,7 @@ export class TypedClientBase {
       timeoutMs: client.timeoutMs,
       maxRetries: client.maxRetries,
       retryBackoffMs: client.retryBackoffMs,
+      pauseRetryBudgetMs: client.pauseRetryBudgetMs,
       maxResponseBytes: client.maxResponseBytes,
     };
     if (client.internalBearerToken !== undefined) ctor.bearerToken = client.internalBearerToken;
@@ -420,6 +430,7 @@ export class TypedClientBase {
     const sendInit: RequestInit = keyedBulk
       ? { ...init, headers: withBulkIngestIdempotencyKey(init.headers as Record<string, string>) }
       : init;
+    let pauseWaitedMs = 0;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const controller = new AbortController();
@@ -434,6 +445,20 @@ export class TypedClientBase {
           signal: controller.signal,
         });
         assertNotRedirected(response, url);
+        // #6302: a node maintenance-pause 503 is resent for every verb after
+        // its Retry-After, within the budget, outside `maxRetries`.
+        const pauseMs =
+          pauseWaitedMs < this.#pauseRetryBudgetMs
+            ? await maintenancePauseDelayMs(response)
+            : undefined;
+        if (pauseMs !== undefined) {
+          const waitMs = Math.min(pauseMs, this.#pauseRetryBudgetMs - pauseWaitedMs);
+          try { await response.body?.cancel(); } catch { /* best effort */ }
+          await this.#sleep(waitMs);
+          pauseWaitedMs += waitMs;
+          attempt -= 1;
+          continue;
+        }
         const canRetryStatus =
           !response.ok && isRetryableStatus(method, response.status, keyedBulk);
         if (canRetryStatus && attempt + 1 < maxAttempts) {

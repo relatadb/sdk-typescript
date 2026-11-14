@@ -15,6 +15,14 @@ workspace `Cargo.toml`'s `[workspace.package].version`, mirrored into
   errors and 502/504; a 503 from Relata is not retried. An explicit
   `idempotencyKey` is never replaced.
 
+### Added — maintenance-pause 503s are resent transparently (#6302)
+
+- `RelataClient` and every typed client resend a `503` whose body names
+  `pause_reason` `rollover_begin`, `rollover_commit`, `backup` or `restore` with
+  `retryable: true`, for every verb, after its `Retry-After` (at most 5 s per
+  wait) and outside `maxRetries`, until the new `pauseRetryBudgetMs` option
+  (default `30000`, `0` disables) is spent.
+
 ### Changed (breaking, #5960 `/v1` route restructure)
 
 - Every data-plane wrapper now calls its `/v1/...` path (for example

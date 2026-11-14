@@ -15,8 +15,11 @@
  * whenever `_typed-http.ts` happened to be the first module Node resolved
  * along that chain (#2879). Extracting these constants here means
  * `_typed-http.ts` no longer needs any runtime (value) import from
- * `client.ts` at all, breaking the cycle.
+ * `client.ts` at all, breaking the cycle. Its only import is the leaf
+ * `_body.ts` capped reader (#6302).
  */
+
+import { readCappedResponseBody } from "./_body.ts";
 
 /**
  * HTTP status codes that trigger an automatic retry when `maxRetries > 0`.
@@ -96,4 +99,67 @@ export function isRetryableStatus(method: string, status: number, keyedBulk: boo
   if (!RETRYABLE_STATUS_CODES.has(status)) return false;
   if (isIdempotentMethod(method)) return true;
   return keyedBulk && status !== 503;
+}
+
+/**
+ * Default total time, in milliseconds, one call may spend waiting out node
+ * maintenance pauses (#6302). Set `pauseRetryBudgetMs: 0` to disable.
+ */
+export const DEFAULT_PAUSE_RETRY_BUDGET_MS = 30_000;
+
+/**
+ * `pause_reason` values of a node maintenance pause (#6302). A 503 naming
+ * one of these with `retryable: true` was refused before any handler ran
+ * (the router-wide admission gate, or a bulk group that wrote nothing), so
+ * it is safe to resend for every verb. `poisoned` and `storage_recovering`
+ * are not maintenance pauses and are never retried this way.
+ */
+const MAINTENANCE_PAUSE_REASONS: ReadonlySet<string> = new Set([
+  "rollover_begin",
+  "rollover_commit",
+  "backup",
+  "restore",
+]);
+const PAUSE_RETRY_MAX_DELAY_MS = 5_000;
+const PAUSE_RETRY_MIN_DELAY_MS = 100;
+const PAUSE_RETRY_DEFAULT_DELAY_MS = 1_000;
+/** A pause body is a few hundred bytes; a larger 503 body is not one. */
+const PAUSE_PEEK_MAX_BYTES = 64 * 1024;
+
+/**
+ * @internal
+ * Milliseconds to wait before resending a request refused by a node
+ * maintenance pause, or `undefined` when `response` is not one (#6302).
+ * Honours `Retry-After` (then the body's `retry_after_secs`, then 1 s),
+ * clamped to 100 ms..5 s. Reads a clone, so `response` stays unread.
+ */
+export async function maintenancePauseDelayMs(response: Response): Promise<number | undefined> {
+  if (response.status !== 503) return undefined;
+  let fields: Record<string, unknown>;
+  let header: string | null;
+  try {
+    header = response.headers.get("Retry-After");
+    const bytes = await readCappedResponseBody(response.clone(), PAUSE_PEEK_MAX_BYTES);
+    const body: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
+    fields = body as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+  const reason = fields["pause_reason"];
+  if (
+    fields["retryable"] !== true ||
+    typeof reason !== "string" ||
+    !MAINTENANCE_PAUSE_REASONS.has(reason)
+  ) {
+    return undefined;
+  }
+  let seconds: number | undefined;
+  if (header !== null && /^\d+$/.test(header.trim())) seconds = Number(header.trim());
+  const hint = fields["retry_after_secs"];
+  if (seconds === undefined && typeof hint === "number" && Number.isFinite(hint) && hint >= 0) {
+    seconds = hint;
+  }
+  const ms = seconds === undefined ? PAUSE_RETRY_DEFAULT_DELAY_MS : seconds * 1000;
+  return Math.min(Math.max(ms, PAUSE_RETRY_MIN_DELAY_MS), PAUSE_RETRY_MAX_DELAY_MS);
 }

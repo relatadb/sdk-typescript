@@ -156,6 +156,16 @@ export interface RelataClientOptions {
   retryBackoffMs?: number;
 
   /**
+   * Total milliseconds one call may spend waiting out a node maintenance
+   * pause (#6302). A `503` whose body names `pause_reason` `rollover_begin`,
+   * `rollover_commit`, `backup` or `restore` with `retryable: true` was
+   * refused before any handler ran, so it is resent for every verb after its
+   * `Retry-After` (at most 5 s per wait), independently of `maxRetries`.
+   * Defaults to `30000`; `0` disables it and the 503 is thrown at once.
+   */
+  pauseRetryBudgetMs?: number;
+
+  /**
    * Cap on how much of a (non-streaming) response body the client will buffer,
    * in bytes (#3214). A larger body rejects with {@link ResponseTooLargeError}
    * instead of being read into memory, so a malicious or buggy server cannot

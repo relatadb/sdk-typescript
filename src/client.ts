@@ -76,6 +76,8 @@ import {
   isBulkIngest,
   isRetryableStatus,
   withBulkIngestIdempotencyKey,
+  DEFAULT_PAUSE_RETRY_BUDGET_MS,
+  maintenancePauseDelayMs,
 } from "./_retry.ts";
 
 // ---------------------------------------------------------------------------
@@ -174,6 +176,8 @@ export class RelataClient {
   readonly #delegatedBy: string | undefined;
   readonly #maxRetries: number;
   readonly #retryBackoffMs: number;
+  /** #6302: total wait for maintenance-pause retries per call. */
+  readonly #pauseRetryBudgetMs: number;
   readonly #logger: Logger;
   /** Response-body cap in bytes (#3214). */
   readonly #maxResponseBytes: number;
@@ -222,6 +226,7 @@ export class RelataClient {
     this.#delegatedBy = opts.delegatedBy;
     this.#maxRetries = opts.maxRetries ?? 0;
     this.#retryBackoffMs = opts.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
+    this.#pauseRetryBudgetMs = opts.pauseRetryBudgetMs ?? DEFAULT_PAUSE_RETRY_BUDGET_MS;
     this.#maxResponseBytes =
       opts.maxResponseBytes !== undefined && opts.maxResponseBytes > 0
         ? opts.maxResponseBytes
@@ -1660,6 +1665,14 @@ export class RelataClient {
     return this.#retryBackoffMs;
   }
 
+  /**
+   * Total wait (ms) per call for maintenance-pause retries (#6302).
+   * Inherited by typed clients via `fromClient()`.
+   */
+  get pauseRetryBudgetMs(): number {
+    return this.#pauseRetryBudgetMs;
+  }
+
   /** Default purpose declared on the client, if any. */
   get defaultPurpose(): string | undefined {
     return this.#defaultPurpose;
@@ -1759,6 +1772,9 @@ export class RelataClient {
    *   (automatic when none was given) reused by every attempt, so it retries
    *   on network errors and 502/504 (not on a 503 from Relata).
    * - Exponential backoff: `retryBackoffMs * 2^attempt`.
+   * - A node maintenance-pause 503 (#6302, `maintenancePauseDelayMs`) is
+   *   resent for every verb after its `Retry-After`, within
+   *   `pauseRetryBudgetMs`; these resends do not count against `maxRetries`.
    */
   async #send<T>(
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
@@ -1785,6 +1801,7 @@ export class RelataClient {
     // which makes re-sending it safe.
     const keyedBulk = isBulkIngest(method, path);
     const sendHeaders = keyedBulk ? withBulkIngestIdempotencyKey(callHeaders) : callHeaders;
+    let pauseWaitedMs = 0;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       // Per-attempt AbortController so a retry gets a fresh timer.
@@ -1813,6 +1830,25 @@ export class RelataClient {
         }
         const response = await this.#fetch(url, init);
         assertNotRedirected(response, url);
+        const pauseMs =
+          pauseWaitedMs < this.#pauseRetryBudgetMs
+            ? await maintenancePauseDelayMs(response)
+            : undefined;
+        if (pauseMs !== undefined) {
+          const waitMs = Math.min(pauseMs, this.#pauseRetryBudgetMs - pauseWaitedMs);
+          try { await response.body?.cancel(); } catch { /* best effort */ }
+          this.#logger.warn("waiting out a node maintenance pause", {
+            method,
+            path,
+            waitMs,
+            pauseWaitedMs,
+          });
+          await this.#sleep(waitMs);
+          pauseWaitedMs += waitMs;
+          // A pause resend is not one of the `maxRetries` attempts.
+          attempt -= 1;
+          continue;
+        }
         const result = await this.#parseResponse<T>(
           response,
           body?.["purpose"] as string | undefined,

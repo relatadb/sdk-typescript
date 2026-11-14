@@ -235,6 +235,13 @@ not for production multi-tenant.
 errors (DNS, connection refused). Backoff is exponential: `retryBackoffMs * 2^attempt`.
 Timeouts are never retried (operations may have side-effects).
 
+A node maintenance pause is handled separately (#6302): a `503` whose body names
+`pause_reason` `rollover_begin`, `rollover_commit`, `backup` or `restore` with
+`retryable: true` reached no handler, so both `RelataClient` and the typed clients
+resend it for every verb after its `Retry-After` (at most 5 s per wait), without
+using `maxRetries`, until `pauseRetryBudgetMs` (default `30000` per call) is spent.
+Set `pauseRetryBudgetMs: 0` to receive the 503 at once.
+
 ```typescript
 const relata = createClient(url, {
   defaultPurpose: "analytics",
