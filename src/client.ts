@@ -73,6 +73,9 @@ import {
   RETRYABLE_STATUS_CODES,
   isIdempotentMethod,
   DEFAULT_RETRY_BACKOFF_MS,
+  isBulkIngest,
+  isRetryableStatus,
+  withBulkIngestIdempotencyKey,
 } from "./_retry.ts";
 
 // ---------------------------------------------------------------------------
@@ -1752,6 +1755,9 @@ export class RelataClient {
    *   and on network errors, up to `maxRetries`. POST/PUT/PATCH/DELETE are
    *   never retried — a gateway timeout after commit would double-execute
    *   irreversible operations (`sdks/go/relata/client.go::isIdempotent`).
+   *   Exception (#5689): `POST /v1/ingest/bulk` carries an `Idempotency-Key`
+   *   (automatic when none was given) reused by every attempt, so it retries
+   *   on network errors and 502/504 (not on a 503 from Relata).
    * - Exponential backoff: `retryBackoffMs * 2^attempt`.
    */
   async #send<T>(
@@ -1775,6 +1781,10 @@ export class RelataClient {
 
     const maxAttempts = Math.max(1, this.#maxRetries + 1);
     let lastError: unknown;
+    // #5689 D06: a bulk ingest gets one Idempotency-Key reused by every attempt,
+    // which makes re-sending it safe.
+    const keyedBulk = isBulkIngest(method, path);
+    const sendHeaders = keyedBulk ? withBulkIngestIdempotencyKey(callHeaders) : callHeaders;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       // Per-attempt AbortController so a retry gets a fresh timer.
@@ -1787,8 +1797,8 @@ export class RelataClient {
 
       try {
         const headers = this.#buildHeaders(!hasPinnedRequestId);
-        if (callHeaders) {
-          for (const [k, v] of Object.entries(callHeaders)) {
+        if (sendHeaders) {
+          for (const [k, v] of Object.entries(sendHeaders)) {
             headers[k] = v;
           }
         }
@@ -1825,8 +1835,7 @@ export class RelataClient {
         // commit risks double-execution of irreversible operations.
         if (err instanceof RelataError) {
           const status = err.statusCode;
-          const canRetryStatus =
-            isIdempotentMethod(method) && RETRYABLE_STATUS_CODES.has(status);
+          const canRetryStatus = isRetryableStatus(method, status, keyedBulk);
           if (attempt + 1 < maxAttempts && canRetryStatus) {
             const backoffMs = this.#retryBackoffMs * 2 ** attempt;
             this.#logger.warn("retrying after retryable HTTP status", {
@@ -1860,7 +1869,7 @@ export class RelataClient {
             err,
           );
           lastError = wrapped;
-          if (attempt + 1 < maxAttempts && isIdempotentMethod(method)) {
+          if (attempt + 1 < maxAttempts && (isIdempotentMethod(method) || keyedBulk)) {
             const backoffMs = this.#retryBackoffMs * 2 ** attempt;
             this.#logger.warn("retrying after network error", {
               method,

@@ -28,8 +28,10 @@ import {
 } from "./errors.ts";
 import {
   DEFAULT_RETRY_BACKOFF_MS,
+  isBulkIngest,
   isIdempotentMethod,
-  RETRYABLE_STATUS_CODES,
+  isRetryableStatus,
+  withBulkIngestIdempotencyKey,
 } from "./_retry.ts";
 import { readCappedResponseBody } from "./_body.ts";
 // `import type` only — erased at runtime (`--experimental-strip-types`), so
@@ -323,7 +325,8 @@ export class TypedClientBase {
     }
     // POST/PUT are not idempotent, so #dispatch never retries this call
     // (matches `RelataClient`'s `#postRaw`, #2489) — it still gets the
-    // shared timeout + network-error handling.
+    // shared timeout + network-error handling. Exception: POST
+    // /v1/ingest/bulk carries an Idempotency-Key and is retried (#5689).
     const response = await this.#dispatch(method, url, {
       method,
       headers,
@@ -411,6 +414,12 @@ export class TypedClientBase {
   ): Promise<Response> {
     const maxAttempts = Math.max(1, this.#maxRetries + 1);
     let lastError: unknown;
+    // #5689 D06: a bulk ingest gets one Idempotency-Key reused by every attempt,
+    // which makes re-sending it safe.
+    const keyedBulk = isBulkIngest(method, url);
+    const sendInit: RequestInit = keyedBulk
+      ? { ...init, headers: withBulkIngestIdempotencyKey(init.headers as Record<string, string>) }
+      : init;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const controller = new AbortController();
@@ -421,14 +430,12 @@ export class TypedClientBase {
 
       try {
         const response = await this.#fetch(url, {
-          ...init,
+          ...sendInit,
           signal: controller.signal,
         });
         assertNotRedirected(response, url);
         const canRetryStatus =
-          !response.ok &&
-          isIdempotentMethod(method) &&
-          RETRYABLE_STATUS_CODES.has(response.status);
+          !response.ok && isRetryableStatus(method, response.status, keyedBulk);
         if (canRetryStatus && attempt + 1 < maxAttempts) {
           // Release the unread response before another attempt owns a socket.
           try { await response.body?.cancel(); } catch { /* best effort */ }
@@ -451,7 +458,7 @@ export class TypedClientBase {
             err,
           );
           lastError = wrapped;
-          if (isIdempotentMethod(method) && attempt + 1 < maxAttempts) {
+          if ((isIdempotentMethod(method) || keyedBulk) && attempt + 1 < maxAttempts) {
             await this.#sleep(this.#retryBackoffMs * 2 ** attempt);
             continue;
           }

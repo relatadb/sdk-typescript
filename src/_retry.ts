@@ -53,3 +53,47 @@ export function isIdempotentMethod(method: string): boolean {
  * default.
  */
 export const DEFAULT_RETRY_BACKOFF_MS = 500;
+
+/**
+ * #5689 (owner decision D06): every bulk ingest request carries an
+ * `Idempotency-Key` so a retry cannot duplicate keyless rows.
+ */
+const BULK_INGEST_PATH = "/v1/ingest/bulk";
+
+/** `true` for a `POST /v1/ingest/bulk` (`target` is a path or a full URL). */
+export function isBulkIngest(method: string, target: string): boolean {
+  if (method.toUpperCase() !== "POST") return false;
+  const path = (target.split("?")[0] ?? target).replace(/\/+$/, "");
+  return path.endsWith(BULK_INGEST_PATH);
+}
+
+/**
+ * Return `headers` with an automatic `Idempotency-Key` (a random UUID) added
+ * when none is present (#5689 D06, the Kafka/Stripe pattern). Called once per
+ * call, before the retry loop, so every attempt reuses the same key and the
+ * server replays or converges instead of writing twice. An explicit key is
+ * never replaced.
+ */
+export function withBulkIngestIdempotencyKey(
+  headers: Record<string, string> | undefined,
+): Record<string, string> {
+  const out = { ...(headers ?? {}) };
+  if (Object.keys(out).some((k) => k.toLowerCase() === "idempotency-key")) return out;
+  out["Idempotency-Key"] =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `relata-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  return out;
+}
+
+/**
+ * Whether a response status is retried. Idempotent verbs retry on every
+ * {@link RETRYABLE_STATUS_CODES} status. A keyed bulk ingest also retries on
+ * the gateway statuses (502/504), but never on a 503 from Relata itself, which
+ * carries its own `retryable` verdict and `Retry-After` (#5689).
+ */
+export function isRetryableStatus(method: string, status: number, keyedBulk: boolean): boolean {
+  if (!RETRYABLE_STATUS_CODES.has(status)) return false;
+  if (isIdempotentMethod(method)) return true;
+  return keyedBulk && status !== 503;
+}

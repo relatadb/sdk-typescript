@@ -7,6 +7,14 @@ workspace `Cargo.toml`'s `[workspace.package].version`, mirrored into
 
 ## [Unreleased]
 
+### Added (#5689)
+
+- Every `POST /v1/ingest/bulk` (`IngestClient.bulk` with envelope options,
+  `RelataClient.ingestDocument`) carries an automatic `Idempotency-Key` when
+  none is given, reused by the client's retries (`maxRetries`) on network
+  errors and 502/504; a 503 from Relata is not retried. An explicit
+  `idempotencyKey` is never replaced.
+
 ### Changed (breaking, #5960 `/v1` route restructure)
 
 - Every data-plane wrapper now calls its `/v1/...` path (for example
