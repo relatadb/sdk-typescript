@@ -127,17 +127,31 @@ const PAUSE_RETRY_DEFAULT_DELAY_MS = 1_000;
 const PAUSE_PEEK_MAX_BYTES = 64 * 1024;
 
 /**
+ * Only a JSON 503 that declares a small `Content-Length` is read ahead, as the
+ * server's pause response always does; any other body (streamed, stalled or
+ * oversized) is left to the normal capped, time-bounded read.
+ */
+function mayBePauseBody(headers: Headers): boolean {
+  const type = headers.get("content-type") ?? "";
+  const length = Number(headers.get("content-length") ?? NaN);
+  return type.includes("json") && Number.isSafeInteger(length) && length >= 0
+    && length <= PAUSE_PEEK_MAX_BYTES;
+}
+
+/**
  * @internal
  * Milliseconds to wait before resending a request refused by a node
  * maintenance pause, or `undefined` when `response` is not one (#6302).
  * Honours `Retry-After` (then the body's `retry_after_secs`, then 1 s),
- * clamped to 100 ms..5 s. Reads a clone, so `response` stays unread.
+ * clamped to 100 ms..5 s. Reads a clone, so `response` stays unread, and only
+ * when the body is a small JSON document of declared length.
  */
 export async function maintenancePauseDelayMs(response: Response): Promise<number | undefined> {
   if (response.status !== 503) return undefined;
   let fields: Record<string, unknown>;
   let header: string | null;
   try {
+    if (!mayBePauseBody(response.headers)) return undefined;
     header = response.headers.get("Retry-After");
     const bytes = await readCappedResponseBody(response.clone(), PAUSE_PEEK_MAX_BYTES);
     const body: unknown = JSON.parse(new TextDecoder().decode(bytes));

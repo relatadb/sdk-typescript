@@ -16,20 +16,22 @@ function pause(
   reason = "rollover_commit",
   { retryable = true, retryAfter = "0" }: { retryable?: boolean; retryAfter?: string | null } = {},
 ): Response {
-  const headers: Record<string, string> = { "content-type": "application/problem+json" };
+  const text = JSON.stringify({
+    type: "about:blank",
+    title: "Service Unavailable",
+    status: 503,
+    detail: "a backup snapshot, whole-store restore or generation rollover is briefly pausing this node; retry shortly",
+    retryable,
+    retry_after_secs: 5,
+    pause_reason: reason,
+  });
+  // The server's pause response declares its length (`mayBePauseBody`).
+  const headers: Record<string, string> = {
+    "content-type": "application/problem+json",
+    "content-length": String(new TextEncoder().encode(text).byteLength),
+  };
   if (retryAfter !== null) headers["retry-after"] = retryAfter;
-  return new Response(
-    JSON.stringify({
-      type: "about:blank",
-      title: "Service Unavailable",
-      status: 503,
-      detail: "a backup snapshot, whole-store restore or generation rollover is briefly pausing this node; retry shortly",
-      retryable,
-      retry_after_secs: 5,
-      pause_reason: reason,
-    }),
-    { status: 503, headers },
-  );
+  return new Response(text, { status: 503, headers });
 }
 
 const ok = (body: unknown): Reply => () =>
@@ -71,7 +73,12 @@ for (const [name, reply] of [
   ["memory-pressure", () =>
     new Response(JSON.stringify({ code: "memory-pressure", retryable: true }), {
       status: 503,
-      headers: { "content-type": "application/problem+json", "retry-after": "1" },
+      headers: { "content-type": "application/problem+json", "retry-after": "1", "content-length": "44" },
+    })],
+  ["pause body without Content-Length", () =>
+    new Response(JSON.stringify({ pause_reason: "backup", retryable: true }), {
+      status: 503,
+      headers: { "content-type": "application/problem+json" },
     })],
   ["non-JSON", () => new Response("busy", { status: 503 })],
 ] as Array<[string, Reply]>) {
@@ -110,7 +117,14 @@ test("#6302: maintenancePauseDelayMs honours Retry-After, then retry_after_secs,
   const body = (extra: Record<string, unknown> = {}) =>
     JSON.stringify({ pause_reason: "backup", retryable: true, ...extra });
   const delay = (headers: Record<string, string>, extra?: Record<string, unknown>, status = 503) =>
-    maintenancePauseDelayMs(new Response(body(extra), { status, headers }));
+    maintenancePauseDelayMs(new Response(body(extra), {
+      status,
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(body(extra).length),
+        ...headers,
+      },
+    }));
   assert.equal(await delay({ "retry-after": "60" }), 5_000);
   assert.equal(await delay({ "retry-after": "2" }), 2_000);
   assert.equal(await delay({}, { retry_after_secs: 3 }), 3_000);
