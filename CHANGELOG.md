@@ -12,7 +12,9 @@ workspace `Cargo.toml`'s `[workspace.package].version`, mirrored into
 - Every `POST /v1/ingest/bulk` (`IngestClient.bulk` with envelope options,
   `RelataClient.ingestDocument`) carries an automatic `Idempotency-Key` when
   none is given, reused by the client's retries (`maxRetries`) on network
-  errors and 502/504; a 503 from Relata is not retried. An explicit
+  errors and 502/504. Other 503s from Relata are not retried by this rule; a
+  maintenance-pause 503 is resent under #6302 below, which is safe because the
+  same key is reused. An explicit
   `idempotencyKey` is never replaced.
 
 ### Added — maintenance-pause 503s are resent transparently (#6302)
