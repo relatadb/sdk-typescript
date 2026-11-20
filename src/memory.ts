@@ -33,6 +33,8 @@ import {
   ResponseTooLargeError,
 } from "./errors.ts";
 import { readCappedResponseBody } from "./_body.ts";
+import { parseEmbeddingFlag, warnIfLexical } from "./embedding-flag.ts";
+import type { Logger } from "./logger.ts";
 import { DEFAULT_MAX_RESPONSE_BYTES } from "./client.ts";
 
 // ---------------------------------------------------------------------------
@@ -60,6 +62,8 @@ export interface MemoryOptions {
   headers?: Record<string, string>;
   /** Override `fetch` (testing / observability). Defaults to `globalThis.fetch`. */
   fetch?: typeof globalThis.fetch;
+  /** Logger for result warnings such as a lexical recall fallback (#5726). */
+  logger?: Logger;
 }
 
 /**
@@ -193,6 +197,7 @@ export class Memory {
   readonly #maxResponseBytes: number;
   readonly #fetch: typeof globalThis.fetch;
   readonly #extraHeaders: Record<string, string>;
+  readonly #logger: Logger | undefined;
 
   /**
    * Construct a high-level memory client.
@@ -219,6 +224,7 @@ export class Memory {
       ? options.maxResponseBytes : DEFAULT_MAX_RESPONSE_BYTES;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#extraHeaders = options.headers ?? {};
+    this.#logger = options.logger;
   }
 
   // -------------------------------------------------------------------------
@@ -332,7 +338,9 @@ export class Memory {
     if (opts.budgetTokens !== undefined) body["budget_tokens"] = opts.budgetTokens;
     if (opts.stabilityDays !== undefined) body["stability_days"] = opts.stabilityDays;
     if (opts.cancelThreshold !== undefined) body["cancel_threshold"] = opts.cancelThreshold;
-    return unwrapMcp(await this.#post("/v1/memory/recall", body));
+    const result = unwrapMcp(await this.#post("/v1/memory/recall", body));
+    warnIfLexical(parseEmbeddingFlag(result["embedding"]), this.#logger); // #5726
+    return result;
   }
 
   /**

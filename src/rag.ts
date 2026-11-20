@@ -25,6 +25,7 @@
 import { RelataClient } from "./client.ts";
 import { type TypedClientCtor, TypedClientBase } from "./_typed-http.ts";
 import { PurposeError } from "./errors.ts";
+import { type EmbeddingFlag, parseEmbeddingFlag, warnIfLexical } from "./embedding-flag.ts";
 
 /** Matches `RAG_RETRIEVE_DEFAULT_TOP_K` (crates/relata-query/src/parser.rs:2854). */
 export const RAG_DEFAULT_TOP_K = 8;
@@ -96,6 +97,8 @@ export interface RagHit {
 /** Response from `POST /v1/rag/query`. */
 export interface RagQueryResponse {
   hits: RagHit[];
+  /** Query-embedding flag of the retrieval (#5726); absent from older servers. */
+  embedding?: EmbeddingFlag | null;
 }
 
 /** Build the `POST /v1/rag/query` JSON body per #4514's exact table. */
@@ -149,6 +152,11 @@ export class RagClient extends TypedClientBase {
           "`defaultPurpose` on the RelataClient.",
       );
     }
-    return this._post<RagQueryResponse>("/v1/rag/query", buildRagPayload(query, opts, purpose));
+    const resp = await this._post<RagQueryResponse>(
+      "/v1/rag/query",
+      buildRagPayload(query, opts, purpose),
+    );
+    warnIfLexical(parseEmbeddingFlag(resp.embedding), this._logger); // #5726
+    return resp;
   }
 }

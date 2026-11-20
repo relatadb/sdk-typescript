@@ -5,6 +5,7 @@
  * All int64 values that exceed Number.MAX_SAFE_INTEGER are represented as strings.
  */
 
+import type { EmbeddingFlag } from "./embedding-flag.ts";
 import type { Logger } from "./logger.ts";
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,8 @@ export interface QueryResult<T = Record<string, unknown>> {
   provenance?: unknown[];
   /** Whether a fan-out query returned an HTTP 206 partial result. */
   partial?: boolean;
+  /** Query-embedding flag on HYBRID_SEARCH / SIMILAR / RAG_RETRIEVE results (#5726). */
+  embedding?: EmbeddingFlag;
 }
 
 // ---------------------------------------------------------------------------
@@ -512,6 +515,8 @@ export interface WireQueryResponse {
   graph_version?: string;
   truncated?: boolean;
   partial?: boolean;
+  /** Query-embedding flag (#5726). */
+  embedding?: unknown;
 }
 
 // ---------------------------------------------------------------------------

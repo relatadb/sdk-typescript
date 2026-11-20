@@ -430,6 +430,8 @@ export type { ClientPoolOptions } from "./pool.ts";
 
 export { ConsoleLogger, NoOpLogger, SafeLogger } from "./logger.ts";
 export type { Logger, LogContext } from "./logger.ts";
+export { parseEmbeddingFlag, warnIfLexical } from "./embedding-flag.ts";
+export type { EmbeddingFlag } from "./embedding-flag.ts";
 
 // ---------------------------------------------------------------------------
 // Foundational typed surfaces — client canonical validation + AML decoders

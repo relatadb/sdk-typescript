@@ -67,6 +67,7 @@ import {
   TimeoutError,
 } from "./errors.ts";
 import { type Logger, NoOpLogger, SafeLogger } from "./logger.ts";
+import { parseEmbeddingFlag, warnIfLexical } from "./embedding-flag.ts";
 import { Namespace } from "./namespace.ts";
 import { QueryBuilder } from "./query.ts";
 import {
@@ -358,6 +359,8 @@ export class RelataClient {
       rows = [];
     }
     const columns = Array.isArray(wire.columns) ? wire.columns : [];
+    const embedding = parseEmbeddingFlag(wire.embedding); // #5726
+    warnIfLexical(embedding, this.#logger);
 
     return {
       rows: rows as T[],
@@ -371,6 +374,7 @@ export class RelataClient {
       ...(typeof wire.truncated === "boolean" ? { truncated: wire.truncated } : {}),
       ...(Array.isArray(wire.provenance) ? { provenance: wire.provenance } : {}),
       ...(typeof wire.partial === "boolean" ? { partial: wire.partial } : {}),
+      ...(embedding !== undefined ? { embedding } : {}),
     };
   }
 
@@ -419,6 +423,8 @@ export class RelataClient {
       rows = [];
     }
     const columns = Array.isArray(wire.columns) ? wire.columns : [];
+    const embedding = parseEmbeddingFlag(wire.embedding); // #5726
+    warnIfLexical(embedding, this.#logger);
     return {
       rows: rows as T[],
       queryId: wire.query_id ?? "",
@@ -431,6 +437,7 @@ export class RelataClient {
       ...(typeof wire.truncated === "boolean" ? { truncated: wire.truncated } : {}),
       ...(Array.isArray(wire.provenance) ? { provenance: wire.provenance } : {}),
       ...(typeof wire.partial === "boolean" ? { partial: wire.partial } : {}),
+      ...(embedding !== undefined ? { embedding } : {}),
     };
   }
 
@@ -1620,6 +1627,11 @@ export class RelataClient {
    */
   get internalBearerToken(): string | undefined {
     return this.#bearerToken;
+  }
+
+  /** @internal The SDK logger, inherited by typed clients (#5726). */
+  get logger(): Logger {
+    return this.#logger;
   }
 
   /** Configured response-body cap in bytes (#3214). */

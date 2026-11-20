@@ -36,6 +36,7 @@ import {
   maintenancePauseDelayMs,
 } from "./_retry.ts";
 import { readCappedResponseBody } from "./_body.ts";
+import type { Logger } from "./logger.ts";
 // `import type` only — erased at runtime (`--experimental-strip-types`), so
 // this does NOT create a runtime dependency edge back to `client.ts`. That
 // edge (importing the retry constants above as *values* from `client.ts`)
@@ -96,6 +97,8 @@ export interface TypedClientCtor {
   pauseRetryBudgetMs?: number;
   extraHeaders?: Record<string, string>;
   fetch?: typeof globalThis.fetch;
+  /** SDK logger for result warnings such as a lexical query-embedding fallback (#5726). */
+  logger?: Logger;
   /**
    * Response-body cap in bytes (#3214 parity with `RelataClient`). A body
    * larger than this rejects with {@link ResponseTooLargeError} instead of
@@ -180,8 +183,11 @@ export class TypedClientBase {
   readonly #extraHeaders: Record<string, string>;
   readonly #fetch: typeof globalThis.fetch;
   readonly #maxResponseBytes: number;
+  /** @internal SDK logger inherited from the parent client (#5726). */
+  protected readonly _logger: Logger | undefined;
 
   constructor(opts: TypedClientCtor) {
+    this._logger = opts.logger;
     this.#baseUrl = opts.baseUrl.replace(/\/+$/, "");
     this.#adminBaseUrl = opts.adminBaseUrl?.replace(/\/+$/, "");
     this.#bearerToken = opts.bearerToken;
@@ -217,6 +223,7 @@ export class TypedClientBase {
       retryBackoffMs: client.retryBackoffMs,
       pauseRetryBudgetMs: client.pauseRetryBudgetMs,
       maxResponseBytes: client.maxResponseBytes,
+      logger: client.logger,
     };
     if (client.internalBearerToken !== undefined) ctor.bearerToken = client.internalBearerToken;
     if (client.adminBaseUrl !== undefined) ctor.adminBaseUrl = client.adminBaseUrl;
