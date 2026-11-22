@@ -777,6 +777,7 @@ See [`examples/`](./examples/) for runnable workflows:
 | `hybrid-search.ts` | `VectorClient.hybridSearch()` — embed, ingest, BM25-only vs. vector-only vs. fused (RRF) search |
 | `graph-traversal.ts` | `PATHS_BETWEEN`, `NETWORK_EXPAND`, `MATCH`, Pregel BFS |
 | `audit.ts` | Audit chain verification, anomaly detection, compliance report |
+| `investigation.ts` | Alert to archive: ingest fixed events, window rule and alert, evidence and reproduction query, timeline, authorized pivot, saved search, archived export with its SHA-256. Run: `RELATA_URL=http://localhost:9090 RELATA_TOKEN=<token> node --experimental-strip-types examples/investigation.ts` |
 
 Run any example:
 
