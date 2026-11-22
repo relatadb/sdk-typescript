@@ -60,3 +60,16 @@ test("names are path-quoted and a 412 is thrown, never returned", async () => {
   const { c } = setup(412, { code: "ontology-version-conflict", status: 412, title: "x", detail: "d" });
   await assert.rejects(() => c.publish("crm", { expectedVersion: 1 }));
 });
+
+test("Ossie export and import hit their routes (#6400, #6401)", async () => {
+  const { c, seen } = setup();
+  const doc = { version: "0.3.0.dev0", name: "crm", datasets: [{ name: "P", source: "P" }] };
+  await c.exportOssie("crm");
+  await c.exportOssie("crm", { version: 2, baseIri: "https://example.org/o" });
+  await c.importOssie("crm", doc);
+  assert.deepEqual(seen, [
+    ["GET", "/v1/ontology/definitions/crm/export", "?format=ossie", null],
+    ["GET", "/v1/ontology/definitions/crm/export", "?format=ossie&version=2&base_iri=https%3A%2F%2Fexample.org%2Fo", null],
+    ["POST", "/v1/ontology/definitions/crm/import", "?format=ossie", doc],
+  ]);
+});

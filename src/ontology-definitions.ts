@@ -109,4 +109,23 @@ export class OntologyDefinitionsClient extends TypedClientBase {
     if (opts.retryFailed) body["retry_failed"] = true;
     return this._post<Doc>(`${BASE}/${seg(name)}/migrations/${seg(version)}/run`, body);
   }
+
+  /**
+   * `GET .../export?format=ossie` (experimental, #6400): a published version as an
+   * Apache Ossie 0.3.0.dev0 semantic model (JSON).
+   */
+  async exportOssie(name: string, opts: { version?: number; baseIri?: string } = {}): Promise<Doc> {
+    const q = new URLSearchParams({ format: "ossie" });
+    if (opts.version !== undefined) q.set("version", String(Math.trunc(opts.version)));
+    if (opts.baseIri !== undefined) q.set("base_iri", opts.baseIri);
+    return this._get<Doc>(`${BASE}/${seg(name)}/export?${q.toString()}`);
+  }
+
+  /**
+   * `POST .../import?format=ossie` (experimental, #6401): submit an Ossie model's
+   * datasets, fields and links as review-queue suggestions; returns the import report.
+   */
+  async importOssie(name: string, document: Doc): Promise<Doc> {
+    return this._post<Doc>(`${BASE}/${seg(name)}/import?format=ossie`, document);
+  }
 }
