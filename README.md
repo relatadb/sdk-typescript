@@ -602,12 +602,29 @@ default. The server upload ceiling is 128 MiB; GET is subject to the inherited
 response cap (64 MiB by default). PUT and DELETE are not automatically retried,
 so reconcile uncertain outcomes before retrying. The client does not expose
 immutable versions, conditional writes, range requests, physical/global-copy
-deletion guarantees, or media processing.
+deletion guarantees.
 The inherited request timeout bounds the client request, and abort/stream
 cleanup applies to the client request; neither promises that server work
 already accepted by the engine is aborted or rolled back. See
 the [HTTP Files contract](../../docs/src/specs/files-api.md) for server
 behavior.
+
+**Uploading a media file for processing (#5938, #5989).** Pass `process: true`
+to `upload` (or `startUpload`) to queue an OpenETL media work item when the
+upload commits; `access` carries the parent's access attributes that derived
+children inherit (`{}` declares an open file) and is rejected with a 400
+without `process`. Both are omitted from the request by default. The completed
+metadata then carries `media_work`: `{work_id, state, created, status_url}`
+when an item was queued, or `{queued: false, reason, status?}` when it was not
+(for example, a non-image/audio/video content type).
+
+```ts
+const meta = await files.upload("scans/scan.png", bytes, {
+  contentType: "image/png", process: true, access: { classification: "internal" },
+});
+const workId = meta.media_work?.work_id;
+if (typeof workId === "string") await MediaWorkClient.fromClient(client).get(workId);
+```
 
 ## Response models
 

@@ -171,3 +171,29 @@ test("Files head/list/mediaContent use the /v1 routes", async () => {
     ["GET", "/v1/media/row%2F1/content", ""],
   ]);
 });
+
+test("Files.upload sends process/access only when set and exposes media_work", async () => {
+  const bodies: Record<string, unknown>[] = [];
+  const work = { work_id: "w1", state: "queued", created: true, status_url: "/v1/media/work/w1" };
+  const fetchImpl: typeof globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (init!.method === "POST" && url.pathname === "/v1/files/uploads") {
+      bodies.push(JSON.parse(new TextDecoder().decode(init!.body as ArrayBuffer)));
+      return Response.json({ upload_id: "u1", bucket: "b", key: "k", size: 0, offset: 0,
+        complete: true, sha256: null, expires_ns: 1 }, { status: 201 });
+    }
+    const meta: Record<string, unknown> = { key: "k", size: 0, etag: '"h"' };
+    if (bodies.at(-1)!["process"]) meta["media_work"] = work;
+    return Response.json(meta, { status: 201 });
+  };
+  const files = new FilesClient({ baseUrl: "http://example.invalid", fetch: fetchImpl });
+  const plain = await files.upload("k", new Uint8Array(), { contentType: "image/png" });
+  const processed = await files.upload("k", new Uint8Array(), {
+    contentType: "image/png", process: true, access: { classification: "internal" },
+  });
+  assert.ok(!("process" in bodies[0]!) && !("access" in bodies[0]!));
+  assert.equal(plain.media_work, undefined);
+  assert.equal(bodies[1]!["process"], true);
+  assert.deepEqual(bodies[1]!["access"], { classification: "internal" });
+  assert.deepEqual(processed.media_work, work);
+});

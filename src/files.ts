@@ -22,6 +22,12 @@ export interface FileMetadata {
   modified_ns: number;
   is_folder: boolean;
   download_url: string;
+  /**
+   * Set by an upload committed with `process: true` (#5938): either
+   * `{work_id, state, created, status_url}` for a queued OpenETL media work item,
+   * or `{queued: false, reason, status?}` when none was queued.
+   */
+  media_work?: Record<string, unknown>;
 }
 
 /** Server view of a resumable upload; `offset` is the next byte the server expects. */
@@ -52,6 +58,10 @@ export interface UploadOptions extends FilePutOptions {
   uploadId?: string;
   /** Whole-file SHA-256 (hex). Computed automatically for `Uint8Array` sources. */
   sha256?: string;
+  /** Queue an OpenETL media work item when the upload commits (#5938); see `media_work`. */
+  process?: boolean;
+  /** Parent access attributes children inherit (#5989); `{}` declares an open file. Needs `process`. */
+  access?: Record<string, unknown>;
 }
 
 export interface FileContent {
@@ -169,9 +179,10 @@ export class FilesClient extends TypedClientBase {
   }
 
   /** Open a resumable upload; nothing is visible until `completeUpload`. */
-  async startUpload(key: string, size: number, opts: FilePutOptions & { sha256?: string } = {}): Promise<UploadSession> {
+  async startUpload(key: string, size: number, opts: FilePutOptions & Pick<UploadOptions, "sha256" | "process" | "access"> = {}): Promise<UploadSession> {
     const body = new TextEncoder().encode(JSON.stringify({
       key, size, bucket: opts.bucket, content_type: opts.contentType, sha256: opts.sha256,
+      process: opts.process ? true : undefined, access: opts.access,
     }));
     const response = await this._sendBytes("POST", "/v1/files/uploads", body, "application/json");
     this.expectStatus(response.status, 201, "POST upload");
