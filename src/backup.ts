@@ -94,14 +94,22 @@ export class BackupClient extends TypedClientBase {
    * Trigger a restore from `snapshotId`.
    * Wraps `POST /admin/restore`. Returns the `restoreId` (job runs
    * asynchronously; poll via {@link restoreStatus}).
+   *
+   * A restore is a two-person operation: the first call rejects with a
+   * `ForbiddenError` whose `code` is `"TWO_PERSON_REQUIRED"` and which carries
+   * `confirmationId`. Repeat the call with that `confirmationId` from a client
+   * holding a different admin credential (for example a token minted with scope
+   * `admin:backup`). `force: true` restores over writes made after the snapshot.
    */
   async restore(
     snapshotId: string,
-    opts: { tenant?: string; pointInTimeNs?: number } = {},
+    opts: { tenant?: string; pointInTimeNs?: number; force?: boolean; confirmationId?: string } = {},
   ): Promise<string> {
     const payload: Record<string, unknown> = { snapshot_id: snapshotId };
     if (opts.tenant !== undefined) payload["tenant"] = opts.tenant;
     if (opts.pointInTimeNs !== undefined) payload["point_in_time_ns"] = opts.pointInTimeNs;
+    if (opts.force === true) payload["force"] = true;
+    if (opts.confirmationId !== undefined) payload["confirmation_id"] = opts.confirmationId;
     const resp = await this._post<Record<string, unknown>>("/admin/restore", payload);
     return String(resp["restore_id"] ?? "");
   }
