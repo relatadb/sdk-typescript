@@ -79,6 +79,13 @@ export class RelataError extends Error {
   accepted: boolean | undefined = undefined;
   /** Server receipt state on the error body, for example `"uncertain"`. */
   receiptStatus: string | undefined = undefined;
+  /**
+   * On a `TWO_PERSON_REQUIRED` refusal, the id to send back from a different
+   * admin credential to confirm the operation.
+   */
+  confirmationId: string | undefined = undefined;
+  /** When `confirmationId` expires, in Unix nanoseconds. */
+  confirmationExpiresAtNs: number | undefined = undefined;
 
   constructor(
     message: string,
@@ -641,12 +648,16 @@ export function mapHttpError(
     taskId?: string | undefined;
     accepted?: boolean | undefined;
     receiptStatus?: string | undefined;
+    confirmationId?: string | undefined;
+    confirmationExpiresAtNs?: number | undefined;
   } = {},
 ): RelataError {
   const error = mapHttpErrorByStatus(status, serverMessage, extras);
   error.taskId = extras.taskId;
   error.accepted = extras.accepted;
   error.receiptStatus = extras.receiptStatus;
+  error.confirmationId = extras.confirmationId;
+  error.confirmationExpiresAtNs = extras.confirmationExpiresAtNs;
   return error;
 }
 
@@ -748,6 +759,8 @@ export function httpProblemMetadata(
   taskId: string | undefined;
   accepted: boolean | undefined;
   receiptStatus: string | undefined;
+  confirmationId: string | undefined;
+  confirmationExpiresAtNs: number | undefined;
 } {
   const retry = headers?.get("Retry-After");
   let retryAfterSeconds: number | undefined;
@@ -782,5 +795,8 @@ export function httpProblemMetadata(
     taskId: typeof body["task_id"] === "string" && body["task_id"] !== "" ? body["task_id"] : undefined,
     accepted: typeof body["accepted"] === "boolean" ? body["accepted"] : undefined,
     receiptStatus: typeof body["receipt_status"] === "string" ? body["receipt_status"] : undefined,
+    confirmationId: typeof body["confirmation_id"] === "string" && body["confirmation_id"] !== ""
+      ? body["confirmation_id"] : undefined,
+    confirmationExpiresAtNs: typeof body["expires_at_ns"] === "number" ? body["expires_at_ns"] : undefined,
   };
 }
