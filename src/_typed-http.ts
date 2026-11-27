@@ -21,6 +21,7 @@ import {
   assertNotRedirected,
   mapHttpError,
   httpProblemMetadata,
+  mcpErrorText,
   NetworkError,
   RelataError,
   ResponseTooLargeError,
@@ -574,6 +575,7 @@ export class TypedClientBase {
       (typeof err["detail"] === "string" && err["detail"]) ||
       (typeof err["error"] === "string" && err["error"]) ||
       (typeof err["message"] === "string" && err["message"]) ||
+      mcpErrorText(err) ||
       `HTTP ${status}`;
     // #2321 (ADR-0261): a bare 404 with no detail text against an
     // admin-only path almost always means this client is pointed
