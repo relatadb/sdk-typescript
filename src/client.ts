@@ -109,7 +109,7 @@ export {
 // module shares one identifier allowlist, one metric allowlist, and one
 // string-literal escaper without a runtime circular import.
 import { escapeSqlString, injectMatcherHint, sqlLiteral } from "./_sql.ts";
-import { readCappedResponseBody } from "./_body.ts";
+import { decodeResponseBody, readCappedResponseBody } from "./_body.ts";
 import { dnsTunnelDetect as runDnsTunnelDetect, type DnsTunnelOptions } from "./dns-tunnel.ts";
 
 /**
@@ -945,17 +945,30 @@ export class RelataClient {
   // ── Sessions (#967 Tier 2d) ────────────────────────────
 
   /**
-   * Bulk export all rows of a type (#967 Tier 5c). The type and format are
-   * routed through URLSearchParams so a caller-supplied '&', '?', or '#'
-   * cannot smuggle extra query params (#3212).
+   * Bulk export all rows of a type (#967 Tier 5c). JSON-shaped exports (json,
+   * stix) return the decoded object; a text export such as csv or jsonl
+   * returns `{type, format, content}` with the body as a string in `content`
+   * (`""` when the type has no rows). The type and format are routed through
+   * URLSearchParams so a caller-supplied '&', '?', or '#' cannot smuggle extra
+   * query params (#3212).
    */
   async exportData(objectType: string, format?: string): Promise<Record<string, unknown>> {
-    const params = new URLSearchParams({
-      type: objectType,
-      format: format ?? "json",
-      purpose: "export",
-    });
-    return this.#get(`/v1/export?${params.toString()}`);
+    const fmt = format ?? "json";
+    const params = new URLSearchParams({ type: objectType, format: fmt, purpose: "export" });
+    const body = await this.#send<unknown>(
+      "GET",
+      `/v1/export?${params.toString()}`,
+      undefined,
+      undefined,
+      { Accept: "*/*" },
+      undefined,
+      true,
+    );
+    const isObject = typeof body === "object" && body !== null && !Array.isArray(body);
+    if (isObject && !(body instanceof Uint8Array)) {
+      return body as Record<string, unknown>;
+    }
+    return { type: objectType, format: fmt, content: body };
   }
 
   /** View uncommitted session changes. */
@@ -1795,6 +1808,7 @@ export class RelataClient {
     timeoutMs: number | undefined,
     callHeaders?: Record<string, string>,
     serializedBody?: string,
+    decodeByType = false,
   ): Promise<T> {
     if (this.#destroyed) {
       throw new ClientClosedError();
@@ -1864,6 +1878,7 @@ export class RelataClient {
         const result = await this.#parseResponse<T>(
           response,
           body?.["purpose"] as string | undefined,
+          decodeByType,
         );
         return result;
       } catch (err) {
@@ -1957,12 +1972,16 @@ export class RelataClient {
   async #parseResponse<T>(
     response: Response,
     purpose: string | undefined,
+    decodeByType = false,
   ): Promise<T> {
     // Read the body subject to the response cap (#3214) so an oversized body
     // rejects with ResponseTooLargeError instead of exhausting memory.
     const bytes = await this.#readCappedBody(response);
     const text = new TextDecoder().decode(bytes);
     const contentType = response.headers.get("content-type") ?? "";
+    if (decodeByType && response.ok) {
+      return decodeResponseBody(contentType, bytes) as T;
+    }
 
     // Attempt to parse the body as JSON regardless of status so we can surface
     // the server's error message when present.
