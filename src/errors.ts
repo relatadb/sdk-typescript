@@ -800,3 +800,14 @@ export function httpProblemMetadata(
     confirmationExpiresAtNs: typeof body["expires_at_ns"] === "number" ? body["expires_at_ns"] : undefined,
   };
 }
+
+/** @internal `content[0].text` of an MCP `isError` envelope (#6779). */
+export function mcpErrorText(body: Record<string, unknown>): string | undefined {
+  const content = body["content"];
+  if (body["isError"] !== true || !Array.isArray(content) || content.length === 0) return undefined;
+  const first: unknown = content[0];
+  const text = typeof first === "object" && first !== null
+    ? (first as Record<string, unknown>)["text"]
+    : undefined;
+  return typeof text === "string" && text.length > 0 ? text : undefined;
+}

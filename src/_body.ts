@@ -60,3 +60,30 @@ export async function readCappedResponseBody(response: Response, cap: number): P
   for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.byteLength; }
   return out;
 }
+
+/**
+ * Decode a success body by its media type (#6778): JSON (`application/json`,
+ * `*+json`, or no type) is parsed, `{}` when empty; `text/*` and
+ * `application/x-ndjson` return a string; any other type returns the bytes.
+ */
+export function decodeResponseBody(contentType: string, bytes: Uint8Array): unknown {
+  const [rawMedia = "", ...params] = contentType.split(";");
+  const media = rawMedia.trim().toLowerCase();
+  if (media === "" || media === "application/json" || media.endsWith("+json")) {
+    const text = new TextDecoder().decode(bytes);
+    return text.trim() ? JSON.parse(text) : {};
+  }
+  if (media.startsWith("text/") || media === "application/x-ndjson") {
+    const charset = params
+      .map((p) => p.split("="))
+      .find(([k]) => k?.trim().toLowerCase() === "charset")?.[1]
+      ?.trim()
+      .replace(/^"|"$/g, "");
+    try {
+      return new TextDecoder(charset || "utf-8").decode(bytes);
+    } catch {
+      return new TextDecoder().decode(bytes);
+    }
+  }
+  return bytes;
+}

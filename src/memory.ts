@@ -26,6 +26,7 @@
 import {
   assertNotRedirected,
   httpProblemMetadata,
+  mcpErrorText,
   RelataError,
   NetworkError,
   PurposeError,
@@ -650,7 +651,7 @@ export class Memory {
               ? err["error"]
               : typeof err["message"] === "string"
                 ? err["message"]
-                : `HTTP ${response.status}`;
+                : mcpErrorText(err) ?? `HTTP ${response.status}`;
         // Preserve HTTP problem/header metadata in the existing typed error;
         // this path never automatically retries a potentially committed write.
         throw new MemoryHttpError(
