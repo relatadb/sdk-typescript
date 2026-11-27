@@ -109,7 +109,7 @@ export class BackupClient extends TypedClientBase {
     if (opts.tenant !== undefined) payload["tenant"] = opts.tenant;
     if (opts.pointInTimeNs !== undefined) payload["point_in_time_ns"] = opts.pointInTimeNs;
     if (opts.force === true) payload["force"] = true;
-    if (opts.confirmationId !== undefined) payload["confirmation_id"] = opts.confirmationId;
+    if (opts.confirmationId) payload["confirmation_id"] = opts.confirmationId;
     const resp = await this._post<Record<string, unknown>>("/admin/restore", payload);
     return String(resp["restore_id"] ?? "");
   }
